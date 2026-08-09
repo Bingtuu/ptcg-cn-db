@@ -1,0 +1,38 @@
+# Limitless 主站赛事分类规则（task 033 配置化，2026-08-09，PRD v1.18 FR-9.1a）
+# 原 scrapers/limitless_site.py 三个代码常量（SITE_TIER_PATTERNS / SITE_CUT_LIMITS /
+# JP_DOMESTIC_PATTERN）合一为单一事实源：tier 正则与名次截断同档共置，消除
+# 「新 tier 忘配截断」的不一致坑。采集端（limitless_site_runner）与入库端
+# （ingest_limitless_site）共用本文件。判定顺序：人数门 → tiers 按序 → reject
+# 按序 → 兜底拒。今后新增联赛/调整截断 = 改本文件零代码；tier 名必须已在
+# config/vocabularies/tournament_tiers.yml 词表内（加载即校验）。
+min_players: 32
+tiers:
+  - tier: worlds                       # 世锦赛（task 032，coef 6.0）
+    patterns: ["World Championships"]
+    cut_limit: 32
+  - tier: international                # NAIC/EUIC/LAIC/OCIC
+    patterns: ["\\b(NAIC|EUIC|LAIC|OCIC)\\b|International Championship"]
+    cut_limit: 32
+  - tier: master_ball_league           # 东南亚大师球联赛（task 033，顶替原 Regional 级）
+    patterns: ["Master Ball League"]
+    cut_limit: 32
+  - tier: korean_league                # 韩国联赛（task 033，同上）
+    patterns: ["Korean League"]
+    cut_limit: 32
+  - tier: premier_ball_league          # 东南亚高级球联赛（task 033，顶替原 League Cup 级）
+    patterns: ["Premier Ball League"]
+    cut_limit: 8
+  - tier: special
+    patterns: ["Special Event"]
+    cut_limit: 32
+  - tier: regional
+    patterns: ["\\bRegional\\b"]
+    cut_limit: 32
+  - tier: league_cup
+    patterns: ["League Cup"]
+    cut_limit: 8
+reject:
+  # JP 卡国内赛：日文卡名 EN 桥走不通（FR-9.1a，JP 对齐二期再议）。
+  # 注意 Korean League / Premier Ball League 是 EN 卡赛事，在收侧 tiers，勿加回这里。
+  - pattern: "Japan Championships|Champions League|\\bJCS\\b"
+    reason: "JP 卡国内赛（EN 桥走不通，FR-9.1a JP 对齐二期再议）"
