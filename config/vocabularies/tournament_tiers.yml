@@ -68,7 +68,7 @@ tiers:
   - tier: korean_league
     label: Korean League（韩国联赛）
     coef: 1.5
-    aliases: [korean_league, Korean League]
+    aliases: [korean_league, Korean League, KL]
   - tier: premier_ball_league
     label: Premier Ball League（东南亚高级球联赛）
     coef: 1

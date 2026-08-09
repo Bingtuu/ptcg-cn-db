@@ -84,6 +84,7 @@ def load_site_rules(path: Path | None = None, *, validate_tiers: bool = True) ->
 
     validate_tiers=True 时校验收侧 tier 名都在 tournament_tiers.yml 词表内
     （测试构造合成 tier 可关）。无缓存——调用方按需加载（文件极小，开销可忽略）。
+    min_players 缺省 = FR-9.1a 法定值 32（与 API 通道人数门一致）。
     """
     rules_path = Path(path) if path is not None else DEFAULT_RULES_PATH
     data = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
@@ -127,8 +128,14 @@ def load_site_rules(path: Path | None = None, *, validate_tiers: bool = True) ->
             )
         tiers.append(SiteTierRule(tier=tier, patterns=patterns, cut_limit=cut))
 
+    raw_reject = data.get("reject")
+    if raw_reject is None:
+        raw_reject = []
+    if not isinstance(raw_reject, list):
+        raise SiteRulesConfigError(f"reject 必须是列表，收到 {raw_reject!r}")
+
     reject: list[SiteRejectRule] = []
-    for i, entry in enumerate(data.get("reject") or []):
+    for i, entry in enumerate(raw_reject):
         where = f"reject[{i}]"
         if not isinstance(entry, dict):
             raise SiteRulesConfigError(f"{where}：必须是 mapping")

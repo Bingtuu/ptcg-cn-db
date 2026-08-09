@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from ptcgdb.scrapers.http import HttpClient
+from ptcgdb.scrapers.site_rules import SiteRules, load_site_rules
 
 BASE_URL = "https://limitlesstcg.com"
 SOURCE = "limitless_site"
@@ -56,39 +57,6 @@ RAW_SUBDIR = "limitless_site"  # data/raw/ 下的落盘子目录
 DEFAULT_INTERVAL = 2.5
 
 INDEX_PAGE_SIZE = 100  # 索引页 show 参数上限（实测 2526 赛季 42 行，单页抓全）
-MIN_PLAYERS = 32  # 人数门沿用 FR-9.1a（索引行 data-players）
-
-# 名次截断（FR-9.1a ②）：standings 为全交表收录（实测 NAIC 675 行），采集与入库
-# 都只收上位——regional/international/special → Top 32；league_cup → Top 8。
-# 与 CN mik top64 上位口径同构的截断代理；真实 Top Cut 规模源不暴露。
-# 采集端（省请求）与入库端（ingest_limitless_site）共用此常量，单一事实源。
-SITE_CUT_LIMITS: dict[str, int] = {
-    "regional": 32,
-    "international": 32,
-    "worlds": 32,  # 世锦赛与 IC 同档（task 032，2026-08-08 拍板）
-    "special": 32,
-    "league_cup": 8,
-}
-
-# 主站赛事归类（FR-9.1a）：名称形态与 API 不同（"NAIC 2026, New Orleans" /
-# "Regional Indianapolis, IN" / "Special Event Turin"），故独立于
-# scrapers/limitless.py 的 TIER_PATTERNS 自带一套（SITE_ 前缀）。
-SITE_TIER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("worlds", re.compile(r"World Championships", re.IGNORECASE)),  # task 032 补录
-    ("international", re.compile(
-        r"\b(NAIC|EUIC|LAIC|OCIC)\b|International Championship", re.IGNORECASE
-    )),
-    ("special", re.compile(r"Special Event", re.IGNORECASE)),
-    ("regional", re.compile(r"\bRegional\b", re.IGNORECASE)),
-    ("league_cup", re.compile(r"League Cup", re.IGNORECASE)),
-)
-
-# JP/亚洲国内赛事提示（白名单外的拒收理由细化：FR-9.1a 本轮只收 EN 官方系列赛，
-# JP 对齐二期再议；命中者给明确理由而不是笼统"未命中"）。
-JP_DOMESTIC_PATTERN = re.compile(
-    r"Japan Championships|Champions League|Korean League|Premier Ball League|\bJCS\b",
-    re.IGNORECASE,
-)
 
 
 class LimitlessSiteApiError(RuntimeError):
@@ -269,31 +237,46 @@ def parse_decklist_page(html: str) -> dict[str, Any]:
 # ---- 赛事归类（FR-9.1a 主站变体）----
 
 
+_DEFAULT_RULES: SiteRules | None = None
+
+
+def _default_rules() -> SiteRules:
+    """进程级默认规则（惰性加载 config/site_tournament_rules.yml，task 033）。"""
+    global _DEFAULT_RULES
+    if _DEFAULT_RULES is None:
+        _DEFAULT_RULES = load_site_rules()
+    return _DEFAULT_RULES
+
+
 def classify_site_tournament(
-    name: Any, players: Any, country: Any = None
+    name: Any, players: Any, country: Any = None, *, rules: SiteRules | None = None
 ) -> tuple[str | None, str]:
     """主站赛事等级归类：返回 (规范 tier 或 None, 取舍理由)。
 
-    规则（FR-9.1a 主站变体）：
-    - players < MIN_PLAYERS（32）→ 不收（人数门，与 API 通道一致）；
-    - 名称命中 SITE_TIER_PATTERNS（World Championships → worlds（task 032）；
-      NAIC/EUIC/LAIC/OCIC/International → international；
+    规则（FR-9.1a 主站变体，task 033 起规则本体在 config/site_tournament_rules.yml，
+    本函数只做判定）：
+    - players < rules.min_players（32）→ 不收（人数门，与 API 通道一致）；
+    - 名称按序命中收侧 tiers（World Championships → worlds；NAIC/EUIC/LAIC/OCIC →
+      international；Master Ball/Korean/Premier Ball League → 亚洲三档（task 033）；
       Special Event → special；Regional → regional；League Cup → league_cup）→ 收；
-    - JP/亚洲国内赛事（Japan Championships/Champions League/Korean League/
-      Premier Ball League 等）→ 不收（本轮只收 EN 官方系列赛，JP 对齐二期再议）；
+    - 名称按序命中拒侧 reject（JP 卡国内赛：Japan Championships/Champions League/
+      JCS，日文卡名 EN 桥走不通）→ 不收（理由取配置 reason）；
     - 其余不命中 → 不收。tier 为开放字符串，采集层只记规范 tier。
     """
-    if not isinstance(players, int) or isinstance(players, bool) or players < MIN_PLAYERS:
-        return None, f"人数 {players} < {MIN_PLAYERS}（样本污染，FR-9.1a 人数门）"
+    r = rules if rules is not None else _default_rules()
+    if not isinstance(players, int) or isinstance(players, bool) or players < r.min_players:
+        return None, f"人数 {players} < {r.min_players}（样本污染，FR-9.1a 人数门）"
     text = name if isinstance(name, str) else ""
-    for tier, pattern in SITE_TIER_PATTERNS:
-        if pattern.search(text):
-            return tier, f"命中官方系列赛名称正则：{pattern.pattern}"
-    if JP_DOMESTIC_PATTERN.search(text):
-        return None, "JP/亚洲国内赛事（FR-9.1a 本轮只收 EN 官方系列赛，JP 对齐二期再议）"
+    for tier_rule in r.tiers:
+        for pattern in tier_rule.patterns:
+            if pattern.search(text):
+                return tier_rule.tier, f"命中官方系列赛名称正则：{pattern.pattern}"
+    for reject_rule in r.reject:
+        if reject_rule.pattern.search(text):
+            return None, reject_rule.reason
     return None, (
         "未命中官方系列赛名称（World Championships/NAIC/EUIC/LAIC/OCIC/"
-        "Regional/Special Event/League Cup）"
+        "Regional/Special Event/League Cup/亚洲联赛）"
     )
 
 

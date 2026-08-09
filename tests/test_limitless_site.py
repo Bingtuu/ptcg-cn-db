@@ -10,8 +10,8 @@ Korean League（JP 拒）/ Japan Championships（JP 拒）/ 16 人小 regional�
 - get_text：200 返回 (status, text)、HTML 不触发"非 JSON"熔断、404 原样返回、
   403 熔断、5xx 重试；
 - 三解析器：字段提取 / HTML 实体反转义 / 缺字段宽容 None / 文本日期兜底换算；
-- classify_site_tournament 矩阵：四种官方 tier（主站名称形态）、大小写、<32 人拒、
-  JP/亚洲国内赛事拒、非官方名拒；
+- classify_site_tournament 矩阵：官方 tier + 亚洲联赛（主站名称形态）、大小写、<32 人拒、
+  JP 卡国内赛拒、非官方名拒；
 - 赛季标签：season_of_date / seasons_for_window；
 - runner：窗口过滤 / 赛季推导与显式 seasons / accepted 抓 standings+去重 decklist /
   满页翻页与"无新 id"兜底 / 断点续传 / 熔断 aborted / missing 对账 / 取舍决策落 stats；
@@ -34,7 +34,6 @@ from ptcgdb.scrapers import CircuitOpenError, HttpClient, RateLimiter
 from ptcgdb.scrapers.limitless_site import (
     BASE_URL,
     INDEX_PAGE_SIZE,
-    SITE_CUT_LIMITS,
     LimitlessSiteApiError,
     LimitlessSiteScraper,
     classify_site_tournament,
@@ -49,6 +48,7 @@ from ptcgdb.scrapers.limitless_site import (
 )
 from ptcgdb.scrapers.limitless_site_runner import LimitlessSiteScrapeRunner, _decklist_ids
 from ptcgdb.scrapers.raw_store import is_valid_raw, read_raw
+from ptcgdb.scrapers.site_rules import load_site_rules
 
 FIXTURES = Path(__file__).parent / "fixtures" / "limitless_site"
 
@@ -256,7 +256,7 @@ def test_classify_official_tiers_site_names():
 def test_classify_worlds():  # task 032：Worlds 2025 补录（coef 6.0 拍板）
     assert classify_site_tournament("World Championships 2025", 1300)[0] == "worlds"
     assert classify_site_tournament("world championships 2026", 100)[0] == "worlds"
-    assert SITE_CUT_LIMITS["worlds"] == 32  # 与 IC 同档截断
+    assert load_site_rules().cut_limit_for("worlds") == 32  # 与 IC 同档截断
 
 
 def test_classify_case_insensitive_site():
@@ -264,16 +264,22 @@ def test_classify_case_insensitive_site():
     assert classify_site_tournament("SPECIAL EVENT LIMA", 100)[0] == "special"
 
 
+def test_classify_asia_leagues():  # task 033：EN 卡亚洲联赛收录（用户拍板全收）
+    assert classify_site_tournament("Master Ball League Singapore", 524)[0] == "master_ball_league"
+    assert classify_site_tournament("Malaysia Premier Ball League", 1250)[0] == (
+        "premier_ball_league"
+    )
+    assert classify_site_tournament("Korean League Season 3", 387)[0] == "korean_league"
+    assert classify_site_tournament("master ball league philippines", 100)[0] == (
+        "master_ball_league"
+    )
+
+
 def test_classify_rejects_jp_domestic():
-    for name in (
-        "Japan Championships 2026",
-        "Champions League Tokyo",
-        "Korean League Season 3",
-        "Indonesia Premier Ball League",
-    ):
+    for name in ("Japan Championships 2026", "Champions League Tokyo", "JCS 2026"):
         tier, reason = classify_site_tournament(name, 1000)
         assert tier is None
-        assert "JP/亚洲国内赛事" in reason
+        assert "JP 卡国内赛" in reason
 
 
 def test_classify_players_gate_site():
@@ -286,6 +292,34 @@ def test_classify_rejects_unknown_name_site():
     tier, reason = classify_site_tournament("Professor Oak Casual Meetup", 120)
     assert tier is None
     assert "未命中官方系列赛" in reason
+
+
+def test_classify_with_injected_rules(tmp_path):
+    """rules 注入：自定义人数门生效（测试隔离，不动全局默认配置）。"""
+    path = tmp_path / "rules.yml"
+    path.write_text(
+        "min_players: 100\ntiers:\n"
+        "  - tier: regional\n    patterns: ['Regional']\n    cut_limit: 16\n"
+        "reject: []\n",
+        encoding="utf-8",
+    )
+    rules = load_site_rules(path, validate_tiers=False)
+    assert classify_site_tournament("Regional X", 99, rules=rules)[0] is None
+    assert classify_site_tournament("Regional X", 100, rules=rules)[0] == "regional"
+
+
+def test_classify_accept_side_wins_over_reject(tmp_path):
+    """判定顺序 = tiers 按序 → reject 按序：同时命中两侧时收侧赢（评审反馈钉住）。"""
+    path = tmp_path / "rules.yml"
+    path.write_text(
+        "tiers:\n"
+        "  - tier: regional\n    patterns: ['Champions League']\n    cut_limit: 16\n"
+        "reject:\n"
+        "  - pattern: 'Champions League'\n    reason: 'should not reach'\n",
+        encoding="utf-8",
+    )
+    rules = load_site_rules(path, validate_tiers=False)
+    assert classify_site_tournament("Champions League Tokyo", 100, rules=rules)[0] == "regional"
 
 
 # ---- 赛季标签 ----

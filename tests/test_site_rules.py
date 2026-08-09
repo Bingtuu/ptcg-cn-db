@@ -107,3 +107,17 @@ def test_min_players_default_and_override(tmp_path):
     assert load_site_rules(_write_rules(tmp_path, doc)).min_players == 32
     doc["min_players"] = 100
     assert load_site_rules(_write_rules(tmp_path, doc)).min_players == 100
+
+
+def test_reject_non_list_fails(tmp_path):
+    doc = _valid_doc()
+    doc["reject"] = 0
+    with pytest.raises(SiteRulesConfigError, match="reject"):
+        load_site_rules(_write_rules(tmp_path, doc))
+
+
+def test_empty_tiers_fails(tmp_path):
+    doc = _valid_doc()
+    doc["tiers"] = []
+    with pytest.raises(SiteRulesConfigError, match="tiers"):
+        load_site_rules(_write_rules(tmp_path, doc))
