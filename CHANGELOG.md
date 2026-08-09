@@ -7,6 +7,8 @@
 
 ### Added
 
+- 映射缺口标识与可刷新机制（task 032，PRD v1.16，migration 011 / user_version=11）：`deck_card_misses` 表（PK (deck_id, raw_name, raw_set, raw_number)；miss_kind 开放字符串——no_cn_printing 无简中对应 / ptcd_miss / ambiguous 预留；resolved_card_id/resolved_at NULL=未解；不进导出契约）+ `ptcgdb/normalize/deck_misses.py`（classify_miss / record_miss 幂等 upsert / backfill_misses DB 锚定扫 raw 反查 / remap_decks 按 deck 最早出战赛事日期推导 env 重映射、同 card_id 合并 count，**partial→full 单调升级不降级**）+ 双通道 ingest（limitless / limitless_site）unmapped 行落 miss 钩子 + CLI `backfill-misses` / `remap-decks [--source]`；设计保证：映射=卡身份判定非环境合法性判定，半年后简中进 Mega 环境时历史缺口可整体刷新（用户两问拍板①）；实测 backfill 1,584 行缺口显性化（未解 1,456 行=37 distinct 名全 Mega 时代卡）、remap 首跑清偿 128 条 API 通道 Boss's Orders 历史缺口、20 deck 升级 partial→full
+- Worlds 2025 补录（task 032，用户拍板②）：tier 词表新增 worlds 档 **coef=6.0**（邀请制赛季收官：6.0×log₁₀(~1300)≈18.7 > NAIC 4.0×log₁₀(3752)≈14.3）+ SITE_TIER_PATTERNS / SITE_CUT_LIMITS 加 worlds（Top 32）；断点续传采集 accepted=40 / rejected=9 / fetched=28 → `limitless_site:500` 入库（2025-08-15、721 人、topcut_slots=32、env GHI），limitless_site full 425→452
 - EN Limitless 对齐窗口接入全链路（M9-3，task 028，PRD v1.14/v1.15）：**API 通道**——`scrapers/limitless.py` 三端点采集器（官方系列赛名称归类 + ≥32 人门，6.5s/请求对齐匿名 50req/5min，窗口翻页断点续传）+ `normalize/limitless.py` decklist→简中映射链（ptcd(set,number) 定位 → name_fallback 回退 → name_en 桥 → Basic 能量别名 → 多候选 env 优先+最新印刷+字典序，全链确定性）+ `ingest-limitless`（内容哈希 deck_id、record 三列、60 张质量门、幂等）；**主站 HTML 收录通道**（v1.15，API 全窗口实测仅 accepted 5 场后用户拍板扩展）——主站索引/standings/卡组页三解析器（纯正则零依赖）+ 名次截断 SITE_CUT_LIMITS（regional/international/special ≤32、league_cup ≤8，采集/入库单一事实源）+ `scrape limitless-site` / `ingest-limitless-site`（source='limitless_site'，standings 全交表 record 三列 NULL 不猜，topcut_slots=截断名次数物化，JP 国内赛事拒收）；migration 008 `tournaments.env`（赛事日期∩赛区旋转日历推导）/ 009（pairings 逐桌对阵表 + 两物化视图加 basis 列 + topcut_slots 由 phase=2 去重选手反推）/ 010（basis 加 limitless_site→intl_aligned），user_version=10；tier 词表扩 intl 四档（international 4.0/regional 1.5/special 1.5/league_cup 1.0，2026-08-08 拍板）；导出十三件套（+pairings.jsonl）；CLI/SDK `--basis` 过滤（默认 cn 不与 intl_aligned 混同）+ division 未知不排他；实测入库 **73 赛（mik 26 + limitless 8 + limitless_site 39）/ 2,592 卡组内容 / 2,982 出战**，API 通道 417 卡组 full=122、主站通道 923 卡组 full=425/partial=498（paren_strip 回退层修复后），NAIC 2025 与主站页 archetype 12/12 对账一致；验收报告 `reports/task028-limitless-20260808.md`
 - decklist 映射链 paren_strip 回退层（task 028 收尾 bug 修复）：CN 桥 0 命中时剥英文卡名尾部括号修饰（如 "Boss's Orders (PAL 172)"）再试，ptcd 与 name_fallback 两路径同层；修复后主站通道 full 371→425（+54）、未解析 1,697→1,416 行（Boss's Orders/Professor's Research 未解析归零，paren_strip 路径 302 行获映射）
 - validate 三维度校验扩展（code review，2026-08-04）：regulation_mark 格式（单个大写字母）/ HP 范围 [10, 340]（仅宝可梦卡）/ evolves_from_id FK 有效性（含跨系列全库兜底）；SDK `search_cards` 增 `limit`/`offset` 分页参数（默认 limit=100，不传时行为不变）；CLI `legal`/`validate`/`deck-check`/`stats`/`query`/`export` 对不存在的数据库报友好错误并退出码 2
@@ -28,6 +30,7 @@
 
 ### Changed
 
+- PRD 升 v1.16（task 032）：§7.5 新增 `deck_card_misses` 表定义 + 「映射缺口标识与可刷新」口径段；双通道 decklist ingest（limitless / limitless_site）unmapped 元组扩为 (name, count, set, number) 并落 deck_card_misses（原仅计数）
 - PRD 升 v1.14 / v1.15（task 028 实现段与收尾）：v1.14——§7.5 新增 pairings 表 + basis 口径物化（视图加 basis 列，migration 009）+ FR-9.7 `--basis` 参数 + tier 词表 intl 四档；v1.15——FR-9.1a 续主站通道落地口径（limitless_site 双通道 / SITE_CUT_LIMITS 名次截断 / record NULL 不猜 / topcut_slots 物化 / JP 国内拒收）+ decklist 映射链 paren_strip 回退层 + §7.5 source 枚举与 basis 映射加 limitless_site（migration 010）
 - **code review 全量修复（2026-08-04，提交 f608478）**：28 项 HIGH 清零——P0 数据安全：导出 WAL checkpoint 验证 + 导出前 integrity_check / foreign_key_check（失败拒绝导出）；normalize `_to_int`/`_to_float` 非数值输入返回 None 不再抛异常；L0 `expected_count` 更新移至 activate 成功后（修复 validate 失败导致增量信号丢失/draft 卡孤立）；增量采集 cardsNum 与缓存条目数对账不符自动重抓；`seed_snapshots` 对已冻结快照拒绝覆盖（FrozenSnapshotError）；◇ 计数改跨 name_group 全局检查（修复同名组内检查漏判不同名 ◇ 组合）；deck_cards 可空 PK 按 (deck_id, raw_name) 去重防唯一约束冲突。P1 运行时：mapping 四文件 `engine.dispose()` 移入 finally（commit 失败不再泄露连接）；赛事 schema `fetched_at` 改 Optional；macOS osascript / Windows pwsh 通知内容转义（防注入与 KeyError）；JSONL 后端 v_stat_deck_cards 视图对齐迁移 006（补 cards_name_group JOIN）；MEDIUM 批量：is_qual/is_team default=False、除零守卫、YAML 静默吞错改告警、accept 冻结守卫 old_id 空指针 + V-UNION 计数虚高修复等。测试 327→416 全绿，ruff 全净
 - **赛事卡组范围收口（2026-08-04 拍板，PRD v1.13 续 FR-9.1b）**：收集与维护以当前简中比赛环境（standard 2026-07-16 起 G/H/I）为起点，历史赛事不回填、历史日历段不补录；task 026 遗留「历史环境快照补录（988 条出战）」按拍板关闭，维持 no_snapshot 如实分档；EN 对齐窗口（2025-04~2026-04-09）属当前环境参照数据保留采集，随简中环境演进滚动前移
@@ -50,6 +53,8 @@
 ### Deprecated
 
 ### Removed
+
+- 3 场窗口外冒烟残留赛事（task 032，用户拍板③，2026-08-09 清除）：limitless API 通道 SEASAC 杯（limitless:6a4f4fad65724db9ded40fb5 / 6a59f66352c24ac2da6443a8 / 6a6a0698937230b102d482c0，对齐窗口外冒烟期采集残留）及其 273 卡组、705 pairings——tournaments 73→70（后 +Worlds=71）、pairings 1,184→479；raw 层 append-only 保留（重跑 ingest-limitless 会吃回 → ingest 窗口守卫列 task 031）；统计只消费 full 现状维持（用户拍板④）
 
 ## [v20260801.0] - 2026-08-01 · schema 1.0.0
 
