@@ -7,8 +7,10 @@ stat_scope 派生 / env 推导 + 交叉校验告警不拒收 / 幂等 merge upse
 主站特有口径：
 
 - **名次截断**（FR-9.1a ② 与主站全收录实测的调和）：standings 是全交表选手
-  （实测 NAIC 675 行），入库只收上位——SITE_CUT_LIMITS：regional/international/
-  special → placing ≤ 32；league_cup → ≤ 8。这是与 CN mik top64 上位口径同构的
+  （实测 NAIC 675 行），入库只收上位——`config/site_tournament_rules.yml`
+  名次截断（task 033 配置化）：worlds/international/special/regional/
+  master_ball_league/korean_league → placing ≤ 32；premier_ball_league/
+  league_cup → ≤ 8。这是与 CN mik top64 上位口径同构的
   截断代理；真实 Top Cut 规模源不暴露。截断外的不入库，截断数记入报告 truncated；
   tier 未知 → 不截断 + warning（不猜）。
 - **topcut_slots = 截断后实际入库名次数**（如实物化；60 张门拦截的名次不计）。
@@ -59,17 +61,18 @@ from ptcgdb.normalize.tournaments import VOCAB_DIR, load_tier_map
 from ptcgdb.orm import Deck, DeckAppearance, DeckCard, Tournament
 from ptcgdb.scrapers.limitless_site import (
     RAW_SUBDIR,
-    SITE_CUT_LIMITS,
     SOURCE,
     TOURNAMENTS_DIR,
     classify_site_tournament,
 )
 from ptcgdb.scrapers.raw_store import canonical_json, read_raw
+from ptcgdb.scrapers.site_rules import load_site_rules
 
 OFFICIAL_URL_TEMPLATE = "https://limitlesstcg.com/tournaments/{}"
 
-# 名次截断 SITE_CUT_LIMITS 由 scrapers/limitless_site.py 统一维护（采集端与入库端
-# 单一事实源）：regional/international/special → Top 32；league_cup → Top 8。
+# 名次截断档位由 config/site_tournament_rules.yml 统一维护（task 033 配置化，
+# 采集端与入库端单一事实源）：regional/international/special/worlds/MBL/KL → Top 32；
+# league_cup/PBL → Top 8。
 
 
 @dataclass
@@ -82,7 +85,7 @@ class LimitlessSiteIngestResult:
     deck_cards: int = 0
     truncated: int = 0  # 名次截断丢掉的出战条数（placing > cut）
     skipped_out_of_window: int = 0  # 窗口守卫跳过的赛事数（FR-9.8，task 031）
-    cut_limits: dict[str, int] = field(default_factory=lambda: dict(SITE_CUT_LIMITS))
+    cut_limits: dict[str, int] = field(default_factory=lambda: load_site_rules().cut_limits())
     mapping_rules: dict[str, int] = field(default_factory=dict)  # 映射决策 rule → 次数
     blocked: list[dict[str, Any]] = field(default_factory=list)  # 60 张门 / 快照缺失
     unknown_cards: list[dict[str, Any]] = field(default_factory=list)  # card_id 未解析
@@ -228,7 +231,7 @@ def _ingest_one_tournament(
     env_marks = env_segment.allowed_marks if env_segment is not None else None
 
     # 名次截断（FR-9.1a ② 调和）：tier 未知不截断 + warning（不猜）
-    cut = SITE_CUT_LIMITS.get(tier) if tier is not None else None
+    cut = result.cut_limits.get(tier) if tier is not None else None
     if tier is not None and cut is None:
         result.warnings.append(
             f"赛事 tier={tier} 无截断档位配置（不截断，不猜）: {tournament_id}"

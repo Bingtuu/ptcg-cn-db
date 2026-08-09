@@ -4,9 +4,9 @@
 （鸭子类型，无 HTTP）。fixtures 为手写小样本，照 2026-08-08 真实样本结构（索引行
 data-* 属性 / standings data-rank 行 / 卡组页 decklist-card + card-count span）：
 index = 7 场（NAIC international / Special Event Turin / Regional Indianapolis /
-Korean League（JP 拒）/ Japan Championships（JP 拒）/ 16 人小 regional（人数门拒）/
-2024 旧 regional（窗口外））；standings 4 行（含 ?variant archetype、共享 decklist、
-未交表无链接行）；decklist 3 节 4 卡（含 &#039; 实体）。覆盖：
+Korean League（task 033 起收 korean_league）/ Japan Championships（JP 卡国内拒）/
+16 人小 regional（人数门拒）/ 2024 旧 regional（窗口外））；standings 4 行（含
+?variant archetype、共享 decklist、未交表无链接行）；decklist 3 节 4 卡（含 &#039; 实体）。覆盖：
 - get_text：200 返回 (status, text)、HTML 不触发"非 JSON"熔断、404 原样返回、
   403 熔断、5xx 重试；
 - 三解析器：字段提取 / HTML 实体反转义 / 缺字段宽容 None / 文本日期兜底换算；
@@ -55,8 +55,8 @@ FIXTURES = Path(__file__).parent / "fixtures" / "limitless_site"
 T_NALC = "518"  # NAIC 2026（international 3752 人，2026-06-10）→ accepted
 T_TURIN = "540"  # Special Event Turin（special 2033 人）→ accepted
 T_INDY = "559"  # Regional Indianapolis（regional 1974 人）→ accepted
-T_KOREA = "561"  # Korean League Season 3 → rejected（JP/亚洲国内）
-T_JCS = "555"  # Japan Championships 2026 → rejected（JP 国内）
+T_KOREA = "561"  # Korean League Season 3（1200 人，KR）→ accepted（task 033 korean_league，cut=32）
+T_JCS = "555"  # Japan Championships 2026 → rejected（JP 卡国内）
 T_SMALL = "548"  # Regional Smallville 16 人 < 32 → rejected（人数门）
 T_OLD = "410"  # Regional Oldtown 2024-11-09 → 窗口外
 
@@ -444,22 +444,24 @@ def test_scrape_full_flow(tmp_path):
     result2 = make_runner(tmp_path, scraper2).scrape(
         date_from="2026-04-01", date_to="2026-07-01", seasons=["2526"]
     )
-    assert result2.stats.total == 3  # NAIC / Turin / Indianapolis
+    assert result2.stats.total == 4  # NAIC / Turin / Indianapolis / Korean League（task 033 起收）
     by_id = {r["id"]: r for r in decisions(result2)}
     assert set(by_id) == {T_NALC, T_TURIN, T_INDY, T_KOREA, T_JCS, T_SMALL}  # T_OLD 窗口外
     assert by_id[T_NALC]["action"] == "accepted" and by_id[T_NALC]["tier"] == "international"
     assert by_id[T_TURIN]["action"] == "accepted" and by_id[T_TURIN]["tier"] == "special"
     assert by_id[T_INDY]["action"] == "accepted" and by_id[T_INDY]["tier"] == "regional"
-    assert by_id[T_KOREA]["action"] == "rejected" and "JP/亚洲国内赛事" in by_id[T_KOREA]["reason"]
-    assert by_id[T_JCS]["action"] == "rejected" and "JP/亚洲国内赛事" in by_id[T_JCS]["reason"]
+    # task 033：Korean League 收为 korean_league（cut=32，与大赛同档）
+    assert by_id[T_KOREA]["action"] == "accepted" and by_id[T_KOREA]["tier"] == "korean_league"
+    assert by_id[T_KOREA]["cut"] == 32
+    assert by_id[T_JCS]["action"] == "rejected" and "JP 卡国内赛" in by_id[T_JCS]["reason"]
     assert by_id[T_SMALL]["action"] == "rejected" and "人数" in by_id[T_SMALL]["reason"]
     assert all({"name", "tier", "reason", "players", "date"} <= set(r) for r in by_id.values())
 
-    # 落盘：索引页 + 3 场 accepted standings + 去重后 2 个 decklist（28236 共享只抓一次）
+    # 落盘：索引页 + 4 场 accepted standings + 去重后 2 个 decklist（28236 共享只抓一次）
     assert is_valid_raw(index_path(raw, "2526", 1))
-    for tid in (T_NALC, T_TURIN, T_INDY):
+    for tid in (T_NALC, T_TURIN, T_INDY, T_KOREA):
         assert is_valid_raw(standings_path(raw, tid))
-    for tid in (T_KOREA, T_JCS, T_SMALL, T_OLD):
+    for tid in (T_JCS, T_SMALL, T_OLD):
         assert not standings_path(raw, tid).exists()
     assert is_valid_raw(decklist_path(raw, "28249"))
     assert is_valid_raw(decklist_path(raw, "28236"))
@@ -472,7 +474,7 @@ def test_scrape_full_flow(tmp_path):
     assert deck["cards"][0]["section"] == "Pokémon"
     assert deck["_meta"]["source"] == "limitless_site"
 
-    # decklist 抓取去重：首场抓 2 个，后两场文件已存在零请求
+    # decklist 抓取去重：首场抓 2 个，后三场文件已存在零请求
     deck_calls = [c for c in scraper2.calls if c[0] == "decklist"]
     assert sorted(c[1] for c in deck_calls) == ["28236", "28249"]
 
@@ -488,7 +490,7 @@ def test_scrape_full_flow(tmp_path):
         row = session.get(ScrapeRun, result2.run_id)
         assert row is not None
         assert row.status == "ok"
-        assert row.card_count == 3
+        assert row.card_count == 4
     engine.dispose()
 
 
@@ -576,8 +578,8 @@ def test_api_error_question_and_missing(tmp_path):
     result = make_runner(tmp_path, scraper).scrape(
         date_from="2026-04-01", date_to="2026-07-01", seasons=["2526"]
     )
-    # 3 场 accepted 的 decklist 全部失败进 question（每场 2 个去重 id，raw 未落 → 每场都试）
-    assert len(result.stats.question) == 6
+    # 4 场 accepted 的 decklist 全部失败进 question（每场 2 个去重 id，raw 未落 → 每场都试）
+    assert len(result.stats.question) == 8
     assert all("decks/list" in q["id"] for q in result.stats.question)
     # 对账：decklist raw 缺失进 missing（去重后 2 个）；standings 正常
     assert len(result.stats.missing) == 2
@@ -640,8 +642,8 @@ def test_cli_scrape_limitless_site(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0
     assert "status=ok" in result.output
-    assert "accepted=3" in result.output
-    assert "rejected=3" in result.output
+    assert "accepted=4" in result.output
+    assert "rejected=2" in result.output
     assert is_valid_raw(standings_path(tmp_path / "raw", T_NALC))
     assert is_valid_raw(decklist_path(tmp_path / "raw", "28249"))
 
@@ -661,7 +663,7 @@ def test_cli_scrape_limitless_site_bad_date_exit_2(tmp_path, monkeypatch):
     assert "日期格式错误" in result.output
 
 
-# ---- 采集端名次截断（FR-9.1a ②，SITE_CUT_LIMITS 单一事实源）----
+# ---- 采集端名次截断（FR-9.1a ②，档位取自 config/site_tournament_rules.yml）----
 
 
 def test_decklist_ids_cut_filter():

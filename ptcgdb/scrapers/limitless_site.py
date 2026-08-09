@@ -1,7 +1,7 @@
 """Limitless 主站 HTML 人工收录通道（task 028 扩展：官方线下大赛上位卡组，API 覆盖不到的部分）。
 
 与 scrapers/limitless.py（play.limitlesstcg.com JSON API）并列：主站 limitlesstcg.com
-收录官方系列赛（NAIC/Regional/Special Event 等）的**人工核实**名次+卡组，无 record/
+收录官方系列赛（NAIC/Regional/Special Event/亚洲联赛等）的**人工核实**名次+卡组，无 record/
 比分、无 pairings。本模块只做采集（解析+抓取），入库管线是下一步。
 
 结构约定（2026-08-08 真实样本校准，fixtures 照此形态手写）：
@@ -274,10 +274,7 @@ def classify_site_tournament(
     for reject_rule in r.reject:
         if reject_rule.pattern.search(text):
             return None, reject_rule.reason
-    return None, (
-        "未命中官方系列赛名称（World Championships/NAIC/EUIC/LAIC/OCIC/"
-        "Regional/Special Event/League Cup/亚洲联赛）"
-    )
+    return None, "未命中官方系列赛名称（收侧 tiers 名称正则均未命中）"
 
 
 # ---- 赛季标签 ----

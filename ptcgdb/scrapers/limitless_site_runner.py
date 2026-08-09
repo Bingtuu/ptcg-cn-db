@@ -30,7 +30,6 @@ from ptcgdb.normalize.envs import alignment_window
 from ptcgdb.scrapers.http import CircuitOpenError
 from ptcgdb.scrapers.limitless_site import (
     INDEX_PAGE_SIZE,
-    SITE_CUT_LIMITS,
     SOURCE,
     LimitlessSiteApiError,
     LimitlessSiteScraper,
@@ -47,6 +46,7 @@ from ptcgdb.scrapers.runner import (
     _new_run_id,
     finish_run,
 )
+from ptcgdb.scrapers.site_rules import load_site_rules
 
 _MAX_INDEX_PAGES = 5  # 翻页保险上限（实测单赛季单页；page 参数未实测，防死循环）
 
@@ -63,6 +63,7 @@ class LimitlessSiteScrapeRunner:
         self.raw_dir = Path(raw_dir)
         self.scraper = scraper
         self.db_path = Path(db_path) if db_path else None
+        self._rules = load_site_rules()  # task 033：分类/截断规则配置化单一事实源
 
     def scrape(
         self,
@@ -166,7 +167,7 @@ class LimitlessSiteScrapeRunner:
             force=force,
         )
         # 名次截断（FR-9.1a ②）：standings 为全交表收录，只抓 Top Cut 内卡组页
-        cut = SITE_CUT_LIMITS.get(tier) if tier else None
+        cut = self._rules.cut_limit_for(tier) if tier else None
         in_cut = _decklist_ids(standings_doc, cut)
         decision["cut"] = cut
         decision["decklists_in_cut"] = len(in_cut)
@@ -269,7 +270,7 @@ def _decklist_ids(
 ) -> list[str]:
     """standings raw 文档 → 去重保序的 decklist_id 列表（同表多人共用只抓一次；
     未交表选手 decklist_id=None 跳过）。cut 非空时只取 placing ≤ cut 的上位行
-    （名次截断 FR-9.1a ②，SITE_CUT_LIMITS）。"""
+    （名次截断 FR-9.1a ②，档位取自 config/site_tournament_rules.yml）。"""
     if not standings_doc:
         return []
     rows = standings_doc.get("standings")

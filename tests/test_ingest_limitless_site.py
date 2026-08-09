@@ -24,13 +24,13 @@ from typer.testing import CliRunner
 from ptcgdb import cli
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.ingest_limitless_site import (
-    SITE_CUT_LIMITS,
     ingest_limitless_site,
     make_deck_id,
 )
 from ptcgdb.orm import Card, Deck, DeckAppearance, DeckCard, ScrapeRun, Set, Tournament
 from ptcgdb.scrapers.raw_store import write_raw
 from ptcgdb.scrapers.runner import RunStats, _new_run_id, finish_run
+from ptcgdb.scrapers.site_rules import load_site_rules
 
 NOW = datetime(2026, 8, 8, 12, 0, 0)
 
@@ -234,7 +234,7 @@ def test_ingest_full_flow(tmp_path):
 
     assert result.tournaments == 4
     assert result.truncated == 5  # regional 33~35（3）+ league_cup 9~10（2）
-    assert result.cut_limits == SITE_CUT_LIMITS  # 截断档位回显
+    assert result.cut_limits == load_site_rules().cut_limits()  # 截断档位回显
     assert result.decks == 5  # 内容实体处理次数（同 API 口径）：A/B 各 1 + D×3 场
     # （DB 唯一内容行 = 3：DECK_A/B/D；DECK_C 60 张门拦截）
     # appearances：regional 30（32 截断内 − dave 60 张门 − erin 快照缺失）
