@@ -57,4 +57,5 @@ Korean League 三场 123 行未解缺口（20 distinct 名）与 PBL/MBL 缺口�
 ## 7. 测试与遗留
 
 - **573 测试全绿**（task 031 的 558 + site_rules 校验 9 + classify 亚洲三档/JP 拒收 2 + runner/ingest 消费点改造净增，含评审补的规则文件缺失 fail-fast 用例 1）、ruff 全净。既有分类零回归由全量复跑锁定。
+- **recaliber 留痕（2026-08-09）**：词表新增三词条后跑 `ptcgdb recaliber`——tournament_tiers_hash `170d5009e63f` → `2f42070da406`，tier_coef 全量重物化 scanned=80 / updated=0（数据中性：9 场 coef 在 ingest 时已按新词表正确物化，既有 tier 系数未变），data_version=v20260809.1，CHANGELOG 版本块同留痕。
 - 遗留：①mik 26 场 topcut_slots 仍 NULL（task 031 旧债，不在本任务范围）；②JP 卡国内赛拒收维持，JP 对齐二期再议；③新三 tier 未解缺口 150 行等简中 Mega 时代卡包（预期内，L0 + remap 自动清偿）；④ingest 模块注释档位列举已在收尾收敛为配置文件口径（评审发现）。

@@ -60,6 +60,12 @@
 
 - 3 场窗口外冒烟残留赛事（task 032，用户拍板③，2026-08-09 清除）：limitless API 通道 SEASAC 杯（limitless:6a4f4fad65724db9ded40fb5 / 6a59f66352c24ac2da6443a8 / 6a6a0698937230b102d482c0，对齐窗口外冒烟期采集残留）及其 273 卡组、705 pairings——tournaments 73→70（后 +Worlds=71）、pairings 1,184→479；raw 层 append-only 保留（重跑 ingest-limitless 会吃回 → ingest 窗口守卫列 task 031）；统计只消费 full 现状维持（用户拍板④）
 
+## [v20260809.1] - 2026-08-09
+
+### Changed
+
+- recaliber：tournament_tiers 词表变更（170d5009e63f → 2f42070da406），tier_coef 全量重物化 80 场 / 变更 0 行
+
 ## [v20260801.0] - 2026-08-01 · schema 1.0.0
 
 首批发布（Phase 1 全部完成，M4 验收 A1~A8 全过）。
@@ -82,3 +88,4 @@
 ---
 
 数据版本说明：当前库 meta 尚无 data_version（L0 零增量、从未实际合入），export manifest 显示 fallback `v20260801.0`；自 L0 首次实际合入增量起按日历版本递增。
+
