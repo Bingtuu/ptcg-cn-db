@@ -519,3 +519,59 @@ def test_cli_ingest_limitless(tmp_path):
     assert "pairings=4" in result.output
     assert "blocked=1" in result.output
     assert "映射决策分布" in result.output
+
+
+# ---- 窗口守卫（FR-9.8，task 031）：raw append-only，窗口外残留永不入库 ----
+
+T_OUT = "ccccccccccccccccccccccc3"  # 窗口外赛事（2026-07-15，对齐窗口外）
+LIST_OUT = [{
+    "game": "PTCG", "name": "SEASAC Cup",
+    "date": "2026-07-15T02:10:00.000Z", "format": "STANDARD",
+    "id": T_OUT, "players": 300, "organizerId": "org-9",
+}]
+
+
+def build_window_fixture(tmp_path):
+    """窗口内 T_A + 窗口外 T_OUT（同一卡组内容，检验跳过整场不写库）。"""
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_ptcd_raw(raw_dir)
+    write_limitless_raw(
+        raw_dir,
+        list_entries=LIST_A + LIST_OUT,
+        standings={T_A: STANDINGS_A, T_OUT: [STANDINGS_A[0]]},
+    )
+    build_db(db_path)
+    return raw_dir, db_path
+
+
+def test_window_guard_skips_out_of_window(tmp_path):
+    raw_dir, db_path = build_window_fixture(tmp_path)
+    result = ingest_limitless(raw_dir, db_path)
+    assert result.tournaments == 1  # 只有窗口内 T_A 入库
+    assert result.skipped_out_of_window == 1
+    ids = {t.tournament_id for t in query_all(db_path, Tournament)}
+    assert ids == {f"limitless:{T_A}"}  # 窗口外赛事一行不写
+    assert all(
+        a.tournament_id == f"limitless:{T_A}"
+        for a in query_all(db_path, DeckAppearance)
+    )
+
+
+def test_window_guard_disabled_ingests(tmp_path):
+    raw_dir, db_path = build_window_fixture(tmp_path)
+    result = ingest_limitless(raw_dir, db_path, enforce_window=False)
+    assert result.tournaments == 2
+    assert result.skipped_out_of_window == 0
+    ids = {t.tournament_id for t in query_all(db_path, Tournament)}
+    assert f"limitless:{T_OUT}" in ids  # 守卫关闭后窗口外照入（调试/特殊补录）
+
+
+def test_window_guard_missing_date_ingests(tmp_path):
+    # day 缺失（无 list 条目）→ 不猜照入，守卫不拦截
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_ptcd_raw(raw_dir)
+    write_limitless_raw(raw_dir, standings={T_B: [STANDINGS_A[0]]})
+    build_db(db_path)
+    result = ingest_limitless(raw_dir, db_path)
+    assert result.tournaments == 1
+    assert result.skipped_out_of_window == 0

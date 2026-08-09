@@ -21,7 +21,17 @@ from ptcgdb.monitor.l0 import (
     run_l0,
 )
 from ptcgdb.normalize.ingest import ingest_set
-from ptcgdb.orm import Card, CardNameGroup, LegalitySnapshot, Meta, NameGroup, Set
+from ptcgdb.orm import (
+    Card,
+    CardNameGroup,
+    Deck,
+    DeckCard,
+    DeckCardMiss,
+    LegalitySnapshot,
+    Meta,
+    NameGroup,
+    Set,
+)
 from ptcgdb.scrapers.raw_store import write_raw
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "raw" / "mikmoe" / "CSM1aC"
@@ -387,4 +397,106 @@ def test_l0_validation_blocked_preserves_increment_signal(tmp_path):
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         assert session.get(Set, SET_ID).expected_count == 8
+    engine.dispose()
+
+
+# ---- L0 remap 钩子（FR-9.8，task 031）：卡库增长后自动刷新映射缺口 ----
+
+
+def _seed_partial_deck_with_miss(db_path: Path) -> str:
+    """手工种一套 partial deck：59 张已映射 + 1 张 'Rainbow Energy' 未解 miss。
+
+    'Rainbow Energy' = CSM1aC-151 的 name_en——L0 合入 151 后该 miss 应被
+    remap 钩子清偿，deck 升级 partial→full。
+    """
+    deck_id = "limitless:testhook"
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        session.add(Deck(
+            deck_id=deck_id, archetype_id=None, archetype_name="Hook Test",
+            deck_code=None, mapping_status="partial", mapped_ratio=59 / 60,
+            source="limitless", fetched_at=datetime.now(UTC),
+        ))
+        session.add(DeckCard(deck_id=deck_id, card_id=f"{SET_ID}-001",
+                             count=59, raw_name="Slowpoke", stat_scope="pokemon"))
+        session.add(DeckCard(deck_id=deck_id, card_id=None, count=1,
+                             raw_name="Rainbow Energy", stat_scope="other"))
+        session.add(DeckCardMiss(
+            deck_id=deck_id, raw_name="Rainbow Energy", raw_set="", raw_number="",
+            resolved_name_en=None, miss_kind="no_cn_printing",
+            resolved_card_id=None, first_seen_at=datetime.now(UTC),
+            resolved_at=None,
+        ))
+        session.commit()
+    engine.dispose()
+    return deck_id
+
+
+def test_l0_remap_hook_resolves_miss_after_growth(tmp_path):
+    """真链路：L0 合入新卡 151（name_en=Rainbow Energy）→ 钩子 remap 清偿 miss 并升级 full。"""
+    raw_dir = _setup_raw(tmp_path, CARDS_INIT, 6)
+    db_path = tmp_path / "test.db"
+    _ingest_and_activate(raw_dir, db_path)
+    deck_id = _seed_partial_deck_with_miss(db_path)
+
+    events: list[tuple[str, dict]] = []
+    scraper = _make_scraper(CARDS_INIT + [CARD_NEW], 7)
+    result = run_l0(
+        db_path, raw_dir, scraper,
+        changelog_path=tmp_path / "CHANGELOG.md",
+        on_event=lambda e, p: events.append((e, p)),
+    )
+
+    assert result.activated == [SET_ID]
+    assert result.remap is not None
+    assert result.remap.attempted == 1 and result.remap.resolved == 1
+    assert result.remap.decks_upgraded == 1
+    assert ("remap", {"attempted": 1, "resolved": 1, "decks_affected": 1,
+                      "decks_upgraded": 1}) in events
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        deck = session.get(Deck, deck_id)
+        assert deck.mapping_status == "full" and deck.mapped_ratio == 1.0
+        miss = session.get(DeckCardMiss, (deck_id, "Rainbow Energy", "", ""))
+        assert miss.resolved_card_id == f"{SET_ID}-{CARD_NEW}"
+        assert miss.resolved_at is not None
+        # NULL 行已清偿，映射行落在 151
+        null_rows = session.scalars(
+            select(DeckCard).where(
+                DeckCard.deck_id == deck_id, DeckCard.card_id.is_(None)
+            )
+        ).all()
+        assert null_rows == []
+        row = session.get(DeckCard, (deck_id, f"{SET_ID}-{CARD_NEW}", "Rainbow Energy"))
+        assert row is not None and row.count == 1
+    engine.dispose()
+    # 留痕：CHANGELOG 同一版本块附 remap 摘要
+    changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "映射缺口刷新" in changelog
+    assert SET_ID in changelog
+
+
+def test_l0_remap_hook_not_triggered_without_activation(tmp_path):
+    """无增量（卡库未增长）→ 不 activate → 不跑 remap，miss 保持未解。"""
+    raw_dir = _setup_raw(tmp_path, CARDS_INIT, 6)
+    db_path = tmp_path / "test.db"
+    _ingest_and_activate(raw_dir, db_path)
+    deck_id = _seed_partial_deck_with_miss(db_path)
+
+    events: list[tuple[str, dict]] = []
+    scraper = _make_scraper(CARDS_INIT, 6)
+    result = run_l0(
+        db_path, raw_dir, scraper,
+        changelog_path=tmp_path / "CHANGELOG.md",
+        on_event=lambda e, p: events.append((e, p)),
+    )
+
+    assert result.activated == []
+    assert result.remap is None
+    assert not any(e == "remap" for e, _ in events)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        miss = session.get(DeckCardMiss, (deck_id, "Rainbow Energy", "", ""))
+        assert miss.resolved_card_id is None  # 未触发刷新，保持未解
     engine.dispose()

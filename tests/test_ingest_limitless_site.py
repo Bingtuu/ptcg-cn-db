@@ -363,3 +363,55 @@ def test_finish_run_source_default_and_explicit(tmp_path):
         assert session.get(ScrapeRun, run_id).source == "mik_moe"
         assert session.get(ScrapeRun, run_id2).source == "limitless_site"
     engine.dispose()
+
+
+# ---- 窗口守卫（FR-9.8，task 031）：raw append-only，窗口外残留永不入库 ----
+
+T_OUT = "901"  # 窗口外赛事（2026-07-15，对齐窗口外）
+
+
+def build_window_fixture(tmp_path):
+    """窗口内 T_REG + 窗口外 T_OUT（检验跳过整场不写库）。"""
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_ptcd_raw(raw_dir)
+    write_site_raw(
+        raw_dir,
+        index_entries=[
+            index_entry(T_REG, "Regional Indianapolis, IN", 1974, "2026-03-30"),
+            index_entry(T_OUT, "SEASAC Cup", 300, "2026-07-15"),
+        ],
+        standings={
+            T_REG: {"tournament_id": T_REG, "name": "Regional Indianapolis, IN",
+                    "standings": [make_standing(1, "alice", "28249")]},
+            T_OUT: {"tournament_id": T_OUT, "name": "SEASAC Cup",
+                    "standings": [make_standing(1, "outlier", "28300")]},
+        },
+        decklists={
+            "28249": decklist_payload("28249", "Slowpoke Control", "alice", DECK_A),
+            "28300": decklist_payload("28300", "Cup Deck", "cup01", DECK_D),
+        },
+    )
+    build_db(db_path)
+    return raw_dir, db_path
+
+
+def test_window_guard_skips_out_of_window(tmp_path):
+    raw_dir, db_path = build_window_fixture(tmp_path)
+    result = ingest_limitless_site(raw_dir, db_path)
+    assert result.tournaments == 1  # 只有窗口内 T_REG 入库
+    assert result.skipped_out_of_window == 1
+    ids = {t.tournament_id for t in query_all(db_path, Tournament)}
+    assert ids == {f"limitless_site:{T_REG}"}  # 窗口外赛事一行不写
+    assert all(
+        a.tournament_id == f"limitless_site:{T_REG}"
+        for a in query_all(db_path, DeckAppearance)
+    )
+
+
+def test_window_guard_disabled_ingests(tmp_path):
+    raw_dir, db_path = build_window_fixture(tmp_path)
+    result = ingest_limitless_site(raw_dir, db_path, enforce_window=False)
+    assert result.tournaments == 2
+    assert result.skipped_out_of_window == 0
+    ids = {t.tournament_id for t in query_all(db_path, Tournament)}
+    assert f"limitless_site:{T_OUT}" in ids  # 守卫关闭后窗口外照入

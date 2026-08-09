@@ -25,6 +25,10 @@ mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
   无 pairings raw 的赛事不报错（采集层可能只抓 standings）；落库后反推
   topcut_slots = phase=2 的 (player1 并 player2) 去重选手数；phase=2 无数据
   → 不动（保持 NULL，不猜）。
+- 窗口守卫（FR-9.8，task 031）：赛事日期不在 EN 对齐窗口（alignment_window，
+  与采集端同一事实源）→ skipped_out_of_window 计数跳过，不写库不删既有行；
+  日期缺失照入库（不猜）。依据：raw append-only，窗口外残留 raw 永存，守卫
+  防重跑 ingest 吃回已清除数据。enforce_window=False 关闭（调试/特殊补录）。
 """
 
 from __future__ import annotations
@@ -41,7 +45,13 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.deck_misses import classify_miss, record_miss
-from ptcgdb.normalize.envs import SOURCE_REGION, EnvSegment, derive_env, load_calendar
+from ptcgdb.normalize.envs import (
+    SOURCE_REGION,
+    EnvSegment,
+    alignment_window,
+    derive_env,
+    load_calendar,
+)
 from ptcgdb.normalize.ingest_tourneys import DECK_SIZE, _mapping_status, derive_stat_scope
 from ptcgdb.normalize.limitless import (
     CnCandidate,
@@ -74,6 +84,7 @@ class LimitlessIngestResult:
     appearances: int = 0  # 出战条目行
     deck_cards: int = 0
     pairings: int = 0  # 逐桌对阵行（PRD v1.14）
+    skipped_out_of_window: int = 0  # 窗口守卫跳过的赛事数（FR-9.8，task 031）
     mapping_rules: dict[str, int] = field(default_factory=dict)  # 映射决策 rule → 次数
     blocked: list[dict[str, Any]] = field(default_factory=list)  # 60 张门
     unknown_cards: list[dict[str, Any]] = field(default_factory=list)  # card_id 未解析
@@ -146,12 +157,18 @@ def ingest_limitless(
     db_path: str | Path,
     *,
     vocab_dir: Path | None = None,
+    enforce_window: bool = True,
 ) -> LimitlessIngestResult:
-    """扫 raw limitless/tournaments/standings → 四表入库。raw 层只读，重跑幂等。"""
+    """扫 raw limitless/tournaments/standings → 四表入库。raw 层只读，重跑幂等。
+
+    enforce_window（FR-9.8 窗口守卫，默认开）：赛事日期不在 EN 对齐窗口 → 跳过
+    （不写库不删行）；日期缺失照入库（不猜）。
+    """
     raw_dir = Path(raw_dir)
     db_path = Path(db_path)
     tier_map = load_tier_map(vocab_dir or VOCAB_DIR)
     env_calendar = load_calendar()
+    window = alignment_window(env_calendar) if enforce_window else None
     result = LimitlessIngestResult()
 
     base = raw_dir / RAW_SUBDIR / TOURNAMENTS_DIR
@@ -185,6 +202,7 @@ def ingest_limitless(
                 _ingest_one_tournament(
                     engine, path.stem, doc, pairings_doc, list_index, tier_map,
                     env_calendar, cn_name_index, card_index, ptcd_index, result,
+                    window,
                 )
         result.warnings.extend(str(w.message) for w in caught)
     finally:
@@ -204,6 +222,7 @@ def _ingest_one_tournament(
     card_index: dict[str, tuple[str, str | None, str | None]],
     ptcd_index: dict[tuple[str, str], dict[str, Any]],
     result: LimitlessIngestResult,
+    window: tuple[date, date] | None = None,
 ) -> None:
     fetched_at = _fetched_at(doc)
     tournament_id = f"{SOURCE}:{tid}"
@@ -223,6 +242,10 @@ def _ingest_one_tournament(
         )
     tier_coef = tier_map[tier][1] if tier is not None and tier in tier_map else None
     day = _parse_day(item.get("date"))
+    # 窗口守卫（FR-9.8）：窗口外 → 跳过（不写库不删既有行）；day 缺失照入库（不猜）
+    if window is not None and day is not None and not (window[0] <= day <= window[1]):
+        result.skipped_out_of_window += 1
+        return
     # env 推导（FR-9.1b）：日期 ∩ EN 日历段；未命中 → NULL + 记异常，不猜
     env_segment = derive_env(SOURCE_REGION.get(SOURCE), day, env_calendar)
     if env_segment is None:

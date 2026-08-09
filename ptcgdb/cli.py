@@ -741,6 +741,10 @@ def ingest_tourneys_cmd(
 def ingest_limitless_site_cmd(
     raw_dir: Path = DEFAULT_RAW_DIR,
     db_path: Path = DEFAULT_DB_PATH,
+    enforce_window: bool = typer.Option(
+        True, "--enforce-window/--no-enforce-window",
+        help="窗口守卫：窗口外赛事跳过入库（FR-9.8，默认开）",
+    ),
 ) -> None:
     """Limitless 主站收录入库：raw limitless_site → tournaments/decks 四表（task 028 扩展）。
 
@@ -748,13 +752,15 @@ def ingest_limitless_site_cmd(
     topcut_slots = 截断后实际入库名次数；record 三列 NULL（主站无比分，不猜）；
     decklist→简中映射与 API 通道同链；重跑幂等；count 合计 != 60 或卡组快照缺失
     的卡组整组拦截（FR-9.6 质量门）并以非零码退出。
+    窗口守卫（FR-9.8，task 031）：窗口外赛事跳过（不写库不删行），日期缺失照入。
     """
     from ptcgdb.normalize.ingest_limitless_site import ingest_limitless_site
 
-    result = ingest_limitless_site(raw_dir, db_path)
+    result = ingest_limitless_site(raw_dir, db_path, enforce_window=enforce_window)
     typer.echo(
         f"tournaments={result.tournaments} decks={result.decks} appearances={result.appearances} "
         f"deck_cards={result.deck_cards} truncated={result.truncated} "
+        f"skipped_out_of_window={result.skipped_out_of_window} "
         f"blocked={len(result.blocked)} "
         f"unknown_cards={len(result.unknown_cards)} warnings={len(result.warnings)}"
     )
@@ -774,18 +780,24 @@ def ingest_limitless_site_cmd(
 def ingest_limitless_cmd(
     raw_dir: Path = DEFAULT_RAW_DIR,
     db_path: Path = DEFAULT_DB_PATH,
+    enforce_window: bool = typer.Option(
+        True, "--enforce-window/--no-enforce-window",
+        help="窗口守卫：窗口外赛事跳过入库（FR-9.8，默认开）",
+    ),
 ) -> None:
     """Limitless 赛事入库：raw limitless/tournaments → tournaments/decks 四表（task 028）。
 
     decklist→简中映射 = ptcd 定位 → name_en exact match → env 优先/最新印刷裁决；
     重跑幂等；count 合计 != 60 的卡组整组拦截（FR-9.6 质量门）并以非零码退出。
+    窗口守卫（FR-9.8，task 031）：窗口外赛事跳过（不写库不删行），日期缺失照入。
     """
     from ptcgdb.normalize.ingest_limitless import ingest_limitless
 
-    result = ingest_limitless(raw_dir, db_path)
+    result = ingest_limitless(raw_dir, db_path, enforce_window=enforce_window)
     typer.echo(
         f"tournaments={result.tournaments} decks={result.decks} appearances={result.appearances} "
         f"deck_cards={result.deck_cards} pairings={result.pairings} "
+        f"skipped_out_of_window={result.skipped_out_of_window} "
         f"blocked={len(result.blocked)} "
         f"unknown_cards={len(result.unknown_cards)} warnings={len(result.warnings)}"
     )
@@ -859,6 +871,35 @@ def remap_decks_cmd(
         typer.echo(f"  ? {w}")
 
 
+@app.command("recaliber")
+def recaliber_cmd(
+    db_path: Path = DEFAULT_DB_PATH,
+    changelog_path: Path = Path("CHANGELOG.md"),
+) -> None:
+    """词表变更重算（FR-9.8，task 031）：tier_coef 重物化 + 口径 hash 刷新 + CHANGELOG。
+
+    tournament_tiers.yml 改动后跑本命令：hash 漂移 → 全量重物化 tournaments.tier_coef
+    （tier 列值不动，未命中词表置 NULL 不猜）→ meta hash 刷新 → data_version 递增 +
+    CHANGELOG Changed 块；name_group_rules 漂移只告警不刷新（归组重建归种子流程）；
+    无漂移零写入。
+    """
+    from ptcgdb.stats.recaliber import recaliber
+
+    result = recaliber(db_path, changelog_path=changelog_path)
+    if not result.drift:
+        typer.echo("口径无漂移（unchanged）")
+        return
+    for key, (old, new) in sorted(result.drift.items()):
+        typer.echo(f"漂移 {key}: {old or '-'} → {new}")
+    if result.data_version is not None:
+        typer.echo(
+            f"tier_coef 重物化：scanned={result.tournaments_scanned} "
+            f"updated={result.tier_coef_updated} data_version={result.data_version}"
+        )
+    for w in result.warnings:
+        typer.echo(f"  ? {w}", err=True)
+
+
 def _make_notifier(notify: bool, webhook: str | None):
     """--notify/--no-notify + --webhook 组装 on_event 通知回调。"""
     from ptcgdb.monitor.notify import Notifier, make_event_handler
@@ -904,6 +945,11 @@ def monitor_l0(
         f"activated={result.activated} blocked={len(result.blocked)} "
         f"data_version={result.data_version or '-'}"
     )
+    if result.remap is not None:
+        typer.echo(
+            f"remap: attempted={result.remap.attempted} resolved={result.remap.resolved} "
+            f"decks_upgraded={result.remap.decks_upgraded}"
+        )
     if result.blocked:
         raise typer.Exit(code=1)
 
@@ -983,6 +1029,106 @@ def monitor_proposals(
         )
         for err in r["parse_errors"]:
             typer.echo(f"    ! {err}")
+
+
+@monitor_app.command("tourneys")
+def monitor_tourneys_cmd(
+    source: str = typer.Option(
+        "all", "--source", help="mik / limitless / limitless_site / all（默认全源）"
+    ),
+    refresh_days: int = typer.Option(
+        14, "--refresh-days",
+        help="EN 近 N 天强制重抓（赛后约 7 天 decklist 延迟公开 + 余量）",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="只打印计划，零请求"),
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    """赛事数据增量刷新（FR-9.8，task 031）：采集 → 入库一站跑完。
+
+    mik 断点续传轮询（既有 raw 零请求）；EN 双通道近 --refresh-days 天强制重抓
+    （赛后 decklist 延迟公开）；入库走既有质量门与窗口守卫。限速/熔断复用各
+    采集器配置（mik 2s / limitless 6.5s / site 2.5s）。
+    """
+    from contextlib import ExitStack
+
+    from ptcgdb.monitor.tourneys import run_monitor_tourneys
+    from ptcgdb.normalize.ingest_limitless import ingest_limitless
+    from ptcgdb.normalize.ingest_limitless_site import ingest_limitless_site
+
+    try:
+        with ExitStack() as stack:
+            handlers: dict[str, dict] = {}
+            if not dry_run:
+                if source in ("all", "mik"):
+                    http = stack.enter_context(HttpClient(BASE_URL))
+                    runner = TournamentScrapeRunner(
+                        raw_dir, MikMoeTournamentScraper(http), db_path
+                    )
+                    handlers["mik"] = {
+                        "scrape": lambda: runner.scrape(),
+                        "ingest": lambda: ingest_tourneys(raw_dir, db_path),
+                    }
+                if source in ("all", "limitless"):
+                    http = stack.enter_context(HttpClient(
+                        LIMITLESS_BASE_URL,
+                        rate_limiter=RateLimiter(interval=LIMITLESS_INTERVAL),
+                    ))
+                    runner = LimitlessScrapeRunner(
+                        raw_dir, LimitlessScraper(http), db_path
+                    )
+                    handlers["limitless"] = {
+                        "scrape": lambda date_from, force: runner.scrape(
+                            date_from=date_from.isoformat(), force=force
+                        ),
+                        "ingest": lambda: ingest_limitless(raw_dir, db_path),
+                    }
+                if source in ("all", "limitless_site"):
+                    http = stack.enter_context(HttpClient(
+                        LIMITLESS_SITE_BASE_URL,
+                        rate_limiter=RateLimiter(interval=LIMITLESS_SITE_INTERVAL),
+                    ))
+                    runner = LimitlessSiteScrapeRunner(
+                        raw_dir, LimitlessSiteScraper(http), db_path
+                    )
+                    handlers["limitless_site"] = {
+                        "scrape": lambda date_from, force: runner.scrape(
+                            date_from=date_from.isoformat(), force=force
+                        ),
+                        "ingest": lambda: ingest_limitless_site(raw_dir, db_path),
+                    }
+            result = run_monitor_tourneys(
+                source=source, refresh_days=refresh_days,
+                dry_run=dry_run, handlers=handlers,
+            )
+    except CircuitOpenError as exc:
+        typer.echo(f"熔断中止：{exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
+
+    if result.dry_run:
+        typer.echo(f"dry-run 计划（refresh_from={result.refresh_from}）：")
+        for line in result.plan:
+            typer.echo(f"  - {line}")
+        return
+    any_blocked = False
+    for report in result.reports:
+        typer.echo(
+            f"[{report.source}] run_id={report.run_id} "
+            f"scraped={dict(sorted(report.scraped.items()))} "
+            f"ingest={dict(sorted(report.ingest.items()))} "
+            f"blocked={report.blocked}"
+            f"{' ABORTED' if report.aborted else ''}"
+        )
+        any_blocked = any_blocked or report.blocked > 0
+    if any_blocked:
+        typer.echo("有卡组被质量门拦截（见上 blocked 计数）", err=True)
+        raise typer.Exit(code=1)
+    if any(r.aborted for r in result.reports):
+        typer.echo("有源因熔断提前中止，已抓产物已落盘", err=True)
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,8 @@
 （不是 cards 行数——附赠能量卡跨系列归属会让行数口径产生假缺口，task 005 教训）。
 有增量 → 强制刷新该系列 cards.json → 断点续抓新卡 → ingest(draft)
 → FR-2.3 校验全过 → active；不过 → blocked，不做后处理。
-合入后处理：刷新当前快照 latest_text_overrides + data_version 递增 + CHANGELOG。
+合入后处理：刷新当前快照 latest_text_overrides + data_version 递增 + CHANGELOG；
+卡库增长后自动 remap 刷新赛事卡组映射缺口（FR-9.8，task 031，摘要并入同一版本块）。
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from ptcgdb.legal.versions import (
     _bump_data_version,
     _latest_text_overrides,
 )
+from ptcgdb.normalize.deck_misses import RemapResult, remap_decks
 from ptcgdb.normalize.ingest import ingest_set
 from ptcgdb.orm import Card, LegalitySnapshot, Set
 from ptcgdb.scrapers import mikmoe
@@ -53,6 +55,7 @@ class L0Result:
     activated: list[str] = field(default_factory=list)
     blocked: dict[str, list[str]] = field(default_factory=dict)  # set_id -> 失败规则名
     data_version: str | None = None
+    remap: RemapResult | None = None  # 合入后映射缺口刷新（FR-9.8，task 031）
     dry_run: bool = False
 
 
@@ -95,10 +98,12 @@ def refresh_snapshot_overrides(
     *,
     changelog_path: Path = Path("CHANGELOG.md"),
     activated: list[str] | None = None,
+    extra_items: list[str] | None = None,
 ) -> str:
     """合入后处理（FR-5.1）：重算全部当前快照的 latest_text_overrides（整体替换），
     data_version 递增 + CHANGELOG 条目。历史快照（effective_to 非空）不碰。
-    activated 为本次合入的系列（写入 CHANGELOG）。返回新数据版本号。"""
+    activated 为本次合入的系列（写入 CHANGELOG）；extra_items 追加同事版本块的
+    附加条目（如 L0 remap 钩子摘要，task 031）。返回新数据版本号。"""
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         snapshots = session.scalars(
@@ -123,6 +128,7 @@ def refresh_snapshot_overrides(
         f"刷新当前快照 latest_text_overrides"
         f"（{', '.join(refreshed) if refreshed else '无当前快照'}）"
     )
+    items.extend(extra_items or [])
     _append_changelog_block(changelog_path, version, "Changed", items)
     return version
 
@@ -140,7 +146,7 @@ def run_l0(
 
     on_event(event, payload) 事件钩子（task 015 通知用）：
     "increment" 每个增量系列一次；"activated" / "blocked" 每个系列一次；
-    "postprocess" 后处理完成一次。
+    "remap" 合入后映射缺口刷新一次（FR-9.8，task 031）；"postprocess" 后处理完成一次。
     """
 
     def emit(event: str, payload: dict[str, Any]) -> None:
@@ -193,10 +199,24 @@ def run_l0(
         result.activated.append(sid)
         emit("activated", {"set_id": sid})
 
-    # 4. 合入后处理（有合入才做）
+    # 4. 合入后处理（有合入才做）：先 remap 刷新映射缺口（FR-9.8，task 031），
+    #    摘要并入同一 CHANGELOG 版本块，再走快照后处理
     if result.activated:
+        remap = remap_decks(raw_dir, db_path)
+        result.remap = remap
+        emit("remap", {"attempted": remap.attempted, "resolved": remap.resolved,
+                       "decks_affected": remap.decks_affected,
+                       "decks_upgraded": remap.decks_upgraded})
+        extra_items: list[str] = []
+        if remap.resolved:
+            extra_items.append(
+                f"映射缺口刷新（L0 remap 钩子，task 031）："
+                f"resolved={remap.resolved} decks_affected={remap.decks_affected} "
+                f"partial→full 升级={remap.decks_upgraded}"
+            )
         result.data_version = refresh_snapshot_overrides(
-            db_path, changelog_path=changelog_path, activated=result.activated
+            db_path, changelog_path=changelog_path,
+            activated=result.activated, extra_items=extra_items,
         )
         emit("postprocess", {"data_version": result.data_version,
                              "activated": list(result.activated)})
