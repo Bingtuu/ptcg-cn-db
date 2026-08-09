@@ -801,6 +801,64 @@ def ingest_limitless_cmd(
         raise typer.Exit(code=1)
 
 
+@app.command("backfill-misses")
+def backfill_misses_cmd(
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    """映射缺口一次性回填：既有 NULL 行 → deck_card_misses（task 032）。
+
+    DB 锚定（以 deck_cards card_id IS NULL 的现存行为准去 raw 找 set/number），
+    不重跑 ingest-limitless（已清除的窗口外残留杯赛 raw 仍在）；幂等。
+    """
+    from ptcgdb.normalize.deck_misses import backfill_misses
+
+    result = backfill_misses(raw_dir, db_path)
+    typer.echo(
+        f"null_rows={result.null_rows} recorded={result.recorded} "
+        f"refreshed={result.refreshed} unmatched={len(result.unmatched)} "
+        f"warnings={len(result.warnings)}"
+    )
+    for u in result.unmatched[:20]:
+        typer.echo(f"  ? raw 未匹配 {u['deck_id']}: {u['raw_name']}")
+    for w in result.warnings[:20]:
+        typer.echo(f"  ? {w}")
+
+
+@app.command("remap-decks")
+def remap_decks_cmd(
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+    source: str | None = typer.Option(
+        None, "--source", help="只刷指定通道（limitless / limitless_site）；缺省双通道"
+    ),
+) -> None:
+    """映射缺口刷新：未解 miss 用当前卡池重跑映射链（task 032，FR-9 续）。
+
+    卡身份判定非环境合法性判定，卡池增长只让 partial→full 单调升级；
+    简中进 Mega 环境后本命令（或 L0 钩子，task 031）升级历史缺口。
+    命中回写 deck_cards（同 card_id 冲突合并张数）、重算 mapping_status；幂等。
+    """
+    from ptcgdb.normalize.deck_misses import remap_decks
+
+    result = remap_decks(raw_dir, db_path, source=source)
+    typer.echo(
+        f"attempted={result.attempted} resolved={result.resolved} "
+        f"decks_affected={result.decks_affected} decks_upgraded={result.decks_upgraded} "
+        f"warnings={len(result.warnings)}"
+    )
+    if result.mapping_rules:
+        typer.echo(f"映射决策分布: {dict(sorted(result.mapping_rules.items()))}")
+    for det in result.details[:20]:
+        merge_mark = "（合并）" if det["merged"] else ""
+        typer.echo(
+            f"  + {det['deck_id']}: {det['raw_name']} -> {det['card_id']} "
+            f"[{det['rule']}]{merge_mark}"
+        )
+    for w in result.warnings[:20]:
+        typer.echo(f"  ? {w}")
+
+
 def _make_notifier(notify: bool, webhook: str | None):
     """--notify/--no-notify + --webhook 组装 on_event 通知回调。"""
     from ptcgdb.monitor.notify import Notifier, make_event_handler

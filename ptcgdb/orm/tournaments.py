@@ -115,6 +115,32 @@ class Pairing(Base):
     fetched_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class DeckCardMiss(Base):
+    """deck_card_misses 映射缺口标识（PRD §7.5 v1.16，task 032）。
+
+    未解析（card_id=NULL）卡组条目的显性清单 + remap 刷新事实源：
+    卡身份判定而非环境合法性判定，卡池增长只让 partial→full 单调升级
+    （简中进 Mega 环境后 remap-decks 据此表重映射历史缺口）。
+    miss_kind 开放字符串：no_cn_printing / ptcd_miss / ambiguous（预留）。
+    resolved_card_id/resolved_at NULL = 未解；raw_set/raw_number 可缺归一 ''。
+    对内运维表，不进入导出契约。
+    """
+
+    __tablename__ = "deck_card_misses"
+
+    deck_id: Mapped[str] = mapped_column(
+        ForeignKey("decks.deck_id"), primary_key=True
+    )
+    raw_name: Mapped[str] = mapped_column(String, primary_key=True)
+    raw_set: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    raw_number: Mapped[str] = mapped_column(String, primary_key=True, default="")
+    resolved_name_en: Mapped[str | None] = mapped_column(String)  # ptcd 定位名
+    miss_kind: Mapped[str] = mapped_column(String)
+    resolved_card_id: Mapped[str | None] = mapped_column(ForeignKey("cards.card_id"))
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class DeckCard(Base):
     """deck_cards 卡组构成（PRD §7.5）。
 

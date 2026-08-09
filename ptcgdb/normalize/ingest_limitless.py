@@ -32,7 +32,7 @@ from __future__ import annotations
 import hashlib
 import warnings
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ from sqlalchemy import create_engine, delete, select, update
 from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
+from ptcgdb.normalize.deck_misses import classify_miss, record_miss
 from ptcgdb.normalize.envs import SOURCE_REGION, EnvSegment, derive_env, load_calendar
 from ptcgdb.normalize.ingest_tourneys import DECK_SIZE, _mapping_status, derive_stat_scope
 from ptcgdb.normalize.limitless import (
@@ -344,14 +345,15 @@ def _ingest_one_deck(
     # card_id 解析（决策 rule 计分布）；同 card_id 多条目合并 count（两种印刷同名卡）
     merged: dict[str, int] = {}
     raw_names: dict[str, str] = {}
-    unmapped: list[tuple[str, int]] = []  # (raw_name, count)
+    # (raw_name, count, set, number)；set/number 供 deck_card_misses 标识（task 032）
+    unmapped: list[tuple[str, int, str | None, str | None]] = []
     for card in cards:
         card_id, rule = map_decklist_card(
             card.set_code, card.number, card.name, ptcd_index, cn_name_index, env_marks
         )
         result.mapping_rules[rule] = result.mapping_rules.get(rule, 0) + 1
         if card_id is None:
-            unmapped.append((card.name, card.count))
+            unmapped.append((card.name, card.count, card.set_code, card.number))
             continue
         if card_id in merged:
             result.warnings.append(
@@ -367,7 +369,7 @@ def _ingest_one_deck(
         info = card_index.get(card_id)
         if info is None:
             # name_en 候选与 card_index 同源构建，理论不可达（防御性兜底）
-            unmapped.append((raw_names[card_id], merged[card_id]))
+            unmapped.append((raw_names[card_id], merged[card_id], None, None))
             continue
         mapped_count += merged[card_id]
         if info[2]:
@@ -382,9 +384,16 @@ def _ingest_one_deck(
             )
         )
     seen_null: set[str] = set()  # card_id 为 NULL 时按 (deck_id, raw_name) 去重（PRD §7.5）
-    for raw_name, count in unmapped:
+    miss_now = datetime.now(UTC)
+    for raw_name, count, raw_set, raw_number in unmapped:
         result.unknown_cards.append(
             {"deck_id": deck_id, "card_id": None, "raw_name": raw_name, "count": count}
+        )
+        # task 032：映射缺口显性标识（幂等 upsert，已 resolved 不动）
+        resolved_name_en, miss_kind = classify_miss(raw_set, raw_number, raw_name, ptcd_index)
+        record_miss(
+            session, deck_id, raw_name, raw_set, raw_number,
+            resolved_name_en, miss_kind, miss_now,
         )
         if raw_name in seen_null:
             result.warnings.append(
