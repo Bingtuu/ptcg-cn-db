@@ -32,6 +32,11 @@ def _valid_doc() -> dict:
     }
 
 
+def test_missing_file_fails(tmp_path):
+    with pytest.raises(SiteRulesConfigError, match="不存在"):
+        load_site_rules(tmp_path / "no_such_file.yml")
+
+
 def test_load_real_config():
     """真实配置：人数门 + 八档截断（含亚洲三档）+ 拒侧非空；tier 词表校验通过。"""
     rules = load_site_rules()

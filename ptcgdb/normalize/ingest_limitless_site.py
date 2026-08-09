@@ -8,11 +8,9 @@ stat_scope 派生 / env 推导 + 交叉校验告警不拒收 / 幂等 merge upse
 
 - **名次截断**（FR-9.1a ② 与主站全收录实测的调和）：standings 是全交表选手
   （实测 NAIC 675 行），入库只收上位——`config/site_tournament_rules.yml`
-  名次截断（task 033 配置化）：worlds/international/special/regional/
-  master_ball_league/korean_league → placing ≤ 32；premier_ball_league/
-  league_cup → ≤ 8。这是与 CN mik top64 上位口径同构的
-  截断代理；真实 Top Cut 规模源不暴露。截断外的不入库，截断数记入报告 truncated；
-  tier 未知 → 不截断 + warning（不猜）。
+  名次截断（task 033 配置化，档位以配置文件为准）。这是与 CN mik top64
+  上位口径同构的截断代理；真实 Top Cut 规模源不暴露。截断外的不入库，
+  截断数记入报告 truncated；tier 未知 → 不截断 + warning（不猜）。
 - **topcut_slots = 截断后实际入库名次数**（如实物化；60 张门拦截的名次不计）。
 - **record 三列 = NULL**（主站收录无比分，不猜）；pairings 无主站数据（不动
   pairings 表，也不做 phase=2 反推）。
@@ -199,6 +197,7 @@ def _ingest_one_tournament(
     window: tuple[date, date] | None = None,
 ) -> None:
     fetched_at = _fetched_at(doc)
+    rules = load_site_rules()  # 每场一次读小 YAML（开销可忽略），避免裸全局缓存
     tournament_id = f"{SOURCE}:{tid}"
     item = index_entries.get(tid)
     if item is None:
@@ -210,7 +209,7 @@ def _ingest_one_tournament(
     name = str(item.get("name") or doc.get("name") or "")
     players = item.get("players") if isinstance(item.get("players"), int) else None
     tier, classify_reason = classify_site_tournament(
-        item.get("name") or doc.get("name"), players, item.get("country")
+        item.get("name") or doc.get("name"), players, item.get("country"), rules=rules
     )
     if tier is None:
         result.warnings.append(

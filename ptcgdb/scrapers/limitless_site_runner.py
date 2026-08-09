@@ -145,7 +145,9 @@ class LimitlessSiteScrapeRunner:
             return
         name = entry.get("name")
         players = entry.get("players")
-        tier, reason = classify_site_tournament(name, players, entry.get("country"))
+        tier, reason = classify_site_tournament(
+            name, players, entry.get("country"), rules=self._rules
+        )
         accepted = tier is not None
         # 取舍决策逐场记录（验收：采集报告列明每场赛事归类与取舍）
         decision = {"id": tid, "action": "accepted" if accepted else "rejected",

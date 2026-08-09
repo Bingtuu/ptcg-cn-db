@@ -87,7 +87,11 @@ def load_site_rules(path: Path | None = None, *, validate_tiers: bool = True) ->
     min_players 缺省 = FR-9.1a 法定值 32（与 API 通道人数门一致）。
     """
     rules_path = Path(path) if path is not None else DEFAULT_RULES_PATH
-    data = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
+    try:
+        text = rules_path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise SiteRulesConfigError(f"{rules_path}：规则文件不存在") from exc
+    data = yaml.safe_load(text)
     if not isinstance(data, dict):
         raise SiteRulesConfigError(f"{rules_path}：顶层必须是 mapping")
 
