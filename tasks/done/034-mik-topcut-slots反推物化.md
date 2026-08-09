@@ -28,7 +28,7 @@ topcut_slots = `topcutTimes` 最外档（top16 档）列向合计。物化前置
 
 ### B. 实现形态（独立函数 + CLI + ingest 钩子）
 
-- `ptcgdb/normalize/topcut.py`（新）：`derive_topcut_slots(db_path, raw_dir)` → 读本地 raw 逐场校验+反推，update 物化（模板照 `ingest_limitless.py:337-341`）；**只写 NULL→值，永不覆盖已有值**（幂等、单调）；产出物化/跳过/question 三清单。
+- `ptcgdb/normalize/topcut.py`（新）：`derive_topcut_slots(raw_dir, db_path)` → 读本地 raw 逐场校验+反推，update 物化（模板照 `ingest_limitless.py:337-341`）；**只写 NULL→值，永不覆盖已有值**（幂等、单调）；产出物化/跳过/question 三清单。
 - CLI `ptcgdb backfill-topcut [--fetch]`：`--fetch` 时对 deck-static 为空的场次 force 重抓该单端点（空 list 文件 hash 有效会被断点续传跳过，必须 force；限速照 FR-9.5）。
 - `ingest_tourneys` 尾部钩子调用同一函数——新赛事入库后自动物化，历史与增量一套代码。
 
