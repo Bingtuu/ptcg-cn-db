@@ -21,6 +21,7 @@ from ptcgdb.normalize.ingest_tourneys import ingest_tourneys
 from ptcgdb.orm import Card, Deck, DeckAppearance, DeckCard, Set, Tournament
 from ptcgdb.scrapers.mikmoe_tournament import (
     deck_detail_path,
+    deck_static_path,
     rank_individual_path,
     tournament_detail_path,
     tournament_list_path,
@@ -561,3 +562,33 @@ def test_deck_cards_null_card_id_dedup(tmp_path):
     assert rows[0] == ("不存在卡A", 4)
     # 去重警告已记录
     assert any("重复行已跳过" in w and "不存在卡A" in w for w in result.warnings)
+
+
+# ---- task 034：ingest-tourneys 尾部 topcut_slots 物化钩子 ----
+
+
+def test_ingest_hook_materializes_topcut_slots(env):
+    """task 034 钩子：ingest-tourneys 尾部自动物化 topcut_slots（PRD v1.19）。"""
+    raw_dir, db_path = env
+    write_raw(
+        deck_static_path(raw_dir, "3211"),
+        {
+            "code": 200,
+            "data": {
+                "list": [
+                    {"variantId": 1, "topcutTimes": [0, 1, 2, 2, 4]},
+                    {"variantId": 2, "topcutTimes": [1, 1, 2, 6, 12]},
+                ]
+            },
+            "msg": "",
+        },
+        source="mik_moe",
+    )
+    ingest_tourneys(raw_dir, db_path)
+    rows = query(
+        db_path,
+        select(Tournament.topcut_slots).where(
+            Tournament.tournament_id == "mik_moe:3211"
+        ),
+    )
+    assert rows == [(16,)]

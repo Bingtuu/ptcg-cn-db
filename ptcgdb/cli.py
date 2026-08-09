@@ -15,7 +15,7 @@ from ptcgdb.legal.versions import apply_snapshot
 from ptcgdb.legal.versions import rollback as rollback_db
 from ptcgdb.normalize import ingest_set
 from ptcgdb.normalize.ingest_tourneys import ingest_tourneys
-from ptcgdb.orm import Card, Set
+from ptcgdb.orm import Card, Set, Tournament
 from ptcgdb.scrapers import CircuitOpenError, HttpClient, MikMoeScraper, ScrapeRunner
 from ptcgdb.scrapers.http import RateLimiter
 from ptcgdb.scrapers.limitless import BASE_URL as LIMITLESS_BASE_URL
@@ -835,6 +835,68 @@ def backfill_misses_cmd(
         typer.echo(f"  ? raw 未匹配 {u['deck_id']}: {u['raw_name']}")
     for w in result.warnings[:20]:
         typer.echo(f"  ? {w}")
+
+
+@app.command("backfill-topcut")
+def backfill_topcut_cmd(
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+    fetch: bool = typer.Option(
+        False, "--fetch", help="重抓 deck-static 空 raw（mik 2s/请求，force 覆盖空文件）"
+    ),
+) -> None:
+    """mik 赛事 topcut_slots 反推物化（task 034，PRD v1.19）。
+
+    deck-static-by-tour raw 的 topcutTimes 五档最外档列向合计 → topcut_slots；
+    校验链不满足维持 NULL 不猜（question 清单输出）；已有值不覆盖，幂等。
+    """
+    from ptcgdb.normalize.topcut import derive_topcut_slots
+
+    if fetch:
+        for note in _refetch_empty_statics(raw_dir, db_path):
+            typer.echo(f"  ? {note}")
+    result = derive_topcut_slots(raw_dir, db_path)
+    typer.echo(
+        f"materialized={result.materialized} skipped={len(result.skipped)} "
+        f"question={len(result.question)} warnings={len(result.warnings)}"
+    )
+    for q in result.question:
+        typer.echo(f"  ? {q}")
+    for w in result.warnings[:20]:
+        typer.echo(f"  ? {w}")
+
+
+def _refetch_empty_statics(raw_dir: Path, db_path: Path) -> list[str]:
+    """重抓 mik 赛事的 deck-static 空 raw（缺失或 data.list 为空），force 覆盖。"""
+    from ptcgdb.scrapers.mikmoe_tournament import (
+        MikMoeNotReadyError,
+        deck_static_path,
+    )
+    from ptcgdb.scrapers.raw_store import read_raw, write_raw
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        rows = session.execute(
+            select(Tournament.tournament_id).where(Tournament.source == "mik_moe")
+        ).all()
+    engine.dispose()
+    notes: list[str] = []
+    with HttpClient(BASE_URL) as http:
+        scraper = MikMoeTournamentScraper(http)
+        for (tid,) in rows:
+            raw_tid = tid.split(":", 1)[1]
+            path = deck_static_path(raw_dir, raw_tid)
+            doc = read_raw(path)
+            if doc is not None and (doc.get("data") or {}).get("list"):
+                continue  # 非空不动
+            try:
+                payload = scraper.fetch_deck_static_by_tour(int(raw_tid))
+            except MikMoeNotReadyError as exc:
+                notes.append(f"{tid} deck-static 重抓仍无数据: {exc}")
+                continue
+            write_raw(path, payload, source="mik_moe", force=True)
+            typer.echo(f"  + 重抓 {tid} deck-static")
+    return notes
 
 
 @app.command("remap-decks")

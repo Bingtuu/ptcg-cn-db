@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.envs import SOURCE_REGION, EnvSegment, derive_env, load_calendar
+from ptcgdb.normalize.topcut import derive_topcut_slots
 from ptcgdb.normalize.tournaments import (
     VOCAB_DIR,
     load_division_map,
@@ -233,6 +234,12 @@ def ingest_tourneys(
             )
     result.warnings.extend(str(w.message) for w in caught)
     engine.dispose()
+
+    # task 034（PRD v1.19）：尾部物化 topcut_slots——历史与增量一套代码
+    topcut = derive_topcut_slots(raw_dir, db_path)
+    if topcut.materialized:
+        result.warnings.append(f"topcut_slots 反推物化 {topcut.materialized} 场")
+    result.warnings.extend(f"topcut_slots 反推疑问: {q}" for q in topcut.question)
     return result
 
 
