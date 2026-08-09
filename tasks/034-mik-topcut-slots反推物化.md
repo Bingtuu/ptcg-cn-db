@@ -1,6 +1,6 @@
 # task 034：mik topcut_slots 反推物化
 
-- 状态：TODO
+- 状态：DONE（2026-08-09）
 - 创建：2026-08-09
 - 里程碑：M9 技术债清偿（task 028/031 遗留：mik 源 26 场 topcut_slots 全 NULL → CN 样本 B 层胜率空集）
 - 前置：task 027（mik 赛事管线）、task 029（统计层）、task 031（刷新管线）
@@ -38,19 +38,29 @@ topcut_slots = `topcutTimes` 最外档（top16 档）列向合计。物化前置
 
 ## 步骤
 
-- [ ] 1. PRD v1.19 先行
-- [ ] 2. `normalize/topcut.py` derive + 物化（TDD：标准形态/异常结构/团队赛/空 static/0 人/qual 照物化/只写 NULL 不覆盖）
-- [ ] 3. CLI `backfill-topcut [--fetch]` + ingest_tourneys 钩子（TDD）
-- [ ] 4. 真实库实战（先备份 `.scratch/`）：--fetch 重抓 → derive → 对账（9 场=16、3348 NULL+question、3463/0 人场 NULL、qual 场按重抓结果）
-- [ ] 5. 统计层验证：`stats winrate --layer b` / `stats wws`（basis=cn）首次非空；全量测试 + ruff
-- [ ] 6. 验收报告 + CHANGELOG/STATUS/AGENTS 同步 + 归档
+- [x] 1. PRD v1.19 先行
+- [x] 2. `normalize/topcut.py` derive + 物化（TDD：标准形态/异常结构/团队赛/空 static/0 人/qual 照物化/只写 NULL 不覆盖）
+- [x] 3. CLI `backfill-topcut [--fetch]` + ingest_tourneys 钩子（TDD）
+- [x] 4. 真实库实战（先备份 `.scratch/`）：--fetch 重抓 → derive → 对账（9 场=16、3348 NULL+question、3463/0 人场 NULL、qual 场按重抓结果）
+- [x] 5. 统计层验证：`stats winrate --layer b` / `stats wws`（basis=cn）首次非空；全量测试 + ruff
+- [x] 6. 验收报告 + CHANGELOG/STATUS/AGENTS 同步 + 归档
 
 ## 验收标准
 
-- [ ] 9 场标准形态物化 topcut_slots=16（3210/3211/3215/3216/3307/3342/3343/3462/3470）；3348 NULL + question；3463 与 0 人场 NULL
-- [ ] 8 场 is_qual 重抓后按结果物化或如实留 NULL（报告记录）
-- [ ] derive 幂等（复跑零变更）、只写 NULL 不覆盖
-- [ ] `stats winrate --layer b` 与 `stats wws`（basis=cn）产出非空
-- [ ] 全量测试绿 + ruff 净；PRD v1.19 + CHANGELOG + STATUS + AGENTS 同步，任务归档
+- [x] 9 场标准形态物化 topcut_slots=16（3210/3211/3215/3216/3307/3342/3343/3462/3470）；3348 NULL + question；3463 与 0 人场 NULL
+- [x] 8 场 is_qual 重抓后按结果物化或如实留 NULL（报告记录）
+- [x] derive 幂等（复跑零变更）、只写 NULL 不覆盖
+- [x] `stats winrate --layer b` 与 `stats wws`（basis=cn）产出非空
+- [x] 全量测试绿 + ruff 净；PRD v1.19 + CHANGELOG + STATUS + AGENTS 同步，任务归档
 
 ## 完成总结（DONE 时填写）
+
+**2026-08-09 完成，验收标准全过。**
+
+实战结果（真实库，备份 `.scratch/ptcg-cn-before-task034-20260809.db`）：
+
+- `backfill-topcut --fetch`：`materialized=9 skipped=16 question=1 warnings=7`。9 场物化 topcut_slots 全=16（3210/3211/3215/3216/3307/3342/3343/3462/3470，SQL 逐场对账）；question 唯一 = `mik_moe:3348 最外档 19 不在合法名额集合 [4, 8, 16, 32]`（保持 NULL 不猜）；warnings 7 条 = 3463~3468/3471 双卡组赛人均口径跳过；8 场 qual（3301/3302/3304/3305/3309/3310/3312/3320）重抓后 mik 源 data.list 仍空 → NULL 如实跳过；3469 无 topcutTimes 静默跳过。计数闭环 26 = 9 + 1 + 16。
+- 幂等复跑（无 --fetch）：`materialized=0 skipped=25 question=1 warnings=7`，零请求零变更。
+- B 层统计首次非空：`stats winrate --layer b` 283 行（老大的指令 0.4173 n=261、奇树 0.4078 n=249；meta n_tournaments=5 为默认窗口行为）；`stats wws --layer b` 289 行（老大的指令 0.2493 n=324）。
+- 评审修复（commit 12a58b6）：refetch 熔断处理对齐邻居命令 + 查询收窄（topcut_slots NULL/非 team/人数>0）+ ingest 钩子并入 topcut.warnings。
+- 589 测试全绿（573→589）、ruff 全净。验收报告 `reports/task034-topcut-20260809.md`。
