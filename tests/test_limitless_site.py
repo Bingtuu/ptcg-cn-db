@@ -34,6 +34,7 @@ from ptcgdb.scrapers import CircuitOpenError, HttpClient, RateLimiter
 from ptcgdb.scrapers.limitless_site import (
     BASE_URL,
     INDEX_PAGE_SIZE,
+    SITE_CUT_LIMITS,
     LimitlessSiteApiError,
     LimitlessSiteScraper,
     classify_site_tournament,
@@ -250,6 +251,12 @@ def test_classify_official_tiers_site_names():
     assert classify_site_tournament("Regional Indianapolis, IN", 1974)[0] == "regional"
     assert classify_site_tournament("Special Event Turin", 2033)[0] == "special"
     assert classify_site_tournament("Toronto League Cup", 48)[0] == "league_cup"
+
+
+def test_classify_worlds():  # task 032：Worlds 2025 补录（coef 6.0 拍板）
+    assert classify_site_tournament("World Championships 2025", 1300)[0] == "worlds"
+    assert classify_site_tournament("world championships 2026", 100)[0] == "worlds"
+    assert SITE_CUT_LIMITS["worlds"] == 32  # 与 IC 同档截断
 
 
 def test_classify_case_insensitive_site():

@@ -44,6 +44,12 @@ tiers:
     label: International Championship（EN 国际赛）
     coef: 4
     aliases: [international, International Championships, IC]
+  - tier: worlds
+    label: World Championships（EN 世锦赛）
+    # 推断值（2026-08-08 用户拍板）：邀请制赛季收官，权重略压 IC——
+    # 6.0×log10(~1300 人)≈18.7 vs NAIC 4.0×log10(3752)≈14.3
+    coef: 6
+    aliases: [worlds, World Championships, Worlds]
   - tier: special
     label: Special Event（EN 特别赛）
     coef: 1.5

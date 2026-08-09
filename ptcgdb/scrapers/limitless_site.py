@@ -65,6 +65,7 @@ MIN_PLAYERS = 32  # 人数门沿用 FR-9.1a（索引行 data-players）
 SITE_CUT_LIMITS: dict[str, int] = {
     "regional": 32,
     "international": 32,
+    "worlds": 32,  # 世锦赛与 IC 同档（task 032，2026-08-08 拍板）
     "special": 32,
     "league_cup": 8,
 }
@@ -73,6 +74,7 @@ SITE_CUT_LIMITS: dict[str, int] = {
 # "Regional Indianapolis, IN" / "Special Event Turin"），故独立于
 # scrapers/limitless.py 的 TIER_PATTERNS 自带一套（SITE_ 前缀）。
 SITE_TIER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("worlds", re.compile(r"World Championships", re.IGNORECASE)),  # task 032 补录
     ("international", re.compile(
         r"\b(NAIC|EUIC|LAIC|OCIC)\b|International Championship", re.IGNORECASE
     )),
@@ -274,7 +276,8 @@ def classify_site_tournament(
 
     规则（FR-9.1a 主站变体）：
     - players < MIN_PLAYERS（32）→ 不收（人数门，与 API 通道一致）；
-    - 名称命中 SITE_TIER_PATTERNS（NAIC/EUIC/LAIC/OCIC/International → international；
+    - 名称命中 SITE_TIER_PATTERNS（World Championships → worlds（task 032）；
+      NAIC/EUIC/LAIC/OCIC/International → international；
       Special Event → special；Regional → regional；League Cup → league_cup）→ 收；
     - JP/亚洲国内赛事（Japan Championships/Champions League/Korean League/
       Premier Ball League 等）→ 不收（本轮只收 EN 官方系列赛，JP 对齐二期再议）；
@@ -288,7 +291,10 @@ def classify_site_tournament(
             return tier, f"命中官方系列赛名称正则：{pattern.pattern}"
     if JP_DOMESTIC_PATTERN.search(text):
         return None, "JP/亚洲国内赛事（FR-9.1a 本轮只收 EN 官方系列赛，JP 对齐二期再议）"
-    return None, "未命中官方系列赛名称（NAIC/EUIC/LAIC/OCIC/Regional/Special Event/League Cup）"
+    return None, (
+        "未命中官方系列赛名称（World Championships/NAIC/EUIC/LAIC/OCIC/"
+        "Regional/Special Event/League Cup）"
+    )
 
 
 # ---- 赛季标签 ----
