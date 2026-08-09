@@ -69,8 +69,7 @@ from ptcgdb.scrapers.site_rules import load_site_rules
 OFFICIAL_URL_TEMPLATE = "https://limitlesstcg.com/tournaments/{}"
 
 # 名次截断档位由 config/site_tournament_rules.yml 统一维护（task 033 配置化，
-# 采集端与入库端单一事实源）：regional/international/special/worlds/MBL/KL → Top 32；
-# league_cup/PBL → Top 8。
+# 采集端与入库端单一事实源，档位以配置文件为准）。
 
 
 @dataclass

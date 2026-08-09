@@ -150,7 +150,7 @@ flowchart TB
   - ✅ **M8（A2）** 卡面人工比对 100/100 核销 + 三件技术债清偿（卡号分母逐系列种子 / 字母能量 `alias_of` / 太晶识别 is_tera 166）
   - ✅ **M9-1/2** 赛事卡组管线 CN mik + 统计可复算与查询层
   - 🔄 **M8（A3）** 50 张特殊卡比对，待协作 session
-  - ✅ **M9-3** EN Limitless 对齐窗口接入（task 028）：API + 主站 HTML 双通道（官方系列赛归类 + 名次截断 SITE_CUT_LIMITS + decklist→简中映射链含 paren_strip 回退 + pairings 落库），73 赛 / 2,592 卡组 / 2,982 出战，主站 923 卡组 full=425、NAIC 2025 对账 12/12；`basis` 口径标签不与 CN 混同（FR-9.1a/b）；**范围收口：以当前简中环境为起点收集维护，历史不回填**
+  - ✅ **M9-3** EN Limitless 对齐窗口接入（task 028）：API + 主站 HTML 双通道（官方系列赛归类 + 名次截断 `config/site_tournament_rules.yml` 配置化 + decklist→简中映射链含 paren_strip 回退 + pairings 落库），73 赛 / 2,592 卡组 / 2,982 出战，主站 923 卡组 full=425、NAIC 2025 对账 12/12；`basis` 口径标签不与 CN 混同（FR-9.1a/b）；**范围收口：以当前简中环境为起点收集维护，历史不回填**
   - ⬜ **赛事数据刷新管线**（task 031）：赛事增量入库 + mapping 随卡库重算 + EN 赛后重抓 + 词表变更重物化
 - ⬜ **Phase 3** 效果标签层，配合规则引擎
 - ⬜ **Phase 4** 对战模拟与胜率统计（独立库，主库只读）
