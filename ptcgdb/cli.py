@@ -853,8 +853,12 @@ def backfill_topcut_cmd(
     from ptcgdb.normalize.topcut import derive_topcut_slots
 
     if fetch:
-        for note in _refetch_empty_statics(raw_dir, db_path):
-            typer.echo(f"  ? {note}")
+        try:
+            for note in _refetch_empty_statics(raw_dir, db_path):
+                typer.echo(f"  ? {note}")
+        except CircuitOpenError as exc:
+            typer.echo(f"熔断中止：{exc}", err=True)
+            raise typer.Exit(code=1) from exc
     result = derive_topcut_slots(raw_dir, db_path)
     typer.echo(
         f"materialized={result.materialized} skipped={len(result.skipped)} "
@@ -867,7 +871,13 @@ def backfill_topcut_cmd(
 
 
 def _refetch_empty_statics(raw_dir: Path, db_path: Path) -> list[str]:
-    """重抓 mik 赛事的 deck-static 空 raw（缺失或 data.list 为空），force 覆盖。"""
+    """重抓 mik 赛事的 deck-static 空 raw（缺失或 data.list 为空），force 覆盖。
+
+    查询收窄对齐 derive 前置条件（topcut_slots NULL / 非双卡组 / 有人数）——
+    必然跳过的场不浪费 ≥2s/场请求。瞬时 HTTP 错误逐场记 note 继续；
+    CircuitOpenError 不在此吞掉，上抛命令层统一熔断处理。
+    """
+    from ptcgdb.scrapers.http import TransientHttpError
     from ptcgdb.scrapers.mikmoe_tournament import (
         MikMoeNotReadyError,
         deck_static_path,
@@ -877,7 +887,12 @@ def _refetch_empty_statics(raw_dir: Path, db_path: Path) -> list[str]:
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         rows = session.execute(
-            select(Tournament.tournament_id).where(Tournament.source == "mik_moe")
+            select(Tournament.tournament_id).where(
+                Tournament.source == "mik_moe",
+                Tournament.topcut_slots.is_(None),
+                Tournament.is_team.is_(False),
+                Tournament.participant_count > 0,
+            )
         ).all()
     engine.dispose()
     notes: list[str] = []
@@ -893,6 +908,9 @@ def _refetch_empty_statics(raw_dir: Path, db_path: Path) -> list[str]:
                 payload = scraper.fetch_deck_static_by_tour(int(raw_tid))
             except MikMoeNotReadyError as exc:
                 notes.append(f"{tid} deck-static 重抓仍无数据: {exc}")
+                continue
+            except TransientHttpError as exc:
+                notes.append(f"{tid} deck-static 重抓瞬时错误: {exc}")
                 continue
             write_raw(path, payload, source="mik_moe", force=True)
             typer.echo(f"  + 重抓 {tid} deck-static")

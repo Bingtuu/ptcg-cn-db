@@ -240,6 +240,7 @@ def ingest_tourneys(
     if topcut.materialized:
         result.warnings.append(f"topcut_slots 反推物化 {topcut.materialized} 场")
     result.warnings.extend(f"topcut_slots 反推疑问: {q}" for q in topcut.question)
+    result.warnings.extend(f"topcut_slots: {w}" for w in topcut.warnings)
     return result
 
 
