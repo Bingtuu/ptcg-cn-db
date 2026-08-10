@@ -374,6 +374,26 @@ def mark_aliases_cmd(db_path: Path = DEFAULT_DB_PATH) -> None:
         typer.echo(f"  - {card_id}: {reason}")
 
 
+@app.command("seed-union-positions")
+def seed_union_positions_cmd(db_path: Path = DEFAULT_DB_PATH) -> None:
+    """V-UNION 部件方位种子：CSEC 组按 A3 卡面核对顺序回填（task 020）。
+
+    mik 源无方位字段（ingest 恒 NULL），ingest 重跑后重跑本命令即恢复；
+    既有不同值不覆盖，记 conflicts 人工裁决。SSP 未核对保持 NULL。
+    """
+    from ptcgdb.normalize.union_positions import seed_union_positions
+
+    result = seed_union_positions(db_path)
+    typer.echo(
+        f"filled={len(result.filled)} already={result.already} "
+        f"conflicts={len(result.conflicts)}"
+    )
+    for card_id, pos in sorted(result.filled.items()):
+        typer.echo(f"  + {card_id} → {pos}")
+    for card_id, old in sorted(result.conflicts.items()):
+        typer.echo(f"  - {card_id}: 既有值 {old} 不覆盖")
+
+
 @app.command()
 def rollback(db_path: Path = DEFAULT_DB_PATH) -> None:
     """回滚：用最新备份覆盖当前 DB（FR-6.3）。"""
