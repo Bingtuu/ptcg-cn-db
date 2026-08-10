@@ -147,13 +147,15 @@
 - 日本官方赛事系统（City League / Champions League / PJCS）：
   - `GET /event_search?offset=0&order=4&result_resist=1&event_type[]=...` → JSON 赛事列表（event_holding_id / 日期 / 店名 / leagueName / event_title）；
   - `GET /event_result_detail_search?event_holding_id={id}&offset=0&per_page=64` → JSON 名次表（rank/name/player_id/**deck_id = 官方卡组码**）。
-- **卡组内容无 JSON 端点**：卡组码在 `www.pokemon-card.com/deck/confirm.html/deckID/{码}` 由前端 JS 解码渲染，需浏览器自动化（Playwright）逐页提取——WAF 严格、成本高，**壳数据（名次+卡组码）先入，卡表渲染后置单独评估**（FR-9.1）。
+- **⚠️ 2026-08-10 实测（task 035）：两端点已被 Cloudflare 拦截（403，纯 HTTP 客户端不可达）**；官方壳对账源暂不可用，对账改聚合站两站互核。
+- **卡组内容（task 035 实测订正，推翻本节前版结论）**：`www.pokemon-card.com/deck/confirm.html/deckID/{码}` 的静态 HTML **内嵌完整卡表**——隐藏 input `id="deck_pke/gds/tool/tech/sup/sta/ene/ajs"` 的 `value="cardId_count_?-…"` + `PCGDECK.searchItemName[cardId]='日文名(SET 编号/总数)'` 卡名表 + 卡图路径含 JP 系列码；纯 HTML 正则可解析，无需 Playwright。`deckView.php?deckID=` 返回 PNG 非 JSON。批量解析卡组码 = 批量请求该站，受红线约束（PRD/AGENTS 硬性规矩）。
 - 参考实现：GitHub [dtsong/tcg-scout](https://github.com/dtsong/tcg-scout)（2026 活跃；无 LICENSE，只读思路不抄代码）；JP 卡表亦可走 Limitless `?format=standard-jp` HTML（国际版包代码 → name_en 桥）作为替代路径。
 
 ## 8b. JP 卡组聚合站（task 028 调研新发现，JP 窗口对齐路径）
 
 - **PokecaBook**（[pokecabook.com](https://pokecabook.com/)）：JP 官方大会（チャンピオンズリーグ/シティリーグ/ジムバトル）+ **海外大赛（Regional/IC）**上位卡组按 archetype 归集；[robots 几乎全放行](https://pokecabook.com/robots.txt)（仅禁搜索页），HTML 解析成本远低于 players.pokemon-card.com 的浏览器渲染路线。
 - **ポケカ飯**（pokekameshi.com）/ **pokecardlab**（pokecardlab.com）：同型 JP 卡组食谱站（Tier 表 + 赛事标注），互为印证与补漏。
+- **task 035 实测（2026-08-10，详见 `reports/task035-jp-survey-20260810.md`）**：三站卡组内容载体**全是官方卡组码或截图，均无文本卡表**——卡组码密度 pokecabook 最高（444 个/篇）、pokekameshi pre 块 281 个/篇、pokecardlab 以截图为主；壳数据（店名/日期/名次/archetype）三站均为可机读文本，pokecardlab 日期型 URL 窗口定位最直接（有 POST 门禁，任意值+nonce 可过）；**full 率演练：name_ja 桥单用 37% 卡张命中（0/6 卡组 full），+TCGdex JA 名表达 96.1% 卡张命中，残名均可归类修复（ACE SPEC 后缀剥离 + TCGdex JA 重抓/补充词表）→ 窗口期 deck 级 full 率预估 ≥90%（前提是 trainer 日文名表补强落地）**。
 - 定位：JP 发售早于国际/简中，JP 赛季窗口与简中错位更小——**JP 对齐二期候选**；卡标识为日文卡名/编号，需 name_ja 桥（M6 已铺 9,480 条）。
 - 排除记录：ptcgstats.com（Limitless 派生聚合，不作源，可对账）、pokedata.ovh（Limitless standings 个人聚合，无增量）。
 
