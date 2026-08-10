@@ -56,7 +56,7 @@ ptcgdb sample [--a2 | --a3] [--seed N]          # A2/A3 抽样比对清单
 ptcgdb map-en / map-tcgdex / map-ja [--fetch]   # 跨语言映射：EN 桥 / TCGdex ID / JP 名
 ptcgdb map-tera                                 # 太晶识别：ptcd EN subtypes → is_tera（task 030）
 ptcgdb seed-face-totals / mark-aliases          # 卡面分母种子（F-01）/ 能量别名标记（F-02）
-ptcgdb seed-union-positions                     # V-UNION 部件方位种子（task 020 A3 核对，CSEC 组）
+ptcgdb seed-union-positions                     # V-UNION 部件方位种子（task 020 A3 核对，CSEC+SSP 组）
 ptcgdb scrape tourneys [--series-id 54] [--max-tournaments N]  # 采集 mik 赛事 → raw（限速 2s/请求）
 ptcgdb ingest-tourneys                          # 赛事 raw → 四表入库（60 张质量门）
 ptcgdb scrape limitless [--window A B]          # 采集 Limitless API 官方系列赛 → raw（6.5s/请求，窗口断点续传）

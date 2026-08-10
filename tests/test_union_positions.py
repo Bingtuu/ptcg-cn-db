@@ -53,6 +53,13 @@ def _make_db(db_path, rows):
                 fetched_at=NOW,
             )
         )
+        session.add(
+            Set(
+                set_id="XXX", name_zh="未核对系列", era="剑&盾",
+                release_date=None, regulation_mark="E", source="test",
+                fetched_at=NOW,
+            )
+        )
         session.add_all(rows)
         session.commit()
     engine.dispose()
@@ -87,19 +94,32 @@ def test_seed_fills_csec_groups(tmp_path):
     assert [pos[f"CSEC-{i:03d}"] for i in range(9, 13)] == ["左上", "右上", "左下", "右下"]
 
 
-def test_ssp_untouched(tmp_path):
-    """未核对的系列（SSP）保持 NULL 不猜。"""
+def test_ssp_filled(tmp_path):
+    """SSP（2026-08-10 用户核对同序）同样回填。"""
     db_path = tmp_path / "t.db"
     _make_db(
         db_path,
-        _csec_cards(9, 10, 11, 12)
-        + [_c(f"SSP-{i}", "SSP", "皮卡丘V-UNION") for i in range(109, 113)],
+        [_c(f"SSP-{i}", "SSP", "皮卡丘V-UNION") for i in range(109, 113)],
     )
     result = seed_union_positions(db_path)
     assert len(result.filled) == 4
     pos = _positions(db_path)
-    for i in range(109, 113):
-        assert pos[f"SSP-{i}"] is None
+    assert [pos[f"SSP-{i}"] for i in range(109, 113)] == ["左上", "右上", "左下", "右下"]
+
+
+def test_unverified_set_untouched(tmp_path):
+    """未核对系列（不在 SEED_SETS）保持 NULL 不猜。"""
+    db_path = tmp_path / "t.db"
+    _make_db(
+        db_path,
+        _csec_cards(9, 10, 11, 12)
+        + [_c(f"XXX-{i:03d}", "XXX", "测试V-UNION") for i in range(1, 5)],
+    )
+    result = seed_union_positions(db_path)
+    assert len(result.filled) == 4
+    pos = _positions(db_path)
+    for i in range(1, 5):
+        assert pos[f"XXX-{i:03d}"] is None
 
 
 def test_conflict_not_overwritten(tmp_path):
