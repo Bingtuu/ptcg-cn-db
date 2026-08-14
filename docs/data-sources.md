@@ -115,7 +115,7 @@
   `GET https://www.pokemon-card.com/card-search/resultAPI.php?keyword=<url编码>&se_ta=&regulation_sidebar_form=all&illust=&sm_and_keyword=true`
   返回 JSON，`cardList[].cardNameViewText` 即官方显示名（含图标 span 的形态如棱镜星）。
 - 用途（task 024）：`name_ja` 填充结果的**抽样**权威核对（31 张分层样本，修复后一致率 100%，报告 `reports/official-check-ja-20260802.md`）。
-- 约束：只读、**抽样 ≤35 请求、≥2s/请求，绝不做批量采集**；站方 WAF 严格（曾对异常流量出口做关键字剥离/403），任何核对都以小样本低频方式做。
+- 约束：只读、**抽样 ≤35 请求、≥2s/请求，绝不做批量采集**；站方 WAF 严格（曾对异常流量出口做关键字剥离/403），任何核对都以小样本低频方式做。**例外（2026-08-14 拍板，PRD v1.20 FR-9.5）**：`/deck/confirm.html/deckID/` 端点对 JP 对齐窗口内官方赛事上位卡组码定向开放（5s/请求 + 熔断 + 成本守卫），见 §8。
 
 ## 7. Limitless TCG（EN 赛事卡组，task 027 调研）
 
@@ -148,7 +148,7 @@
   - `GET /event_search?offset=0&order=4&result_resist=1&event_type[]=...` → JSON 赛事列表（event_holding_id / 日期 / 店名 / leagueName / event_title）；
   - `GET /event_result_detail_search?event_holding_id={id}&offset=0&per_page=64` → JSON 名次表（rank/name/player_id/**deck_id = 官方卡组码**）。
 - **⚠️ 2026-08-10 实测（task 035）：两端点已被 Cloudflare 拦截（403，纯 HTTP 客户端不可达）**；官方壳对账源暂不可用，对账改聚合站两站互核。
-- **卡组内容（task 035 实测订正，推翻本节前版结论）**：`www.pokemon-card.com/deck/confirm.html/deckID/{码}` 的静态 HTML **内嵌完整卡表**——隐藏 input `id="deck_pke/gds/tool/tech/sup/sta/ene/ajs"` 的 `value="cardId_count_?-…"` + `PCGDECK.searchItemName[cardId]='日文名(SET 编号/总数)'` 卡名表 + 卡图路径含 JP 系列码；纯 HTML 正则可解析，无需 Playwright。`deckView.php?deckID=` 返回 PNG 非 JSON。批量解析卡组码 = 批量请求该站，受红线约束（PRD/AGENTS 硬性规矩）。
+- **卡组内容（task 035 实测订正，推翻本节前版结论）**：`www.pokemon-card.com/deck/confirm.html/deckID/{码}` 的静态 HTML **内嵌完整卡表**——隐藏 input `id="deck_pke/gds/tool/tech/sup/sta/ene/ajs"` 的 `value="cardId_count_?-…"` + `PCGDECK.searchItemName[cardId]='日文名(SET 编号/总数)'` 卡名表 + 卡图路径含 JP 系列码；纯 HTML 正则可解析，无需 Playwright。`deckView.php?deckID=` 返回 PNG 非 JSON。批量解析卡组码 = 批量请求该站——**2026-08-14 拍板定向放宽（PRD v1.20 FR-9.5，task 037）**：仅限 JP 对齐窗口内官方赛事上位卡组码，5s/请求 + 熔断 + 请求台账 + 成本守卫（估算超闸门默认 500 降级只收 PJCS/CL）；其余页面维持抽样红线。
 - 参考实现：GitHub [dtsong/tcg-scout](https://github.com/dtsong/tcg-scout)（2026 活跃；无 LICENSE，只读思路不抄代码）；JP 卡表亦可走 Limitless `?format=standard-jp` HTML（国际版包代码 → name_en 桥）作为替代路径。
 
 ## 8b. JP 卡组聚合站（task 028 调研新发现，JP 窗口对齐路径）
