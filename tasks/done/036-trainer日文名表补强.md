@@ -26,11 +26,11 @@
 
 ## 验收标准
 
-- [x] name_ja 覆盖率实测提升：9,480 → 11,041（+1,561）；GHI 环境 distinct 名覆盖 218/257=84.8%
+- [x] name_ja 覆盖率实测提升：9,480 → 11,043（+1,563）；GHI 环境 distinct 名覆盖 218/257=84.8%
 - [x] task 035 演练复跑：窗口期卡组 5/5 full（Mega 对照组 partial = no_cn_printing 预期）
-- [x] 未映射项全量归类（trainer_vocab_miss 1,198 / energy_vocab_miss 81 / no_en_bridge 42，零未知项）
+- [x] 未映射项全量归类（trainer_vocab_miss 1,196 / energy_vocab_miss 81 / no_en_bridge 42，零未知项）
 - [x] 测试全绿（601）+ ruff 全净；报告归档 `reports/task036-ja-trainer-20260815.md` + `reports/mapping-ja-trainer-20260815.md`
 
 ## 完成总结（DONE 时填写）
 
-名字级人工词表种子方案落地：288 条词表（校验锚 TCGdex JA 名表，fail-fast），name_ja +1,561（总 11,041），conflicts=0，幂等。task 035 演练复跑窗口期 5/5 full 达标。过程中经 TCGdex 模糊检索 + 6 份官方 deck-confirm 样本页交叉修正拼写 ~45 条、删除无法锚定 30 条入 question（纪律：不猜）、演练暴露补漏 3 条。无 schema 迁移（user_version=11 不变）。详见 `reports/task036-ja-trainer-20260815.md`。task 037 前置就绪。
+名字级人工词表种子方案落地：288 条词表（校验锚 TCGdex JA 名表，fail-fast；gap 豁免 6 名待用户人肉核销），name_ja +1,563（总 11,043），conflicts=0，幂等。task 035 演练复跑窗口期 5/5 full 达标。过程中经 TCGdex 模糊检索 + 6 份官方 deck-confirm 样本页交叉修正拼写 ~45 条、删除无法锚定 30 条入 question（纪律：不猜）、演练暴露补漏 3 条；当日人工核对回环：Fire Memory 桥误标查明（131 正身 Fighting Memory，双 cn 消歧入库）、Energy Search Pro 正体 = エネルギー転送PRO 锚定、Float Stone/Muscle Band 陈旧条目删除。无 schema 迁移（user_version=11 不变）。详见 `reports/task036-ja-trainer-20260815.md`。task 037 前置就绪。

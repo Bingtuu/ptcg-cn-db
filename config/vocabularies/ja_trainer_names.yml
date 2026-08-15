@@ -5,11 +5,13 @@
 #
 # 口径：
 # - 主键 = EN 卡名（mik 英文桥 name_en，逐字）；`cn` 仅在 name_en 一对多 CN 名时
-#   消歧必填（实测 1 组：Counter Gain；Fire Memory 因桥字段疑点整条不入词表）。
+#   消歧必填（实测 2 组：Counter Gain——胜利勋章桥字段疑点未裁决只填反击增幅器；
+#   Fire Memory——CSM1cC-131 战斗存储碟 EN 桥误标，正身 Fighting Memory，
+#   2026-08-15 用户核官方卡表确认 131/132 两个不同名，两条 cn 消歧并入 gap 清单）。
 # - 校验锚（不猜）：ja 必须 ∈ TCGdex JA 名表（raw tcgdex/ja-cards.json）；
 #   唯一豁免 = `tcgdex_gap: true`（官方实有卡、TCGdex JA 2026-08-14 快照缺席，
-#   实测 5 名：いれかえカート / エール団の応援 / エネルギーサーチ /
-#   エネルギーサーチプロ / パワーグラス）。
+#   实测 4 名：いれかえカート / エール団の応援 / エネルギーサーチ /
+#   パワーグラス；エネルギーサーチプロ 已查明正体 = エネルギー転送PRO 并锚定入库）。
 # - 名字级语义：同名全印刷同 name_ja（与宝可梦一致）；ACE SPEC 卡词表存本体名
 #   （官方 deck 页的 `(ACE SPEC)` 后缀由 normalize_ja_deck_name 剥离，task 037 复用）。
 # - 未覆盖名一律入 question 清单，不猜。词表可追加（开放词表惯例）。
@@ -313,9 +315,8 @@ entries:
     tcgdex_gap: true
     note: 官方实有（SV 期），TCGdex JA 2026-08-14 快照缺席
   - en: Energy Search Pro
-    ja: エネルギーサーチプロ
-    tcgdex_gap: true
-    note: 官方实有（SV 期），TCGdex JA 2026-08-14 快照缺席
+    ja: エネルギー転送PRO
+    note: ACE SPEC 本体名；SV7a-052（楽園ドラゴーナ），EN 名与 JA 名不同形
   - en: Energy Sticker
     ja: エネルギーシール
   - en: Energy Switch
@@ -474,8 +475,16 @@ entries:
     ja: まけんきハチマキ
   - en: Exp. Share
     ja: 学習装置
-  - en: Float Stone
-    ja: かるいし
+  - en: Fire Memory
+    ja: ファイトメモリー
+    cn: 战斗存储碟
+    tcgdex_gap: true
+    note: mik EN 桥误标（正身 Fighting Memory；2026-08-15 用户核官方卡表确认 CSM1cC-131/132 两个不同名）；JA 名 TCGdex 缺席入 gap 核对清单
+  - en: Fire Memory
+    ja: ファイアメモリー
+    cn: 火焰存储碟
+    tcgdex_gap: true
+    note: name_en 一对多（131 桥误标）→ cn 消歧；JA 名 TCGdex 缺席入 gap 核对清单
   - en: Forest Seal Stone
     ja: 森の封印石
   - en: Future Booster Energy Capsule
@@ -499,8 +508,6 @@ entries:
   - en: Maximum Belt
     ja: マキシマムベルト
     note: ACE SPEC 本体名
-  - en: Muscle Band
-    ja: ちからのハチマキ
   - en: Occa Berry
     ja: オッカのみ
   - en: Ogre's Mask

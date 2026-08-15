@@ -2,10 +2,10 @@
 
 链路：人工词表种子（EN 主键 + 可选 CN 消歧，`config/vocabularies/ja_trainer_names.yml`）+ 校验锚 JA 名 ∈ TCGdex JA 名表。
 
-- name_ja 填充：1561（置信度 manual = 人工词表种子）
+- name_ja 填充：1563（置信度 manual = 人工词表种子）
 - 已有值冲突（保留原值，需人工裁决）：0
-- 词表条目无库内匹配（陈旧/桥缺失）：2
-- 未填充（question 清单，不猜测）：1321
+- 词表条目无库内匹配（陈旧/桥缺失）：0
+- 未填充（question 清单，不猜测）：1319
 
 ## 未填充分类
 
@@ -13,12 +13,10 @@
 |---|---|---|
 | energy_vocab_miss | 81 | 词表未覆盖的特殊能量（不猜，词表可追加） |
 | no_en_bridge | 42 | 无英文桥（简中独占促销等） |
-| trainer_vocab_miss | 1198 | 词表未覆盖的 trainer（不猜，词表可追加） |
+| trainer_vocab_miss | 1196 | 词表未覆盖的 trainer（不猜，词表可追加） |
 
 ## 词表未命中条目
 
-- Float Stone
-- Muscle Band
 
 ## energy_vocab_miss 清单
 
@@ -838,8 +836,6 @@
 - `CSM1cC-127`
 - `CSM1cC-128`
 - `CSM1cC-130`
-- `CSM1cC-131`
-- `CSM1cC-132`
 - `CSM1cC-133`
 - `CSM1cC-134`
 - `CSM1cC-135`
