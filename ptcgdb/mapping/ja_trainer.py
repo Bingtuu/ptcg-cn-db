@@ -4,9 +4,9 @@
 `config/vocabularies/ja_trainer_names.yml`（EN 名主键 + 可选 CN 名消歧）。
 
 校验锚（不猜）：词表 JA 名必须 ∈ TCGdex JA 名表（raw tcgdex/ja-cards.json）；
-例外 `tcgdex_gap: true` = 官方实有卡但 TCGdex JA 快照缺席（实测 4 名：
-いれかえカート / エール団の応援 / エネルギーサーチ / パワーグラス，
-2026-08-14 重抓后仍缺席；エネルギーサーチプロ 已查明正体 = エネルギー転送PRO 并锚定）。
+例外 `tcgdex_gap: true` = 官方实有卡但 TCGdex JA 快照缺席（现存 2 名：
+いれかえカート / エール団の応援，均 2026-08-15 用户官方卡查核销确认；
+初版其余 4 名核销中查明正体并锚定入库，见词表 note）。
 
 填充语义与宝可梦一致：名字级（同名全印刷同 name_ja）、幂等、已有值冲突保留原值。
 name_en 一对多 CN 名（桥字段疑点）必须带 cn 消歧，否则整组转 ambiguous。

@@ -10,8 +10,10 @@
 #   2026-08-15 用户核官方卡表确认 131/132 两个不同名，两条 cn 消歧并入 gap 清单）。
 # - 校验锚（不猜）：ja 必须 ∈ TCGdex JA 名表（raw tcgdex/ja-cards.json）；
 #   唯一豁免 = `tcgdex_gap: true`（官方实有卡、TCGdex JA 2026-08-14 快照缺席，
-#   实测 4 名：いれかえカート / エール団の応援 / エネルギーサーチ /
-#   パワーグラス；エネルギーサーチプロ 已查明正体 = エネルギー転送PRO 并锚定入库）。
+#   现存 2 名：いれかえカート / エール団の応援，均 2026-08-15 用户官方卡查
+#   核销拼写确认；初版另 4 名核销中查明正体并锚定：エネルギーサーチ→エネルギー転送、
+#   エネルギーサーチプロ→エネルギー転送PRO、パワーグラス→力の砂時計、
+#   存储碟家族 ファイト/ファイヤー/ウォーター/サイキックメモリ）。
 # - 名字级语义：同名全印刷同 name_ja（与宝可梦一致）；ACE SPEC 卡词表存本体名
 #   （官方 deck 页的 `(ACE SPEC)` 后缀由 normalize_ja_deck_name 剥离，task 037 复用）。
 # - 未覆盖名一律入 question 清单，不猜。词表可追加（开放词表惯例）。
@@ -311,9 +313,8 @@ entries:
   - en: Energy Retrieval
     ja: エネルギー回収
   - en: Energy Search
-    ja: エネルギーサーチ
-    tcgdex_gap: true
-    note: 官方实有（SV 期），TCGdex JA 2026-08-14 快照缺席
+    ja: エネルギー転送
+    note: EN 名与 JA 名不同形（52poke 佐证；TCGdex 锚定 PMCG3-044/SV-P-272/MC-639，SV 期有再录）
   - en: Energy Search Pro
     ja: エネルギー転送PRO
     note: ACE SPEC 本体名；SV7a-052（楽園ドラゴーナ），EN 名与 JA 名不同形
@@ -439,11 +440,11 @@ entries:
   - en: Switch Cart
     ja: いれかえカート
     tcgdex_gap: true
-    note: 官方实有（S8b 期），TCGdex JA 2026-08-14 快照缺席
+    note: TCGdex JA 2026-08-14 快照缺席；2026-08-15 用户官方卡查核销拼写确认（svHK 018/053、svHM 018/053、s10D 060/067）
   - en: Team Yell's Cheer
     ja: エール団の応援
     tcgdex_gap: true
-    note: 官方实有（S2 期），TCGdex JA 2026-08-14 快照缺席
+    note: TCGdex JA 2026-08-14 快照缺席；2026-08-15 用户官方卡查核销拼写确认（sl 388/414 ×2 稀有度）
   - en: Tool Scrapper
     ja: ツールスクラッパー
   - en: Trekking Shoes
@@ -476,15 +477,13 @@ entries:
   - en: Exp. Share
     ja: 学習装置
   - en: Fire Memory
-    ja: ファイトメモリー
+    ja: ファイトメモリ
     cn: 战斗存储碟
-    tcgdex_gap: true
-    note: mik EN 桥误标（正身 Fighting Memory；2026-08-15 用户核官方卡表确认 CSM1cC-131/132 两个不同名）；JA 名 TCGdex 缺席入 gap 核对清单
+    note: mik EN 桥误标（正身 Fighting Memory；2026-08-15 用户核官方卡表确认 CSM1cC-131/132 两个不同名）；JA 名用户核销 = ファイトメモリ（无长音，TCGdex 锚定 SM4S-049）
   - en: Fire Memory
-    ja: ファイアメモリー
+    ja: ファイヤーメモリ
     cn: 火焰存储碟
-    tcgdex_gap: true
-    note: name_en 一对多（131 桥误标）→ cn 消歧；JA 名 TCGdex 缺席入 gap 核对清单
+    note: name_en 一对多（131 桥误标）→ cn 消歧；JA 名用户核销 = ファイヤーメモリ（ファイヤー 不是 ファイア，TCGdex 锚定 SM4p-102）
   - en: Forest Seal Stone
     ja: 森の封印石
   - en: Future Booster Energy Capsule
@@ -515,9 +514,14 @@ entries:
   - en: Patrol Cap
     ja: パトロールキャップ
   - en: Powerglass
-    ja: パワーグラス
-    tcgdex_gap: true
-    note: ACE SPEC 本体名；官方实有，TCGdex JA 2026-08-14 快照缺席
+    ja: 力の砂時計
+    note: ACE SPEC 本体名；EN 名与 JA 名不同形（TCGdex 锚定 SV6a-058/094、MC-683）
+  - en: Psychic Memory
+    ja: サイキックメモリ
+    note: 存储碟家族（TCGdex 锚定 SM4S-048）
+  - en: Water Memory
+    ja: ウォーターメモリ
+    note: 存储碟家族（TCGdex 锚定 SM8b-121）
   - en: Protective Goggles
     ja: 安全ゴーグル
   - en: Rescue Board
