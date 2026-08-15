@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ptcgdb.mapping.en import EnFillResult
 from ptcgdb.mapping.ja import JaFillResult
+from ptcgdb.mapping.ja_trainer import JaTrainerFillResult
 from ptcgdb.mapping.tcgdex import ResolveResult, SetReconcileReport
 
 
@@ -188,6 +189,53 @@ def write_tera_report(result, out_dir: Path) -> Path:
     lines += ["", "## ptcd 系列内查无编号清单", ""]
     for card_id in result.missing_card:
         lines.append(f"- `{card_id}`")
+    lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def write_ja_trainer_report(result: JaTrainerFillResult, out_dir: Path) -> Path:
+    """trainer/特殊能量 name_ja 补强报告（task 036）：覆盖量 + 分类 question 清单。"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d")
+    path = out_dir / f"mapping-ja-trainer-{stamp}.md"
+    q_total = sum(len(v) for v in result.questions.values())
+    category_notes = {
+        "trainer_vocab_miss": "词表未覆盖的 trainer（不猜，词表可追加）",
+        "energy_vocab_miss": "词表未覆盖的特殊能量（不猜，词表可追加）",
+        "ambiguous": "name_en 一对多 CN 名且词表条目未带 cn 消歧（不猜）",
+        "no_en_bridge": "无英文桥（简中独占促销等）",
+    }
+    lines = [
+        f"# trainer/特殊能量 JP 名补强报告（{stamp}，task 036）",
+        "",
+        "链路：人工词表种子（EN 主键 + 可选 CN 消歧，`config/vocabularies/"
+        "ja_trainer_names.yml`）+ 校验锚 JA 名 ∈ TCGdex JA 名表。",
+        "",
+        f"- name_ja 填充：{result.name_ja_filled}（置信度 manual = 人工词表种子）",
+        f"- 已有值冲突（保留原值，需人工裁决）：{len(result.conflicts)}",
+        f"- 词表条目无库内匹配（陈旧/桥缺失）：{len(result.vocab_unused)}",
+        f"- 未填充（question 清单，不猜测）：{q_total}",
+        "",
+        "## 未填充分类",
+        "",
+        "| 类别 | 数量 | 说明 |",
+        "|---|---|---|",
+    ]
+    for category in sorted(result.questions):
+        note = category_notes.get(category, "")
+        lines.append(f"| {category} | {len(result.questions[category])} | {note} |")
+    lines += ["", "## 词表未命中条目", ""]
+    for en in result.vocab_unused:
+        lines.append(f"- {en}")
+    for category in sorted(result.questions):
+        lines += ["", f"## {category} 清单", ""]
+        for card_id in result.questions[category]:
+            lines.append(f"- `{card_id}`")
+    if result.conflicts:
+        lines += ["", "## 冲突清单（保留原值）", ""]
+        for card_id in result.conflicts:
+            lines.append(f"- `{card_id}`")
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path

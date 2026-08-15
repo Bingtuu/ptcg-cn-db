@@ -1,0 +1,620 @@
+# EN→JA trainer/特殊能量 名字级词表（task 036，PRD v1.20）
+#
+# 用途：trainer/特殊能量无 dexId 链（task 024 结论），name_ja 由本词表人工种子填充
+# （`map-ja-trainer` / `mapping/ja_trainer.py`）。
+#
+# 口径：
+# - 主键 = EN 卡名（mik 英文桥 name_en，逐字）；`cn` 仅在 name_en 一对多 CN 名时
+#   消歧必填（实测 1 组：Counter Gain；Fire Memory 因桥字段疑点整条不入词表）。
+# - 校验锚（不猜）：ja 必须 ∈ TCGdex JA 名表（raw tcgdex/ja-cards.json）；
+#   唯一豁免 = `tcgdex_gap: true`（官方实有卡、TCGdex JA 2026-08-14 快照缺席，
+#   实测 5 名：いれかえカート / エール団の応援 / エネルギーサーチ /
+#   エネルギーサーチプロ / パワーグラス）。
+# - 名字级语义：同名全印刷同 name_ja（与宝可梦一致）；ACE SPEC 卡词表存本体名
+#   （官方 deck 页的 `(ACE SPEC)` 后缀由 normalize_ja_deck_name 剥离，task 037 复用）。
+# - 未覆盖名一律入 question 清单，不猜。词表可追加（开放词表惯例）。
+#
+# 覆盖范围（2026-08-14 首版）：G/H/I 当前环境 distinct 名主体 + 高置信度旧标竞技名。
+
+entries:
+  # ── 支援者（G/H/I 期）──
+  - en: Arven
+    ja: ペパー
+  - en: Atticus
+    ja: シュウメイ
+  - en: Bianca's Devotion
+    ja: ベルのまごころ
+  - en: Bill's Transfer
+    ja: マサキの転送
+  - en: Black Belt's Training
+    ja: からておうの稽古
+  - en: Boss's Orders
+    ja: ボスの指令
+  - en: Brassius
+    ja: コルサ
+  - en: Briar
+    ja: ブライア
+  - en: Brock's Scouting
+    ja: タケシのスカウト
+  - en: Carmine
+    ja: ゼイユ
+  - en: Cassiopeia
+    ja: カシオペア
+  - en: Ciphermaniac's Codebreaking
+    ja: 暗号マニアの解読
+  - en: Clavell
+    ja: クラベル
+  - en: Clemont's Quick Wit
+    ja: シトロンの機転
+  - en: Clive
+    ja: ネルケ
+  - en: Colress's Tenacity
+    ja: アクロマの執念
+  - en: Crispin
+    ja: アカマツ
+  - en: Cyrano
+    ja: シアノ
+  - en: Daisy's Help
+    ja: ナナミの手助け
+  - en: Dendra
+    ja: キハダ
+  - en: Drasna
+    ja: ドラセナ
+  - en: Drayton
+    ja: カキツバタ
+  - en: Eri
+    ja: ビワ
+  - en: Erika's Invitation
+    ja: エリカの招待
+  - en: Ethan's Adventure
+    ja: ヒビキの冒険
+  - en: Explorer's Guidance
+    ja: 探検家の先導
+  - en: Falkner
+    ja: ハヤト
+  - en: Friends in Paldea
+    ja: パルデアの仲間たち
+  - en: Geeta
+    ja: オモダカ
+  - en: Giacomo
+    ja: ピーニャ
+  - en: Giovanni's Charisma
+    ja: サカキのカリスマ
+  - en: Grusha
+    ja: グルーシャ
+  - en: Hassel
+    ja: ハッサク
+  - en: Iono
+    ja: ナンジャモ
+  - en: Iris's Fighting Spirit
+    ja: アイリスの闘志
+  - en: Jacq
+    ja: ジニア
+  - en: Judge
+    ja: ジャッジマン
+  - en: Katy
+    ja: カエデ
+  - en: Kieran
+    ja: スグリ
+  - en: Kofu
+    ja: ハイダイ
+  - en: Lacey
+    ja: タロ
+  - en: Lana's Aid
+    ja: スイレンのお世話
+  - en: Larry
+    ja: アオキ
+  - en: Larry's Skill
+    ja: アオキの手際
+  - en: Lisia's Appeal
+    ja: ルチアのアピール
+  - en: Lucian
+    ja: ゴヨウ
+  - en: Mela
+    ja: メロコ
+  - en: Miriam
+    ja: ミモザ
+  - en: Morty's Conviction
+    ja: マツバの確信
+  - en: Nemona
+    ja: ネモ
+  - en: Norman
+    ja: センリ
+  - en: Ortega
+    ja: オルティガ
+  - en: Paldean Student
+    ja: パルデアの学生
+  - en: Parasol Lady
+    ja: パラソルおねえさん
+  - en: Penny
+    ja: ボタン
+  - en: Perrin
+    ja: サザレ
+  - en: Pokémon Center Lady
+    ja: ポケモンセンターのお姉さん
+  - en: Poppy
+    ja: ポピー
+  - en: Professor Sada's Vitality
+    ja: オーリム博士の気迫
+  - en: Professor Turo's Scenario
+    ja: フトゥー博士のシナリオ
+  - en: Professor's Research
+    ja: 博士の研究
+  - en: Raifort
+    ja: レホール
+  - en: Rika
+    ja: チリ
+  - en: Roark
+    ja: ヒョウタ
+  - en: Ryme
+    ja: ライム
+  - en: Saguaro
+    ja: サワロ
+  - en: Salvatore
+    ja: セイジ
+  - en: Shauntal
+    ja: シキミ
+  - en: Surfer
+    ja: サーファー
+  - en: Team Rocket's Archer
+    ja: ロケット団のアポロ
+  - en: Team Rocket's Ariana
+    ja: ロケット団のアテナ
+  - en: Team Rocket's Giovanni
+    ja: ロケット団のサカキ
+  - en: Team Rocket's Petrel
+    ja: ロケット団のラムダ
+  - en: Team Rocket's Proton
+    ja: ロケット団のランス
+  - en: Team Star Grunt
+    ja: スター団のしたっぱ
+  - en: Tulip
+    ja: リップ
+  - en: Tyme
+    ja: タイム
+  - en: Xerosic's Machinations
+    ja: クセロシキのたくらみ
+  # ── 支援者（旧标，高置信度竞技名）──
+  - en: Acerola
+    ja: アセロラ
+  - en: Bill's Analysis
+    ja: マサキの解析
+  - en: Bill's Maintenance
+    ja: マサキのメンテナンス
+  - en: Bird Keeper
+    ja: とりつかい
+  - en: Brock's Grit
+    ja: タケシのガッツ
+  - en: Copycat
+    ja: モノマネむすめ
+  - en: Cynthia
+    ja: シロナ
+  - en: Cyllene
+    ja: シマボシ
+  - en: Giovanni's Exile
+    ja: サカキの追放
+  - en: Gladion
+    ja: グラジオ
+  - en: Guzma
+    ja: グズマ
+  - en: Hala
+    ja: ハラ
+  - en: Hapu
+    ja: ハプウ
+  - en: Irida
+    ja: ハマナのバックアップ
+  - en: Janine
+    ja: キョウ
+  - en: Kahili
+    ja: カヒリ
+  - en: Kiawe
+    ja: カキ
+  - en: Lana
+    ja: スイレン
+  - en: Leon
+    ja: ダンデ
+  - en: Lillie
+    ja: リーリエ
+  - en: Looker
+    ja: ハンサム
+  - en: Lusamine
+    ja: ルザミーネ
+  - en: Mallow
+    ja: マオ
+  - en: Marnie
+    ja: マリィ
+  - en: Mina
+    ja: マツリカ
+  - en: Miss Fortune Sisters
+    ja: 野盗三姉妹
+  - en: Molayne
+    ja: マーレイン
+  - en: Morty
+    ja: マツバ
+  - en: N's Resolve
+    ja: Nの覚悟
+  - en: Nanu
+    ja: クチナシ
+  - en: Olivia
+    ja: ライチ
+  - en: Piers
+    ja: ネズ
+  - en: Plumeria
+    ja: プルメリ
+  - en: Professor Elm's Lecture
+    ja: ウツギ博士のレクチャー
+  - en: Professor Kukui
+    ja: ククイ博士
+  - en: Raihan
+    ja: キバナ
+  - en: Red's Challenge
+    ja: レッドの挑戦
+  - en: Rosa
+    ja: メイ
+  - en: Sabrina's Suggestion
+    ja: ナツメの暗示
+  - en: Sophocles
+    ja: マーマネ
+  - en: Thorton
+    ja: ネジキ
+  - en: Volkner
+    ja: デンジ
+  - en: Welder
+    ja: 溶接工
+  - en: Wicke
+    ja: ビッケ
+  - en: Will
+    ja: イツキ
+  # ── 物品（G/H/I 期）──
+  - en: Antique Cover Fossil
+    ja: 古びたふたの化石
+  - en: Antique Dome Fossil
+    ja: 古びたこうらの化石
+  - en: Antique Helix Fossil
+    ja: 古びたかいの化石
+  - en: Antique Old Amber
+    ja: 古びたひみつのコハク
+  - en: Antique Root Fossil
+    ja: 古びたねっこの化石
+  - en: Awakening Drum
+    ja: 覚醒のドラム
+  - en: Boxed Order
+    ja: おとりよせボックス
+  - en: Bug Catching Set
+    ja: むしとりセット
+  - en: Buddy-Buddy Poffin
+    ja: なかよしポフィン
+  - en: Call Bell
+    ja: おたすけベル
+  - en: Counter Catcher
+    ja: カウンターキャッチャー
+  - en: Crushing Hammer
+    ja: クラッシュハンマー
+  - en: Dangerous Laser
+    ja: デンジャラス光線
+  - en: Delivery Drone
+    ja: おとどけドローン
+  - en: Deluxe Bomb
+    ja: デラックスボム
+  - en: Dragon Elixir
+    ja: 竜の秘薬
+  - en: Dusk Ball
+    ja: ダークボール
+  - en: Earthen Vessel
+    ja: 大地の器
+  - en: Electric Generator
+    ja: エレキジェネレーター
+  - en: Energy Recycler
+    ja: エネルギーリサイクル
+  - en: Energy Retrieval
+    ja: エネルギー回収
+  - en: Energy Search
+    ja: エネルギーサーチ
+    tcgdex_gap: true
+    note: 官方实有（SV 期），TCGdex JA 2026-08-14 快照缺席
+  - en: Energy Search Pro
+    ja: エネルギーサーチプロ
+    tcgdex_gap: true
+    note: 官方实有（SV 期），TCGdex JA 2026-08-14 快照缺席
+  - en: Energy Sticker
+    ja: エネルギーシール
+  - en: Energy Switch
+    ja: エネルギーつけかえ
+    note: 名字级取 SV 期名（官方样本证实）；SM 期旧名 エネルギースイッチ
+  - en: Enhanced Hammer
+    ja: 改造ハンマー
+  - en: Fighting Au Lait
+    ja: ファイトオレ
+  - en: Glass Trumpet
+    ja: ガラスのラッパ
+  - en: Great Ball
+    ja: スーパーボール
+  - en: Hand Trimmer
+    ja: ハンドトリマー
+  - en: Handheld Fan
+    ja: ハンディサーキュレーター
+  - en: Hop's Bag
+    ja: ホップのバッグ
+  - en: Hyper Aroma
+    ja: ハイパーアロマ
+  - en: Love Ball
+    ja: ラブラブボール
+  - en: Master Ball
+    ja: マスターボール
+  - en: Megaton Blower
+    ja: メガトンブロアー
+  - en: Miracle Headset
+    ja: ミラクルインカム
+  - en: N's PP Up
+    ja: Nのポイントアップ
+  - en: Nest Ball
+    ja: ネストボール
+  - en: Night Stretcher
+    ja: 夜のタンカ
+  - en: Pal Pad
+    ja: ともだちてちょう
+  - en: Picnic Basket
+    ja: ピクニックバスケット
+  - en: Poké Ball
+    ja: モンスターボール
+  - en: Poké Vital A
+    ja: ポケバイタルA
+  - en: Pokégear 3.0
+    ja: ポケギア3.0
+  - en: Pokémon Catcher
+    ja: ポケモンキャッチャー
+  - en: Potion
+    ja: きずぐすり
+  - en: Precious Trolley
+    ja: プレシャスキャリー
+    note: ACE SPEC 本体名（deck 页后缀剥离后命中）
+  - en: Prime Catcher
+    ja: プライムキャッチャー
+  - en: Rare Candy
+    ja: ふしぎなアメ
+  - en: Reboot Pod
+    ja: リブートポッド
+  - en: Sacred Ash
+    ja: せいなるはい
+  - en: Secret Box
+    ja: シークレットボックス
+    note: ACE SPEC 本体名
+  - en: Snorlax Doll
+    ja: カビゴンドール
+  - en: Super Potion
+    ja: いいきずぐすり
+  - en: Super Rod
+    ja: すごいつりざお
+  - en: Superior Energy Retrieval
+    ja: スーパーエネルギー回収
+  - en: Switch
+    ja: ポケモンいれかえ
+  - en: TM Machine
+    ja: わざマシンマシン
+  - en: Team Rocket's Bother-Bot
+    ja: ロケット団のおじゃまロボ
+  - en: Team Rocket's Great Ball
+    ja: ロケット団のスーパーボール
+  - en: Team Rocket's Transceiver
+    ja: ロケット団のレシーバー
+  - en: Team Rocket's Venture Bomb
+    ja: ロケット団のびっくりボム
+  - en: Techno Radar
+    ja: テクノレーダー
+  - en: Tera Orb
+    ja: テラスタルオーブ
+  - en: Ultra Ball
+    ja: ハイパーボール
+  - en: Unfair Stamp
+    ja: アンフェアスタンプ
+    note: ACE SPEC 本体名
+  # ── 物品（旧标，高置信度竞技名）──
+  - en: Accompanying Flute
+    ja: おはやし笛
+  - en: Air Balloon
+    ja: ふうせん
+  - en: Capturing Aroma
+    ja: キャプチャーアロマ
+  - en: Chaotic Swell
+    ja: 混沌のうねり
+  - en: Echoing Horn
+    ja: やまびこホーン
+  - en: Escape Board
+    ja: エスケープボード
+  - en: Evolution Incense
+    ja: しんかのおこう
+  - en: Fog Crystal
+    ja: 霧の水晶
+  - en: Hisuian Heavy Ball
+    ja: ヒスイのヘビーボール
+  - en: Level Ball
+    ja: レベルボール
+  - en: Lost Vacuum
+    ja: ロストスイーパー
+  - en: Ordinary Rod
+    ja: ふつうのつりざお
+  - en: Reset Stamp
+    ja: リセットスタンプ
+  - en: Switch Cart
+    ja: いれかえカート
+    tcgdex_gap: true
+    note: 官方实有（S8b 期），TCGdex JA 2026-08-14 快照缺席
+  - en: Team Yell's Cheer
+    ja: エール団の応援
+    tcgdex_gap: true
+    note: 官方实有（S2 期），TCGdex JA 2026-08-14 快照缺席
+  - en: Tool Scrapper
+    ja: ツールスクラッパー
+  - en: Trekking Shoes
+    ja: トレッキングシューズ
+  - en: Viridian Forest
+    ja: トキワの森
+  # ── 宝可梦道具 ──
+  - en: Amulet of Hope
+    ja: 希望のアミュレット
+  - en: Ancient Booster Energy Capsule
+    ja: ブーストエナジー 古代
+  - en: Big Air Balloon
+    ja: 大きなふうせん
+  - en: Binding Mochi
+    ja: くさりもち
+  - en: Bravery Charm
+    ja: 勇気のおまもり
+  - en: Choice Band
+    ja: こだわりハチマキ
+  - en: Choice Belt
+    ja: こだわりベルト
+  - en: Counter Gain
+    ja: カウンターゲイン
+    cn: 反击增幅器
+    note: name_en 一对多（胜利勋章桥字段疑点）→ cn 消歧
+  - en: Cynthia's Power Weight
+    ja: シロナのパワーウエイト
+  - en: Defiance Band
+    ja: まけんきハチマキ
+  - en: Exp. Share
+    ja: 学習装置
+  - en: Float Stone
+    ja: かるいし
+  - en: Forest Seal Stone
+    ja: 森の封印石
+  - en: Future Booster Energy Capsule
+    ja: ブーストエナジー 未来
+  - en: Haban Berry
+    ja: ハバンのみ
+  - en: Heavy Baton
+    ja: ヘビーバトン
+  - en: Hero's Cape
+    ja: ヒーローマント
+  - en: Hop's Choice Band
+    ja: ホップのこだわりハチマキ
+  - en: Leftovers
+    ja: たべのこし
+  - en: Lillie's Pearl
+    ja: リーリエのしんじゅ
+  - en: Lucky Helmet
+    ja: ラッキーメット
+  - en: Luxurious Cape
+    ja: ゴージャスマント
+  - en: Maximum Belt
+    ja: マキシマムベルト
+    note: ACE SPEC 本体名
+  - en: Muscle Band
+    ja: ちからのハチマキ
+  - en: Occa Berry
+    ja: オッカのみ
+  - en: Ogre's Mask
+    ja: 鬼の仮面
+  - en: Patrol Cap
+    ja: パトロールキャップ
+  - en: Powerglass
+    ja: パワーグラス
+    tcgdex_gap: true
+    note: ACE SPEC 本体名；官方实有，TCGdex JA 2026-08-14 快照缺席
+  - en: Protective Goggles
+    ja: 安全ゴーグル
+  - en: Rescue Board
+    ja: 緊急ボード
+  - en: Rocky Helmet
+    ja: ゴツゴツメット
+  - en: Sparkling Crystal
+    ja: きらめく結晶
+    note: ACE SPEC 本体名
+  - en: "Technical Machine: Blindside"
+    ja: ワザマシン やみうち
+  - en: "Technical Machine: Crisis Punch"
+    ja: ワザマシン かじばのいっぱつ
+  - en: "Technical Machine: Devolution"
+    ja: ワザマシン デヴォリューション
+  - en: "Technical Machine: Evolution"
+    ja: ワザマシン エヴォリューション
+  - en: "Technical Machine: Fluorite"
+    ja: ワザマシン フローライト
+  - en: "Technical Machine: Turbo Energize"
+    ja: ワザマシン エナジーターボ
+  - en: Tool Box
+    ja: ツールボックス
+  - en: Vengeful Punch
+    ja: リベンジパンチ
+  - en: Vitality Band
+    ja: げんきのハチマキ
+  # ── 竞技场 ──
+  - en: Academy at Night
+    ja: 夜のアカデミー
+  - en: Area Zero Underdepths
+    ja: ゼロの大空洞
+  - en: Artazon
+    ja: ボウルタウン
+  - en: Beach Court
+    ja: ビーチコート
+  - en: Calamitous Snowy Mountain
+    ja: 災いの雪山
+  - en: Calamitous Wasteland
+    ja: 災いの荒野
+  - en: Community Center
+    ja: 公民館
+  - en: Cycling Road
+    ja: サイクリングロード
+  - en: Festival Grounds
+    ja: お祭り会場
+  - en: Full Metal Lab
+    ja: フルメタルラボ
+  - en: Gravity Mountain
+    ja: グラビティーマウンテン
+  - en: Jamming Tower
+    ja: ジャミングタワー
+  - en: Levincia
+    ja: ハッコウシティ
+  - en: Mesagoza
+    ja: テーブルシティ
+  - en: Moonlit Hill
+    ja: 月明かりの丘
+  - en: N's Castle
+    ja: Nの城
+  - en: Neutralization Zone
+    ja: ニュートラルセンター
+  - en: Perilous Jungle
+    ja: 危険な密林
+  - en: Pokémon League Headquarters
+    ja: ポケモンリーグ本部
+  - en: Postwick
+    ja: ハロンタウン
+  - en: Practice Studio
+    ja: レッスンスタジオ
+  - en: Team Rocket's Factory
+    ja: ロケット団のファクトリー
+  - en: Team Rocket's Watchtower
+    ja: ロケット団の監視塔
+  - en: Temple of Sinnoh
+    ja: シンオウ神殿
+  - en: Town Store
+    ja: タウンデパート
+  # ── 特殊能量 ──
+  - en: Boomerang Energy
+    ja: ブーメランエネルギー
+  - en: Double Turbo Energy
+    ja: ダブルターボエネルギー
+  - en: Enriching Energy
+    ja: リッチエネルギー
+  - en: Gift Energy
+    ja: ギフトエネルギー
+  - en: Jet Energy
+    ja: ジェットエネルギー
+  - en: Legacy Energy
+    ja: レガシーエネルギー
+  - en: Luminous Energy
+    ja: ルミナスエネルギー
+  - en: Medical Energy
+    ja: メディカルエネルギー
+  - en: Mist Energy
+    ja: ミストエネルギー
+  - en: Neo Upper Energy
+    ja: ネオアッパーエネルギー
+  - en: Reversal Energy
+    ja: リバーサルエネルギー
+  - en: Spiky Energy
+    ja: スパイクエネルギー
+  - en: Team Rocket's Energy
+    ja: ロケット団エネルギー
+  - en: Therapeutic Energy
+    ja: セラピーエネルギー

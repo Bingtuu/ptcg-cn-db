@@ -318,6 +318,28 @@ def map_ja(
     typer.echo(f"报告: {path}")
 
 
+@app.command("map-ja-trainer")
+def map_ja_trainer(
+    db_path: Path = DEFAULT_DB_PATH,
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    out_dir: Path = Path("reports"),
+) -> None:
+    """trainer/特殊能量 name_ja 词表回填（task 036，幂等；校验锚 = TCGdex JA 名表）。"""
+    from ptcgdb.mapping.ja_trainer import fill_ja_trainer
+    from ptcgdb.mapping.report import write_ja_trainer_report
+
+    result = fill_ja_trainer(db_path, raw_dir)
+    path = write_ja_trainer_report(result, out_dir)
+    typer.echo(
+        f"name_ja={result.name_ja_filled} conflicts={len(result.conflicts)} "
+        f"vocab_unused={len(result.vocab_unused)} "
+        f"questions={sum(len(v) for v in result.questions.values())}"
+    )
+    for category in sorted(result.questions):
+        typer.echo(f"  {category}: {len(result.questions[category])}")
+    typer.echo(f"报告: {path}")
+
+
 @app.command("map-tera")
 def map_tera(
     db_path: Path = DEFAULT_DB_PATH,
