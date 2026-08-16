@@ -448,6 +448,26 @@ SEED_CASES = [
         "attack",
         {"spread"},
     ),
+    # 大食花 胃液（lock：特性消除无"全部"变体，CSM2DC 唯一实证）
+    (
+        "在下一个自己的回合结束前，受到这个招式影响的宝可梦所拥有的特性消除。",
+        "attack",
+        {"lock"},
+    ),
+    # 黑夜魔灵 灵魂漂白（lock：效果全部消除无逗号变体；modifier 供能视作共命中属口径内）
+    (
+        "只要这只宝可梦在场上，双方场上宝可梦身上附有的特殊能量的效果全部消除，"
+        "被视作1个【无】能量。",
+        "ability",
+        {"lock"},
+    ),
+    # 急冻鸟GX 极寒粉碎GX（energy_disrupt：双方锚定，CSM1cC 唯一实证）
+    (
+        "将附着于双方战斗宝可梦身上的能量，全部放于弃牌区。"
+        "[对战中，己方的GX招式只能使用1次。]",
+        "attack",
+        {"energy_disrupt"},
+    ),
     # 招式学习器 临危一击（special_behavior：body 措辞承载，text 无"学习器"字样）
     (
         "身上放有这张卡牌的宝可梦，可以使用这张卡牌上的招式。"
@@ -472,23 +492,30 @@ def test_variable_damage_no_boost():
 
 
 def test_draw_from_deck_top_not_search():
-    """「从自己牌库上/下方抽取N张」是抽牌不是检索（search 收窄负向锚）。"""
-    assert "search" not in match_tags(
-        "从自己牌库上方抽取3张卡牌。", REAL_TAGS, "attack"
-    )
-    assert "search" not in match_tags(
+    """「从自己牌库上/下方抽取N张」是抽牌不是检索（search 收窄负向锚 + draw 正向锚）。"""
+    hits_top = match_tags("从自己牌库上方抽取3张卡牌。", REAL_TAGS, "attack")
+    assert "draw" in hits_top and "search" not in hits_top
+    hits_bottom = match_tags(
         "从自己牌库下方抽取3张卡牌。", REAL_TAGS, "attack"  # 虫甲圣ex 颠倒抽取
     )
+    assert "draw" in hits_bottom and "search" not in hits_bottom
 
 
 def test_attached_energy_possessive_not_accel():
-    """「身上附着的N个能量」是已有能量描述（多为自付代价/条件），不是能量加速。"""
+    """「身上附着的N个能量」是已有能量描述（多为自付代价/条件），不是能量加速。
+
+    该文本属"无需打标"类（自付代价弃置），零意图标签即正确终态，
+    负向断言即全部契约，无正向标签可断言。
+    """
     text_ = "将这只宝可梦身上附着的2个能量放于弃牌区，给对手的1只宝可梦，造成120伤害。"
     assert "energy_accel" not in match_tags(text_, REAL_TAGS, "attack")
 
 
 def test_self_energy_cost_not_disrupt():
-    """自付代价型弃置（自己能量放于弃牌区）不打 energy_disrupt（收窄负向锚）。"""
+    """自付代价型弃置（自己能量放于弃牌区）不打 energy_disrupt（收窄负向锚）。
+
+    同上：该文本属"无需打标"类，零意图标签即正确终态。
+    """
     text_ = "将这只宝可梦身上附着的能量，全部放于弃牌区。"  # 大吾的念力土偶 黏土爆破
     assert "energy_disrupt" not in match_tags(text_, REAL_TAGS, "attack")
 
@@ -504,17 +531,20 @@ def test_retreat_cost_removal_not_lock():
 
 
 def test_counter_reference_not_spread():
-    """计数/条件引用已有伤害指示物（非放置动作）不打 spread（收窄负向锚）。"""
+    """计数/条件引用已有伤害指示物（非放置动作）不打 spread（收窄负向锚+正向锚）。"""
+    # 嘟嘟利 愤怒之喙：纯计数型变量伤害，零意图标签即正确终态（负向断言即全部契约）
     assert "spread" not in match_tags(
-        "追加造成这只宝可梦身上放置的伤害指示物数量×30伤害。",  # 嘟嘟利 愤怒之喙
+        "追加造成这只宝可梦身上放置的伤害指示物数量×30伤害。",
         REAL_TAGS,
         "attack",
     )
-    assert "spread" not in match_tags(
-        "如果这只宝可梦身上放置有伤害指示物的话，则追加造成100伤害。",  # 喷火龙ex 英勇之翼
+    # 喷火龙ex 英勇之翼：条件引用不打 spread，但条件追加固定伤害应命中 damage_boost
+    hits = match_tags(
+        "如果这只宝可梦身上放置有伤害指示物的话，则追加造成100伤害。",
         REAL_TAGS,
         "attack",
     )
+    assert "damage_boost" in hits and "spread" not in hits
 
 
 FLAG_CASES = [
