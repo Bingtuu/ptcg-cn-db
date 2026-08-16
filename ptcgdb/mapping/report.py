@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ptcgdb.mapping.effect_tags import ScanReport
 from ptcgdb.mapping.en import EnFillResult
 from ptcgdb.mapping.ja import JaFillResult
 from ptcgdb.mapping.ja_trainer import JaTrainerFillResult
@@ -236,6 +237,49 @@ def write_ja_trainer_report(result: JaTrainerFillResult, out_dir: Path) -> Path:
         lines += ["", "## 冲突清单（保留原值）", ""]
         for card_id in result.conflicts:
             lines.append(f"- `{card_id}`")
+    lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def write_scan_report(result: ScanReport, out_dir: Path) -> Path:
+    """效果标签词表命中率报告（task 038）。
+
+    分标签命中 + 多命中审视 + 零命中清单（如实记录，不猜测）。
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d")
+    path = out_dir / f"tag-effects-scan-{stamp}.md"
+    pct = f"{result.covered / result.total:.1%}" if result.total > 0 else "N/A"
+    lines = [
+        f"# 效果标签词表命中率报告（{stamp}）",
+        "",
+        f"- 卡池：{result.label}",
+        f"- distinct 效果文本：{result.total}",
+        f"- 有意图标签命中：{result.covered}（{pct}）",
+        f"- 多重命中（≥3 标签，分歧审视）：{len(result.multi_hits)}",
+        f"- 零命中（待人工归类）：{len(result.zero_hits)}",
+        "",
+        "## 分标签命中数",
+        "",
+        "| 标签 | 命中文本数 |",
+        "|---|---|",
+    ]
+    for tag, n in sorted(result.tag_hits.items(), key=lambda kv: -kv[1]):
+        lines.append(f"| {tag} | {n} |")
+    lines += ["", "## 机制 flag 命中数", "", "| flag | 命中文本数 |", "|---|---|"]
+    for flag, n in sorted(result.flag_hits.items(), key=lambda kv: -kv[1]):
+        lines.append(f"| {flag} | {n} |")
+    lines += ["", "## 多重命中清单（≥3 标签，人工审视是否误标）", ""]
+    for t, hits in result.multi_hits:
+        lines.append(f"- {', '.join(hits)} :: {t.replace(chr(10), ' / ')}")
+    lines += [
+        "",
+        "## 零命中清单（逐条人工归类：旧标签新措辞 / 新意图类别 / 无需打标）",
+        "",
+    ]
+    for z in result.zero_hits:
+        lines.append(f"- [{z.kind}] {z.who} :: {z.text.replace(chr(10), ' / ')}")
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path

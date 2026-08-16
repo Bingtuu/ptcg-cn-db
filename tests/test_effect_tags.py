@@ -1,17 +1,23 @@
 """task 038 效果标签词表 loader + matcher（PRD v1.22 §6.4，spec 2026-08-16）。"""
 
+import json
 from pathlib import Path
 
 import pytest
 import yaml
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 from ptcgdb.mapping.effect_tags import (
     EffectFlagEntry,
     EffectTagEntry,
+    TextItem,
     VocabError,
+    iter_card_texts,
     load_effect_vocab,
     match_flags,
     match_tags,
+    scan_texts,
 )
 
 
@@ -278,3 +284,76 @@ FLAG_CASES = [
 @pytest.mark.parametrize("text_,expected", FLAG_CASES)
 def test_flag_cases_real_vocab(text_, expected):
     assert expected <= set(match_flags(text_, REAL_FLAGS))
+
+
+# ── 命中率评测 harness（Task 5） ──
+
+
+def _mk_db(tmp_path: Path):
+    eng = create_engine(f"sqlite:///{tmp_path}/t.db")
+    ddl = (
+        "CREATE TABLE cards (card_id TEXT PRIMARY KEY, name_full TEXT, card_type TEXT,"
+        " text_raw TEXT, attacks TEXT, abilities TEXT, set_id TEXT, status TEXT)"
+    )
+    rows = [
+        (
+            "T1", "夜间担架", "trainer",
+            "选择自己弃牌区中的1张宝可梦，加入手牌。",
+            None, None, "CSV9C", "active",
+        ),
+        (
+            "P1", "弃世猴", "pokemon", None,
+            json.dumps(
+                [{"name": "同命战斗", "effect_text": "令双方的战斗宝可梦【昏厥】。"}],
+                ensure_ascii=False,
+            ),
+            json.dumps([{"name": "气魄", "text": "特性旧字段文本。"}], ensure_ascii=False),
+            "CSV9C", "active",
+        ),
+        (
+            "E1", "火箭队能量", "energy",
+            "这张卡牌，视作2个【超】能量。",
+            None, None, "CSV10C", "active",
+        ),
+        ("D1", "草稿卡", "trainer", "不应出现。", None, None, "CSV9C", "draft"),
+    ]
+    with eng.begin() as c:
+        c.execute(text(ddl))
+        for r in rows:
+            c.execute(
+                text("INSERT INTO cards VALUES (:a,:b,:c,:d,:e,:f,:g,:h)"),
+                {"a": r[0], "b": r[1], "c": r[2], "d": r[3],
+                 "e": r[4], "f": r[5], "g": r[6], "h": r[7]},
+            )
+    return eng
+
+
+def test_iter_card_texts(tmp_path):
+    eng = _mk_db(tmp_path)
+    with Session(eng) as s:
+        items = iter_card_texts(s)
+    by_kind = {(i.kind, i.who): i.text for i in items}
+    assert ("trainer", "夜间担架") in by_kind
+    assert ("attack", "弃世猴/同命战斗") in by_kind
+    assert ("ability", "弃世猴/气魄") in by_kind  # abilities 旧字段 text 兼容
+    assert ("energy", "火箭队能量") in by_kind
+    assert not any(i.who == "草稿卡" for i in items)  # status != active 排除
+    with Session(eng) as s:
+        only = iter_card_texts(s, only_ids={"T1"})
+        assert len(only) == 1 and only[0].who == "夜间担架"
+        assert {i.who for i in iter_card_texts(s, sets={"CSV10C"})} == {"火箭队能量"}
+
+
+def test_scan_texts_dedupe_zero_and_flags():
+    tags = [EffectTagEntry(tag="draw", cn="抽牌", patterns=(r"抽\d*张",))]
+    flags = [EffectFlagEntry(flag="coin_flip", cn="硬币", patterns=("硬币",))]
+    items = [
+        TextItem("trainer", "A", "抽2张卡。"),
+        TextItem("trainer", "B", "抽2张卡。"),  # 重复文本去重
+        TextItem("attack", "C/招式", "掷1次硬币。"),  # flag 命中、意图零命中
+    ]
+    rep = scan_texts(items, tags, flags, label="t")
+    assert rep.total == 2 and rep.covered == 1
+    assert rep.tag_hits == {"draw": 1}
+    assert rep.flag_hits == {"coin_flip": 1}
+    assert len(rep.zero_hits) == 1 and rep.zero_hits[0].who == "C/招式"

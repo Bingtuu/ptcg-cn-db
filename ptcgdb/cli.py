@@ -370,6 +370,37 @@ def map_tera(
     typer.echo(f"报告: {path}")
 
 
+@app.command("tag-effects-scan")
+def tag_effects_scan(
+    day: str | None = None,
+    fmt: str = "standard",
+    sets: str | None = None,
+    all_cards: bool = typer.Option(False, "--all", help="全库 active 卡（不做环境/系列过滤）"),
+    db_path: Path = DEFAULT_DB_PATH,
+    out_dir: Path = Path("reports"),
+) -> None:
+    """效果标签词表命中率评测（task 038，只读零写入；默认 standard 当前环境卡池）。"""
+    from datetime import date as _date
+
+    from ptcgdb.mapping.effect_tags import run_scan
+    from ptcgdb.mapping.report import write_scan_report
+
+    d = _date.fromisoformat(day) if day else None
+    set_list = [s.strip() for s in sets.split(",")] if sets else None
+    result = run_scan(
+        db_path,
+        fmt=None if all_cards else fmt,
+        day=d,
+        sets=set_list,
+    )
+    path = write_scan_report(result, out_dir)
+    typer.echo(
+        f"texts={result.total} covered={result.covered} "
+        f"multi={len(result.multi_hits)} zero={len(result.zero_hits)}"
+    )
+    typer.echo(f"报告: {path}")
+
+
 @app.command("seed-face-totals")
 def seed_face_totals(
     db_path: Path = DEFAULT_DB_PATH,
