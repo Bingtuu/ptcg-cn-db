@@ -172,7 +172,8 @@ class ScanReport:
     covered: int  # 有意图标签命中的文本数
     tag_hits: dict[str, int]  # 标签 → 命中文本数
     flag_hits: dict[str, int]
-    multi_hits: tuple[tuple[str, tuple[str, ...]], ...]  # ≥3 标签的多重命中（分歧审视）
+    # ≥3 标签的多重命中（分歧审视）：(who, text, hits)
+    multi_hits: tuple[tuple[str, str, tuple[str, ...]], ...]
     zero_hits: tuple[ZeroHit, ...]
 
 
@@ -184,6 +185,9 @@ def scan_texts(
     label: str,
 ) -> ScanReport:
     """distinct 文本逐条跑词表：分标签计数 + 多命中/零命中清单（不猜，如实浮出）。"""
+    # dedupe 保留首见 kind：同一文本跨 kind 去重时以先出现的段落为准。
+    # 当前词表零 scope 限定标签故无影响，引入 scope 标签前需重估此假设
+    #（task 039 标注器按分段打标不受此限）。
     seen: dict[str, TextItem] = {}
     for it in items:
         t = it.text.strip()
@@ -192,7 +196,7 @@ def scan_texts(
     tag_hits = {e.tag: 0 for e in tags}
     flag_hits = {f.flag: 0 for f in flags}
     covered = 0
-    multi: list[tuple[str, tuple[str, ...]]] = []
+    multi: list[tuple[str, str, tuple[str, ...]]] = []
     zero: list[ZeroHit] = []
     for t, it in seen.items():
         hits = match_tags(t, tags, it.kind)
@@ -203,7 +207,7 @@ def scan_texts(
             for h in hits:
                 tag_hits[h] += 1
             if len(hits) >= 3:
-                multi.append((t, hits))
+                multi.append((it.who, t, hits))
         else:
             zero.append(ZeroHit(kind=it.kind, who=it.who, text=t))
     return ScanReport(

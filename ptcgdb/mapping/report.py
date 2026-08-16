@@ -1,5 +1,6 @@
 """映射覆盖率报告（task 022/023/024 共用）。"""
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -249,7 +250,8 @@ def write_scan_report(result: ScanReport, out_dir: Path) -> Path:
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d")
-    path = out_dir / f"tag-effects-scan-{stamp}.md"
+    slug = re.sub(r"[^0-9A-Za-z一-鿿]+", "-", result.label).strip("-")[:40].strip("-")
+    path = out_dir / f"tag-effects-scan-{slug}-{stamp}.md"
     pct = f"{result.covered / result.total:.1%}" if result.total > 0 else "N/A"
     lines = [
         f"# 效果标签词表命中率报告（{stamp}）",
@@ -271,8 +273,8 @@ def write_scan_report(result: ScanReport, out_dir: Path) -> Path:
     for flag, n in sorted(result.flag_hits.items(), key=lambda kv: -kv[1]):
         lines.append(f"| {flag} | {n} |")
     lines += ["", "## 多重命中清单（≥3 标签，人工审视是否误标）", ""]
-    for t, hits in result.multi_hits:
-        lines.append(f"- {', '.join(hits)} :: {t.replace(chr(10), ' / ')}")
+    for who, t, hits in result.multi_hits:
+        lines.append(f"- {who} :: {', '.join(hits)} :: {t.replace(chr(10), ' / ')}")
     lines += [
         "",
         "## 零命中清单（逐条人工归类：旧标签新措辞 / 新意图类别 / 无需打标）",

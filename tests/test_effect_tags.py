@@ -356,4 +356,5 @@ def test_scan_texts_dedupe_zero_and_flags():
     assert rep.total == 2 and rep.covered == 1
     assert rep.tag_hits == {"draw": 1}
     assert rep.flag_hits == {"coin_flip": 1}
+    assert rep.multi_hits == ()
     assert len(rep.zero_hits) == 1 and rep.zero_hits[0].who == "C/招式"

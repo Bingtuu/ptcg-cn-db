@@ -385,7 +385,12 @@ def tag_effects_scan(
     from ptcgdb.mapping.effect_tags import run_scan
     from ptcgdb.mapping.report import write_scan_report
 
-    d = _date.fromisoformat(day) if day else None
+    if all_cards and sets:
+        raise typer.BadParameter("--all 与 --sets 互斥")
+    try:
+        d = _date.fromisoformat(day) if day else None
+    except ValueError:
+        raise typer.BadParameter(f"日期须为 ISO 格式 YYYY-MM-DD: {day}") from None
     set_list = [s.strip() for s in sets.split(",")] if sets else None
     result = run_scan(
         db_path,
