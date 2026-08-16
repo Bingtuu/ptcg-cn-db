@@ -253,6 +253,7 @@ SEED_CASES = [
 ]
 
 
+# 断言语意 = 期望标签 ⊆ 实际命中（多标签容错）；当前 24 例实际命中恰等于期望集。
 @pytest.mark.parametrize("text_,kind,expected", SEED_CASES)
 def test_seed_cases_real_vocab(text_, kind, expected):
     assert expected <= set(match_tags(text_, REAL_TAGS, kind))
