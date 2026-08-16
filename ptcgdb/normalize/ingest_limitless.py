@@ -168,7 +168,7 @@ def ingest_limitless(
     db_path = Path(db_path)
     tier_map = load_tier_map(vocab_dir or VOCAB_DIR)
     env_calendar = load_calendar()
-    window = alignment_window(env_calendar) if enforce_window else None
+    window = alignment_window(calendar=env_calendar) if enforce_window else None
     result = LimitlessIngestResult()
 
     base = raw_dir / RAW_SUBDIR / TOURNAMENTS_DIR

@@ -9,11 +9,12 @@
 from datetime import date, datetime
 from pathlib import Path
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
-from ptcgdb.normalize.envs import derive_env, load_calendar
+from ptcgdb.normalize.envs import alignment_window, derive_env, load_calendar
 from ptcgdb.normalize.ingest_tourneys import ingest_tourneys
 from ptcgdb.orm import Card, Set, Tournament
 from ptcgdb.scrapers.mikmoe_tournament import (
@@ -67,6 +68,71 @@ def test_derive_env_none_inputs():
     assert derive_env("cn", None, CAL) is None
     assert derive_env(None, date(2026, 8, 1), CAL) is None
     assert derive_env("unknown_region", date(2026, 8, 1), CAL) is None
+
+
+# ---- alignment_window 泛化（task 037 T4，PRD v1.21：region 参数 + 超集匹配）----
+
+
+def test_alignment_window_default_is_en_unchanged():
+    # 默认 region=en，既有调用行为零漂移（种子真值回归：G/H/I 段）
+    assert alignment_window() == (date(2025, 4, 11), date(2026, 4, 9))
+    assert alignment_window("en") == alignment_window()
+    assert alignment_window(region="en", calendar=CAL) == alignment_window()
+
+
+def test_alignment_window_ja_seed_truth():
+    # JA 窗口 = GHI 段（2025-01-24~2025-12-18）+ GHIJ 过渡段（2025-12-19~2026-01-22）
+    # 超集匹配：CN 当前段 GHI ⊆ GHIJ，过渡期 GHI 卡组仍可复现简中环境
+    assert alignment_window("ja") == (date(2025, 1, 24), date(2026, 1, 22))
+
+
+def test_alignment_window_ja_right_bounded():
+    # JA 入窗两段均有 effective_to → 右端有界；HIJ 段（GHI⊄HIJ）不入窗
+    _start, end = alignment_window(region="ja", calendar=CAL)
+    assert end == date(2026, 1, 22)
+
+
+def test_alignment_window_unknown_region_raises():
+    # region 无段 → ValueError，错误信息带 region 名（不猜）
+    with pytest.raises(ValueError, match="xx"):
+        alignment_window("xx")
+
+
+def test_alignment_window_superset_semantics():
+    # 超集语义单元：赛区段 [X,Y] ⊇ CN 当前段 [X] → 入窗；[Y] 不含 X → 不入窗
+    calendar = {
+        "cn": {"segments": [{"effective_from": "2026-01-01", "allowed_marks": ["X"]}]},
+        "en": {
+            "segments": [
+                {
+                    "effective_from": "2025-06-01",
+                    "effective_to": "2025-12-31",
+                    "allowed_marks": ["X", "Y"],
+                },
+                {
+                    "effective_from": "2024-01-01",
+                    "effective_to": "2024-12-31",
+                    "allowed_marks": ["Y"],
+                },
+            ]
+        },
+    }
+    assert alignment_window(calendar=calendar) == (date(2025, 6, 1), date(2025, 12, 31))
+
+
+def test_alignment_window_ja_unbounded_right_raises():
+    # JA 入窗段全部无 effective_to → 右端无界，拒绝猜测（错误信息带 region 名）
+    calendar = {
+        "cn": {"segments": [{"effective_from": "2026-01-01", "allowed_marks": ["G", "H", "I"]}]},
+        "ja": {
+            "segments": [
+                {"effective_from": "2025-01-24", "allowed_marks": ["G", "H", "I"]},
+                {"effective_from": "2025-12-19", "allowed_marks": ["G", "H", "I", "J"]},
+            ]
+        },
+    }
+    with pytest.raises(ValueError, match="ja"):
+        alignment_window("ja", calendar)
 
 
 # ---- ingest 集成：env 落库 + 交叉校验 ----

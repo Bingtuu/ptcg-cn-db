@@ -5,7 +5,8 @@ top_n 默认 64 与 top64 对齐）+ deck-static-by-tour → 每卡组 deck/deta
 全部落 raw（append-only：raw 文件存在且 hash 有效即跳过，零请求断点续传；
 force=True 重抓）。三清单 + scrape_runs 复用 runner.finish_run。
 
-熔断（CircuitOpenError）立即中止本轮，已抓产物保留，status=aborted。
+熔断（CircuitOpenError）立即中止本轮，已抓产物保留，status=aborted；网络错误
+重试耗尽（TransientHttpError）同口径 aborted 保清单落盘（task 037 T8 清偿）。
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from ptcgdb.scrapers import mikmoe
-from ptcgdb.scrapers.http import CircuitOpenError
+from ptcgdb.scrapers.http import CircuitOpenError, TransientHttpError
 from ptcgdb.scrapers.mikmoe import MikMoeApiError
 from ptcgdb.scrapers.mikmoe_tournament import (
     DEFAULT_PAGE_SIZE,
@@ -75,6 +76,9 @@ class TournamentScrapeRunner:
                     continue
                 self._scrape_series(int(sid), state, max_tournaments, top_n, force=force)
         except CircuitOpenError:
+            stats.aborted = True
+        except TransientHttpError:
+            # 重试耗尽兜底（task 037 T8 清偿）：保 finish_run/三清单落盘（question 在 _ensure 已记）
             stats.aborted = True
 
         self._reconcile_missing(state)
@@ -213,6 +217,11 @@ class TournamentScrapeRunner:
                 {"id": label, "endpoint": exc.endpoint, "reason": str(exc)}
             )
             return None
+        except TransientHttpError as exc:
+            state.stats.question.append(
+                {"id": label, "endpoint": "-", "reason": f"重试耗尽（瞬时网络错误）：{exc}"}
+            )
+            raise  # 顶层兜底置 aborted，保 finish_run
         write_raw(path, payload, source=mikmoe.SOURCE, force=force)
         state.stats.scraped.append({"id": label, "path": str(path), "action": "fetched"})
         return payload

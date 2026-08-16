@@ -30,7 +30,7 @@ from typer.testing import CliRunner
 
 from ptcgdb import cli
 from ptcgdb.orm import ScrapeRun
-from ptcgdb.scrapers import CircuitOpenError, HttpClient, RateLimiter
+from ptcgdb.scrapers import CircuitOpenError, HttpClient, RateLimiter, TransientHttpError
 from ptcgdb.scrapers.limitless_site import (
     BASE_URL,
     INDEX_PAGE_SIZE,
@@ -387,15 +387,18 @@ class FakeSiteScraper:
     index_pages: {season: {page: [entry...]}}；standings/decklist 默认用 fixtures。
     """
 
-    def __init__(self, index_pages=None, fail_on=(), circuit_on=()):
+    def __init__(self, index_pages=None, fail_on=(), circuit_on=(), transient_on=()):
         self.index_pages = index_pages if index_pages is not None else {"2526": {1: INDEX_ENTRIES}}
         self.fail_on = set(fail_on)
         self.circuit_on = set(circuit_on)
+        self.transient_on = set(transient_on)
         self.calls = []
 
     def _maybe_fail(self, kind, endpoint):
         if kind in self.circuit_on:
             raise CircuitOpenError("HTTP 403")
+        if kind in self.transient_on:
+            raise TransientHttpError("HTTP 500 重试耗尽")
         if kind in self.fail_on:
             raise LimitlessSiteApiError(endpoint, 404, "HTTP 非 200")
 
@@ -565,6 +568,25 @@ def test_circuit_abort_marks_run_aborted(tmp_path):
         date_from="2026-04-01", date_to="2026-07-01", seasons=["2526"]
     )
     assert result.stats.aborted is True
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    with Session(engine) as session:
+        row = session.get(ScrapeRun, result.run_id)
+        assert row.status == "aborted"
+    engine.dispose()
+
+
+def test_transient_error_aborts_with_summary(tmp_path):
+    """网络错误重试耗尽（TransientHttpError）顶层兜底（task 037 T8 存量清偿）：
+    记 question + aborted + 保 finish_run 三清单落盘，不炸穿 scrape。"""
+    scraper = FakeSiteScraper(transient_on={"standings"})
+    result = make_runner(tmp_path, scraper).scrape(
+        date_from="2026-04-01", date_to="2026-07-01", seasons=["2526"]
+    )
+    assert result.stats.aborted is True
+    assert any("重试耗尽" in q["reason"] for q in result.stats.question)
+    assert (result.lists_path / "scraped.json").exists()
+    assert (result.lists_path / "question.json").exists()
 
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
     with Session(engine) as session:

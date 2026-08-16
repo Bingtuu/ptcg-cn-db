@@ -10,8 +10,12 @@ name_en 英文桥 mik raw 自带），remap_decks 据 deck_card_misses 重跑
 - backfill_misses：既有 NULL 行的一次性回填——DB 锚定（以 deck_cards
   card_id IS NULL 的现存行为准去 raw 找 set/number），**不重跑
   ingest-limitless**（已清除的窗口外残留杯赛 raw 仍在，重跑会吃回来）。
+  **仅 EN 双通道**：JP 通道（pokemon_card_jp，task 037）入库即同步记 miss，
+  无任务 032 之前的历史存量需回填。
 - remap_decks：对未解 miss 用当前卡池重跑映射链；命中回写 deck_cards
   （同 card_id 冲突合并 count）、标 resolved、重算 mapping_status。幂等。
+  EN 源走 ptcd+name_en 链（map_decklist_card）；JP 源（task 037）走 name_ja
+  名字链（map_ja_card，仅名字级，库内无 JP 印刷级桥），多候选同样不猜。
 """
 
 from __future__ import annotations
@@ -40,6 +44,8 @@ from ptcgdb.orm import Deck, DeckAppearance, DeckCard, DeckCardMiss, Tournament
 from ptcgdb.scrapers.raw_store import read_raw
 
 EN_SOURCES = ("limitless", "limitless_site")
+JP_SOURCES = ("pokemon_card_jp",)  # task 037 JP 对齐通道（名字链映射，见模块 docstring）
+REMAP_SOURCES = EN_SOURCES + JP_SOURCES  # remap_decks 支持的 source 全集
 
 
 def _now() -> datetime:
@@ -260,9 +266,11 @@ def remap_decks(
 
     env_marks 由该 deck 最早出战赛事的日期推导（与 ingest 同一日历）；
     task 031 将把本函数挂进 L0 新卡入库后钩子（remap_decks(source=None)）。
+    source 可选 EN 双通道 + JP 通道（task 037）；JP 走 name_ja 名字链
+    （ptcd/raw_set/raw_number 不参与，多候选不猜同 ingest 口径）。
     """
-    if source is not None and source not in EN_SOURCES:
-        raise ValueError(f"source 仅支持 {EN_SOURCES} 或 None，收到: {source!r}")
+    if source is not None and source not in REMAP_SOURCES:
+        raise ValueError(f"source 仅支持 {REMAP_SOURCES} 或 None，收到: {source!r}")
     raw_dir = Path(raw_dir)
     db_path = Path(db_path)
     result = RemapResult()
@@ -298,11 +306,50 @@ def remap_decks(
                     by_deck.setdefault(miss.deck_id, []).append(miss)
                     deck_source[miss.deck_id] = src
 
+                # JP 源映射链材料：有 JP deck 才建 name_ja 索引（惰性，避免无谓全表扫）
+                ja_name_index: dict[str, list[CnCandidate]] | None = None
+                if any(src in JP_SOURCES for src in deck_source.values()):
+                    from ptcgdb.normalize.ingest_jp import (  # 避免循环导入
+                        _build_ja_index,
+                    )
+
+                    ja_name_index, _ = _build_ja_index(session)
+
                 now = _now()
                 for deck_id, misses in sorted(by_deck.items()):
+                    src = deck_source[deck_id]
+                    if src in JP_SOURCES:
+                        from ptcgdb.normalize.ingest_jp import (  # 避免循环导入
+                            map_ja_card,
+                        )
+
+                        assert ja_name_index is not None
+
+                        def map_fn(
+                            raw_set: str | None,
+                            raw_number: str | None,
+                            name: str,
+                            env_marks: tuple[str, ...] | None,
+                            _idx: dict[str, list[CnCandidate]] = ja_name_index,
+                        ) -> tuple[str | None, str]:
+                            del raw_set, raw_number, env_marks  # JP 仅名字链
+                            return map_ja_card(name, _idx)
+                    else:
+
+                        def map_fn(
+                            raw_set: str | None,
+                            raw_number: str | None,
+                            name: str,
+                            env_marks: tuple[str, ...] | None,
+                        ) -> tuple[str | None, str]:
+                            return map_decklist_card(
+                                raw_set, raw_number, name,
+                                ptcd_index, cn_name_index, env_marks,
+                            )
+
                     upgraded = _remap_one_deck(
                         session, deck_id, misses, deck_source[deck_id],
-                        env_calendar, cn_name_index, card_index, ptcd_index,
+                        env_calendar, map_fn, card_index,
                         now, result,
                     )
                     if upgraded:
@@ -337,9 +384,8 @@ def _remap_one_deck(
     misses: list[DeckCardMiss],
     source: str,
     env_calendar: dict[str, Any],
-    cn_name_index: dict[str, list[CnCandidate]],
+    map_fn: Any,  # (raw_set, raw_number, name, env_marks) → (card_id | None, rule)
     card_index: dict[str, tuple[str, str | None, str | None]],
-    ptcd_index: dict[tuple[str, str], dict[str, Any]],
     now: datetime,
     result: RemapResult,
 ) -> bool:
@@ -348,9 +394,8 @@ def _remap_one_deck(
     resolved_any = False
     for miss in misses:
         result.attempted += 1
-        card_id, rule = map_decklist_card(
-            miss.raw_set or None, miss.raw_number or None, miss.raw_name,
-            ptcd_index, cn_name_index, env_marks,
+        card_id, rule = map_fn(
+            miss.raw_set or None, miss.raw_number or None, miss.raw_name, env_marks
         )
         result.mapping_rules[rule] = result.mapping_rules.get(rule, 0) + 1
         if card_id is None:

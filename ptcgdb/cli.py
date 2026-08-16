@@ -14,9 +14,14 @@ from ptcgdb.legal import legal_at, seed_snapshots
 from ptcgdb.legal.versions import apply_snapshot
 from ptcgdb.legal.versions import rollback as rollback_db
 from ptcgdb.normalize import ingest_set
+from ptcgdb.normalize.ingest_jp import ingest_jp
 from ptcgdb.normalize.ingest_tourneys import ingest_tourneys
 from ptcgdb.orm import Card, Set, Tournament
 from ptcgdb.scrapers import CircuitOpenError, HttpClient, MikMoeScraper, ScrapeRunner
+from ptcgdb.scrapers.deck_confirm import DEFAULT_GATE as DECK_CONFIRM_DEFAULT_GATE
+from ptcgdb.scrapers.deck_confirm import DeckConfirmRunner, DeckConfirmScraper
+from ptcgdb.scrapers.deck_confirm import build_http_client as build_deck_confirm_http
+from ptcgdb.scrapers.deck_confirm import plan as deck_confirm_plan
 from ptcgdb.scrapers.http import RateLimiter
 from ptcgdb.scrapers.limitless import BASE_URL as LIMITLESS_BASE_URL
 from ptcgdb.scrapers.limitless import DEFAULT_INTERVAL as LIMITLESS_INTERVAL
@@ -28,6 +33,11 @@ from ptcgdb.scrapers.limitless_site import LimitlessSiteScraper
 from ptcgdb.scrapers.limitless_site_runner import LimitlessSiteScrapeRunner
 from ptcgdb.scrapers.mikmoe import BASE_URL
 from ptcgdb.scrapers.mikmoe_tournament import MikMoeTournamentScraper
+from ptcgdb.scrapers.pokecabook_runner import BASE_URL as POKECABOOK_BASE_URL
+from ptcgdb.scrapers.pokecabook_runner import PokecabookScraper, PokecabookShellRunner
+from ptcgdb.scrapers.pokecardlab_runner import BASE_URL as POKECARDLAB_BASE_URL
+from ptcgdb.scrapers.pokecardlab_runner import PokecardlabScraper, PokecardlabShellRunner
+from ptcgdb.scrapers.runner import RunResult
 from ptcgdb.scrapers.tournament_runner import TournamentScrapeRunner
 from ptcgdb.stats.cli import init_db_with_caliber, query_cmd, stats_app
 from ptcgdb.validate import run_validations, write_report
@@ -753,6 +763,112 @@ def scrape_limitless_site(
         raise typer.Exit(code=1)
 
 
+def _scrape_run_summary(result: RunResult) -> str:
+    """run 摘要单行（fetched/skipped/question/missing 计数），JP 三命令共用。"""
+    stats = result.stats
+    fetched = sum(1 for r in stats.scraped if r["action"] == "fetched")
+    skipped = sum(1 for r in stats.scraped if r["action"] == "skipped")
+    return (
+        f"run_id={result.run_id} status={'aborted' if stats.aborted else 'ok'} "
+        f"fetched={fetched} skipped={skipped} question={len(stats.question)} "
+        f"missing={len(stats.missing)} lists={result.lists_path}"
+    )
+
+
+def _warn_aborted_exit() -> None:
+    typer.echo("警告：本轮运行因熔断提前中止，已抓产物与清单已落盘", err=True)
+    raise typer.Exit(code=1)
+
+
+@scrape_app.command("jp-shells")
+def scrape_jp_shells(
+    source: str = typer.Option(
+        "all", "--source", help="壳源：pokecabook / pokecardlab / all（默认）"
+    ),
+    force: bool = typer.Option(False, "--force", help="忽略已有 raw 文件强制重抓"),
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    """抓 JP 聚合站赛事壳（task 037）：pokecabook（主码源）+ pokecardlab（互核对账源）。
+
+    只采壳不采 deck confirm（红线端点由 `scrape jp-decks` 单独跑，带成本守卫）。
+    窗口缺省 = JA 对齐窗口（2025-01-24 ~ 2026-01-22）；断点续传：raw 文件存在且
+    hash 有效即跳过（零请求）。限速 2s/请求（聚合站非红线站，与 mik 口径一致）。
+    单源熔断中止不中断另一源（不同宿主），汇总非零码退出。
+    """
+    if source not in ("pokecabook", "pokecardlab", "all"):
+        typer.echo(f"source 仅支持 pokecabook / pokecardlab / all，收到: {source!r}", err=True)
+        raise typer.Exit(code=2)
+    aborted_any = False
+    for kind in (("pokecabook", "pokecardlab") if source == "all" else (source,)):
+        try:
+            if kind == "pokecabook":
+                with HttpClient(POKECABOOK_BASE_URL) as http:
+                    runner = PokecabookShellRunner(raw_dir, PokecabookScraper(http), db_path)
+                    result = runner.scrape(force=force)
+            else:
+                with HttpClient(POKECARDLAB_BASE_URL) as http:
+                    runner = PokecardlabShellRunner(raw_dir, PokecardlabScraper(http), db_path)
+                    result = runner.scrape(force=force)
+        except CircuitOpenError as exc:
+            typer.echo(f"熔断中止（{kind}）：{exc}", err=True)
+            aborted_any = True
+            continue
+        typer.echo(f"source={kind} {_scrape_run_summary(result)}")
+        aborted_any = aborted_any or result.stats.aborted
+    if aborted_any:
+        _warn_aborted_exit()
+
+
+@scrape_app.command("jp-decks")
+def scrape_jp_decks(
+    gate: int = typer.Option(
+        DECK_CONFIRM_DEFAULT_GATE, "--gate",
+        help="成本守卫闸门（估算请求数上限，超出降级只收 champions 最高等级场次）",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="只出请求量估算与闸门判定（零请求）"
+    ),
+    force: bool = typer.Option(False, "--force", help="忽略已有 raw 文件强制重抓"),
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    """采 JP 官方 deck confirm 卡表（task 037，FR-9.5 红线定向放宽，5s/请求硬编码）。
+
+    流程：pokecabook 壳 raw → 请求量估算 → 闸门判定（total_codes > gate → 降级只收
+    champions 分类的码，PJCS/CL 同经此分类收录）→ 逐码采集（熔断 + 断点续传 +
+    请求台账）。判定摘要先打印留痕；--dry-run 只打印同一摘要，零请求。
+    """
+    target = deck_confirm_plan(raw_dir, gate=gate)
+    est = target.estimate
+    typer.echo(
+        f"窗口 {est.window_from}~{est.window_to} 文章 scanned={est.articles_scanned} "
+        f"in_window={est.articles_in_window} out_of_window={est.articles_out_of_window} "
+        f"no_tier={est.articles_no_tier} unparsable={est.articles_unparsable}"
+    )
+    typer.echo(
+        f"估算 total_codes={est.total_codes} "
+        f"by_tier={dict(sorted(est.by_tier.items()))} "
+        f"by_category={dict(sorted(est.by_category.items()))}"
+    )
+    typer.echo(
+        f"闸门判定 gate={target.gate} decision={target.decision} selected={len(target.codes)}"
+    )
+    if dry_run:
+        typer.echo("dry-run：仅估算与判定，零请求（不落计划快照/台账）")
+        return
+    try:
+        with build_deck_confirm_http() as http:
+            runner = DeckConfirmRunner(raw_dir, DeckConfirmScraper(http), db_path)
+            result = runner.scrape(target, force=force)
+    except CircuitOpenError as exc:
+        typer.echo(f"熔断中止：{exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(_scrape_run_summary(result))
+    if result.stats.aborted:
+        _warn_aborted_exit()
+
+
 @app.command("ingest-tourneys")
 def ingest_tourneys_cmd(
     raw_dir: Path = DEFAULT_RAW_DIR,
@@ -852,6 +968,46 @@ def ingest_limitless_cmd(
         typer.echo(f"  ? {w}")
     if result.blocked:
         typer.echo("有卡组被 60 张质量门拦截，详见上方清单", err=True)
+        raise typer.Exit(code=1)
+
+
+@app.command("ingest-jp")
+def ingest_jp_cmd(
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+    enforce_window: bool = typer.Option(
+        True, "--enforce-window/--no-enforce-window",
+        help="窗口守卫：JA 对齐窗口外 event 跳过入库（FR-9.8，默认开）",
+    ),
+) -> None:
+    """JP 对齐二期入库（task 037）：raw pokecabook 壳 + pokemon-card-jp/deck-confirm → 四表。
+
+    source=pokemon_card_jp（basis=jp）；tournament = 一个 pokecabook event；
+    JA 名 → name_ja 名字链映射（多候选不猜）；未映射全量落 deck_card_misses
+    （miss_kind=no_ja_name_match/ambiguous_ja_name/unknown_card_id）；
+    record 三列/player_ref NULL 不猜；topcut_slots=实际入库出战条数物化；
+    降级计划快照（plan.json decision=degraded_champions_only）只收 champions 分类。
+    重跑幂等；count 合计 != 60 或解析失败的卡组整组拦截（FR-9.6 质量门）并非零码退出。
+    """
+    result = ingest_jp(raw_dir, db_path, enforce_window=enforce_window)
+    typer.echo(
+        f"tournaments={result.tournaments} decks={result.decks} appearances={result.appearances} "
+        f"deck_cards={result.deck_cards} articles={result.articles} "
+        f"skipped_out_of_window={result.skipped_out_of_window} "
+        f"skipped_by_degrade={result.skipped_by_degrade} "
+        f"missing_deck_confirms={result.missing_deck_confirms} "
+        f"plan_decision={result.plan_decision} blocked={len(result.blocked)} "
+        f"unknown_cards={len(result.unknown_cards)} warnings={len(result.warnings)}"
+    )
+    typer.echo(f"映射决策分布: {dict(sorted(result.mapping_rules.items()))}")
+    for b in result.blocked:
+        typer.echo(f"  ✗ {b.get('deck_id') or b.get('deck_code')}: {b['reason']}")
+    for u in result.unknown_cards[:20]:
+        typer.echo(f"  ? 未解析卡 {u['deck_id']}: {u['raw_name']} ×{u['count']}")
+    for w in result.warnings[:20]:
+        typer.echo(f"  ? {w}")
+    if result.blocked:
+        typer.echo("有卡组被质量门拦截（60 张门/解析失败），详见上方清单", err=True)
         raise typer.Exit(code=1)
 
 

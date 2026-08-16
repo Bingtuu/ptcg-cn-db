@@ -252,7 +252,7 @@ def test_alignment_window_custom_calendar():
             ]
         },
     }
-    assert alignment_window(calendar) == (date(2025, 1, 1), date(2025, 12, 31))
+    assert alignment_window(calendar=calendar) == (date(2025, 1, 1), date(2025, 12, 31))
 
 
 def test_alignment_window_no_matching_segment_raises():
@@ -260,8 +260,8 @@ def test_alignment_window_no_matching_segment_raises():
         "cn": {"segments": [{"effective_from": "2026-01-01", "allowed_marks": ["X"]}]},
         "en": {"segments": [{"effective_from": "2025-01-01", "allowed_marks": ["W"]}]},
     }
-    with pytest.raises(ValueError, match="同标记"):
-        alignment_window(calendar)
+    with pytest.raises(ValueError, match="无覆盖 CN 当前段标记"):
+        alignment_window(calendar=calendar)
 
 
 # ---- runner：假 scraper（鸭子类型，无 HTTP）----
@@ -270,15 +270,18 @@ def test_alignment_window_no_matching_segment_raises():
 class FakeLimitlessScraper:
     """fixtures 背书的假 scraper；fail_on/circuit_on 注入故障。"""
 
-    def __init__(self, pages=None, fail_on=(), circuit_on=()):
+    def __init__(self, pages=None, fail_on=(), circuit_on=(), transient_on=()):
         self.pages = pages if pages is not None else {1: load_fixture("tournaments_page.json")}
         self.fail_on = set(fail_on)
         self.circuit_on = set(circuit_on)
+        self.transient_on = set(transient_on)
         self.calls = []
 
     def _maybe_fail(self, kind, endpoint):
         if kind in self.circuit_on:
             raise CircuitOpenError("HTTP 403")
+        if kind in self.transient_on:
+            raise TransientHttpError("HTTP 500 重试耗尽")
         if kind in self.fail_on:
             raise LimitlessApiError(endpoint, 200, "响应体不是数组: dict")
 
@@ -408,6 +411,22 @@ def test_circuit_abort_marks_run_aborted(tmp_path):
     scraper = FakeLimitlessScraper(circuit_on={"standings"})
     result = make_runner(tmp_path, scraper).scrape()
     assert result.stats.aborted is True
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    with Session(engine) as session:
+        row = session.get(ScrapeRun, result.run_id)
+        assert row.status == "aborted"
+    engine.dispose()
+
+
+def test_transient_error_aborts_with_summary(tmp_path):
+    """网络错误重试耗尽（TransientHttpError）顶层兜底（task 037 T8 存量清偿）：
+    记 question + aborted + 保 finish_run 三清单落盘，不炸穿 scrape。"""
+    scraper = FakeLimitlessScraper(transient_on={"standings"})
+    result = make_runner(tmp_path, scraper).scrape()
+    assert result.stats.aborted is True
+    assert any("重试耗尽" in q["reason"] for q in result.stats.question)
+    assert (result.lists_path / "scraped.json").exists()
 
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
     with Session(engine) as session:

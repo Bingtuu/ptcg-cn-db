@@ -16,7 +16,8 @@ scrape_runs 复用 runner.finish_run。
 
 取舍决策逐场记入 stats.scraped（action="accepted"/"rejected"，附 name/tier/
 reason/players/date）；窗口外赛事只计数不记细节。stats.total = accepted 场数。
-熔断（CircuitOpenError）立即中止本轮，已抓产物保留，status=aborted。
+熔断（CircuitOpenError）立即中止本轮，已抓产物保留，status=aborted；网络错误
+重试耗尽（TransientHttpError）同口径 aborted 保清单落盘（task 037 T8 清偿）。
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from ptcgdb.normalize.envs import alignment_window
-from ptcgdb.scrapers.http import CircuitOpenError
+from ptcgdb.scrapers.http import CircuitOpenError, TransientHttpError
 from ptcgdb.scrapers.limitless_site import (
     INDEX_PAGE_SIZE,
     SOURCE,
@@ -92,6 +93,9 @@ class LimitlessSiteScrapeRunner:
                 if state.limit_reached:
                     break
         except CircuitOpenError:
+            stats.aborted = True
+        except TransientHttpError:
+            # 重试耗尽兜底（task 037 T8 清偿）：保 finish_run/三清单落盘（question 在 _ensure 已记）
             stats.aborted = True
 
         self._reconcile_missing(state)
@@ -208,6 +212,11 @@ class LimitlessSiteScrapeRunner:
                 {"id": label, "endpoint": exc.endpoint, "reason": str(exc)}
             )
             return None
+        except TransientHttpError as exc:
+            state.stats.question.append(
+                {"id": label, "endpoint": "-", "reason": f"重试耗尽（瞬时网络错误）：{exc}"}
+            )
+            raise  # 顶层兜底置 aborted，保 finish_run
         write_raw(path, payload, source=SOURCE, force=force)
         state.stats.scraped.append({"id": label, "path": str(path), "action": "fetched"})
         return read_raw(path)

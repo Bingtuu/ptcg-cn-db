@@ -1,0 +1,27 @@
+# JP 聚合站通道赛事分类规则（task 037，PRD v1.21 FR-9.5）
+# pokecabook 分类 slug → 收录 tier / 拒收理由；名次词 → rank 物化值。
+# 采集端（T5 壳 runner）与入库端（T7 ingest-jp）共用本文件。
+# tier 名必须已在 config/vocabularies/tournament_tiers.yml 词表内（加载即校验）。
+categories:
+  - slug: champions        # チャンピオンズリーグ（CL 档）
+    tier: cl
+  - slug: city-league      # シティリーグ（城市赛档）
+    tier: city
+  - slug: jim-battle
+    reject: ジムバトル小店赛（规模小、娱乐卡组比例高，FR-9.1a 质量筛选同构不收）
+  - slug: extra
+    reject: エクストラレギュレーション（非标准赛制，不对齐简中环境）
+placements:
+  # 名次词 → rank 物化值（TOP4/8/16 取档位数，与 limitless_site placing 数值口径同构）
+  優勝: 1
+  準優勝: 2
+  TOP4: 4
+  TOP8: 8
+  TOP16: 16
+  ベスト4: 4    # pokecardlab 对账源用词（同 TOP4）
+# 标题 tier override（T7，task 037）：event/文章标题子串命中 → tier 覆盖分类 slug 档。
+# PJCS 无独立分类 slug、混在 champions 分类（T5 2026-08-15 首页 + 实网双证），
+# 只能靠标题区分；配置序先见者胜，更具体（更长）的子串排前。
+title_tier_overrides:
+  - contains: ジャパンチャンピオンシップス
+    tier: pjcs

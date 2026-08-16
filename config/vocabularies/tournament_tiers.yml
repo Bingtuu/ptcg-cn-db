@@ -10,7 +10,11 @@ tiers:
   - tier: pjcs
     label: PJCS（宝可梦卡牌日本冠军赛）
     coef: 4
-    aliases: [pjcs, PJCS]
+    aliases:
+      - pjcs
+      - PJCS
+      # task 037，JP 官方名，PJCS 年度大赛
+      - ポケモンジャパンチャンピオンシップス
   - tier: super
     label: 超级赛
     coef: 2
@@ -22,7 +26,12 @@ tiers:
   - tier: cl
     label: 冠军联赛（Champions League，EN/JP 大赛）
     coef: 2
-    aliases: [cl, CL, Champions League]
+    aliases:
+      - cl
+      - CL
+      - Champions League
+      # task 037，JP 官方名 Champions League
+      - チャンピオンズリーグ
   - tier: advanced
     label: 高级赛
     coef: 1.5
@@ -77,7 +86,8 @@ tiers:
     label: 城市赛
     coef: 1
     # City = mik 实测值（2026-08-02 真实采集校准：城市赛第三赛季）
-    aliases: [city, City, 城市赛]
+    # シティリーグ / City League = task 037，JP 城市联赛，对标城市赛档 coef=1
+    aliases: [city, City, 城市赛, シティリーグ, City League]
 
 # 组别词表（开放词表，可追加）；aliases 匹配大小写不敏感。
 divisions:

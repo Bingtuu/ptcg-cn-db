@@ -47,34 +47,42 @@ def load_calendar(path: str | Path | None = None) -> dict[str, Any]:
     return data["regions"]
 
 
-def alignment_window(calendar: dict[str, Any] | None = None) -> tuple[date, date]:
-    """EN 对齐窗口 = 与 CN 当前段（最新一段）allowed_marks 相同的所有 EN 段的
+def alignment_window(
+    region: str = "en", calendar: dict[str, Any] | None = None
+) -> tuple[date, date]:
+    """指定赛区的对齐窗口 = 覆盖 CN 当前段（最新一段）allowed_marks 的所有赛区段的
     [最早 effective_from, 最晚 effective_to]。
 
-    窗口是成本先验（FR-9.1a）：限定 Limitless 采集的翻页范围，减少无效请求；
+    region = 赛区键（tournament_envs.yml regions.*，即 SOURCE_REGION 词表值）。
+    匹配语义（v1.21，task 037）= **超集**：CN 当前段标记 ⊆ 赛区段标记即入窗——
+    JA GHIJ 过渡期（G~J 四标并行）内 GHI 卡组仍可复现简中环境。
+    窗口是成本先验（FR-9.1a）：限定采集的翻页范围，减少无效请求；
     赛事是否真正可比对，最终判据是卡级映射 full（解析层职责）。
     effective_to 缺失视为 +∞（窗口右端取有界段的最大值）。
-    当前种子真值：(2025-04-11, 2026-04-09)（G/H/I 赛季）。
+    region 无段 / 无命中段 / 右端无界 → ValueError（错误信息带 region 名）。
+    当前种子真值：EN (2025-04-11, 2026-04-09)；JA (2025-01-24, 2026-01-22)。
     """
     calendar = calendar if calendar is not None else load_calendar()
     cn_segments = (calendar.get("cn") or {}).get("segments") or []
     if not cn_segments:
         raise ValueError("CN 赛区日历无段，无法推导对齐窗口")
     latest_cn = max(cn_segments, key=lambda seg: _parse_day(seg["effective_from"]))
-    cn_marks = tuple(str(m) for m in latest_cn["allowed_marks"])
+    cn_marks = {str(m) for m in latest_cn["allowed_marks"]}
     starts: list[date] = []
     ends: list[date] = []
-    for seg in (calendar.get("en") or {}).get("segments") or []:
-        if tuple(str(m) for m in seg["allowed_marks"]) != cn_marks:
+    for seg in (calendar.get(region) or {}).get("segments") or []:
+        if not cn_marks <= {str(m) for m in seg["allowed_marks"]}:
             continue
         starts.append(_parse_day(seg["effective_from"]))
         end_raw = seg.get("effective_to")
         if end_raw:
             ends.append(_parse_day(end_raw))
     if not starts:
-        raise ValueError(f"EN 赛区日历无与 CN 当前段同标记（{''.join(cn_marks)}）的段")
+        raise ValueError(
+            f"{region} 赛区日历无覆盖 CN 当前段标记（{''.join(sorted(cn_marks))}）的段"
+        )
     if not ends:
-        raise ValueError("EN 对齐段全部无 effective_to，窗口右端无界，拒绝猜测")
+        raise ValueError(f"{region} 对齐段全部无 effective_to，窗口右端无界，拒绝猜测")
     return min(starts), max(ends)
 
 

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.orm import ScrapeRun
 from ptcgdb.scrapers import MikMoeApiError
-from ptcgdb.scrapers.http import CircuitOpenError
+from ptcgdb.scrapers.http import CircuitOpenError, TransientHttpError
 from ptcgdb.scrapers.mikmoe_tournament import (
     MikMoeNotReadyError,
     deck_detail_path,
@@ -210,6 +210,27 @@ def test_scrape_circuit_abort(tmp_path):
 
     result = make_runner(tmp_path, BoomScraper()).scrape()
     assert result.stats.aborted is True
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    with Session(engine) as session:
+        row = session.get(ScrapeRun, result.run_id)
+        assert row.status == "aborted"
+    engine.dispose()
+
+
+def test_scrape_transient_error_aborts_with_summary(tmp_path):
+    """网络错误重试耗尽（TransientHttpError）顶层兜底（task 037 T8 存量清偿）：
+    记 question + aborted + 保 finish_run 三清单落盘，不炸穿 scrape。"""
+
+    class FlakyScraper(FakeTournamentScraper):
+        def fetch_tournament_detail(self, tournament_id):
+            raise TransientHttpError("HTTP 500 重试耗尽")
+
+    result = make_runner(tmp_path, FlakyScraper()).scrape(series_id="54")
+    assert result.stats.aborted is True
+    assert any("重试耗尽" in q["reason"] for q in result.stats.question)
+    assert (result.lists_path / "scraped.json").exists()
+    assert (result.lists_path / "question.json").exists()
 
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
     with Session(engine) as session:
