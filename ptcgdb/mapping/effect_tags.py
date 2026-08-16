@@ -73,6 +73,8 @@ def load_effect_vocab(
     tags: list[EffectTagEntry] = []
     seen: set[str] = set()
     for i, raw in enumerate(doc["tags"]):
+        if not isinstance(raw, dict):
+            raise VocabError(f"词表 tags 第 {i + 1} 条必须是映射: {raw!r}")
         tag, cn = raw.get("tag"), raw.get("cn")
         if not tag or not cn:
             raise VocabError(f"词表 tags 第 {i + 1} 条缺 tag/cn: {raw!r}")
@@ -93,11 +95,13 @@ def load_effect_vocab(
         )
     flags: list[EffectFlagEntry] = []
     for i, raw in enumerate(doc["flags"]):
+        if not isinstance(raw, dict):
+            raise VocabError(f"词表 flags 第 {i + 1} 条必须是映射: {raw!r}")
         flag, cn = raw.get("flag"), raw.get("cn")
         if not flag or not cn:
             raise VocabError(f"词表 flags 第 {i + 1} 条缺 flag/cn: {raw!r}")
         if flag in seen:
-            raise VocabError(f"flag 与标签重名: {flag!r}")
+            raise VocabError(f"flag 重名（与标签或既有 flag）: {flag!r}")
         seen.add(flag)
         flags.append(
             EffectFlagEntry(

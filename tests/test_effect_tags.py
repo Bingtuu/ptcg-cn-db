@@ -111,3 +111,9 @@ def test_new_tag_extension_zero_code(tmp_path):
     )
     tags, _ = load_effect_vocab(p)
     assert match_tags("这是一条未出现过的措辞。", tags, "trainer") == ("new_mechanic",)
+
+
+def test_load_non_dict_entry(tmp_path):
+    p = _write(tmp_path, {"tags": ["just a string"], "flags": []})
+    with pytest.raises(VocabError, match="必须是映射"):
+        load_effect_vocab(p)
