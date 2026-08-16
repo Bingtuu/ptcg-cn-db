@@ -1,6 +1,6 @@
 """pokecabook.com 赛事壳采集 runner（task 037 T5：JP 对齐窗口主码源，只采壳不采 deck confirm）。
 
-链路：分类档翻页（`/archives/category/tournament/{slug}/page/{N}`，N=1 起递增，
+链路：分类档翻页（`/archives/category/tournament/{slug}` + `/page/{N}`（N≥2），
 卡按发布日期降序）→ 窗口过滤 → 窗口内文章页逐个抓 HTML，全部落 raw
 （JSON 快照内嵌原始 HTML，append-only：raw 文件存在且 hash 有效即跳过，零请求
 断点续传；force=True 重抓）。三清单 + scrape_runs 复用 runner.finish_run。
@@ -97,8 +97,8 @@ class PokecabookScraper:
         return self._get("/")
 
     def fetch_category_page(self, slug: str, page: int) -> str:
-        """分类档第 N 页 HTML（N=1 起）。"""
-        return self._get(f"/archives/category/tournament/{slug}/page/{page}")
+        """分类档第 N 页 HTML（N=1 起；第 1 页无尾斜杠无 /page/1 后缀——两者都 301，实测校准）。"""
+        return self._get(category_endpoint(slug, page))
 
     def fetch_article(self, url: str) -> str:
         """文章页 HTML。url 为分类卡给出的绝对 URL，取 path 部分请求。"""
@@ -119,6 +119,18 @@ class PokecabookScraper:
 def home_path(base_dir: Path) -> Path:
     """首页快照：pokecabook/index.json。"""
     return base_dir / RAW_SUBDIR / "index.json"
+
+
+def category_endpoint(slug: str, page: int) -> str:
+    """分类档第 N 页端点。
+
+    实测（2026-08-16 curl 核对）：站点固定链接无尾斜杠——
+    第 1 页 = `/archives/category/tournament/{slug}`（带尾斜杠 301；/page/1 也 301），
+    第 N≥2 页 = `.../page/{N}`（无尾斜杠 200）。
+    """
+    if page == 1:
+        return f"/archives/category/tournament/{slug}"
+    return f"/archives/category/tournament/{slug}/page/{page}"
 
 
 def category_path(base_dir: Path, slug: str, page: int) -> Path:
@@ -238,7 +250,7 @@ class PokecabookShellRunner:
                 label,
                 lambda slug=slug, page=page: {
                     "kind": "category", "slug": slug, "page": page,
-                    "url": f"{BASE_URL}/archives/category/tournament/{slug}/page/{page}",
+                    "url": f"{BASE_URL}{category_endpoint(slug, page)}",
                     "html": self.scraper.fetch_category_page(slug, page),
                 },
                 state,
@@ -250,7 +262,7 @@ class PokecabookShellRunner:
             entries = parse_category_page(html)
             if not entries:
                 if _CATEGORY_CONTAINER not in html:
-                    endpoint = f"/archives/category/tournament/{slug}/page/{page}"
+                    endpoint = category_endpoint(slug, page)
                     state.stats.question.append(
                         {"id": label, "endpoint": endpoint,
                          "reason": "分类档页零主列表卡且 <div id=\"list\"> 容器缺失"

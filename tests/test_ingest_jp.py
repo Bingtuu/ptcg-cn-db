@@ -30,13 +30,15 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.deck_misses import remap_decks
-from ptcgdb.normalize.ingest_jp import ingest_jp, make_deck_id
+from ptcgdb.normalize.ingest_jp import JaCandidate, ingest_jp, make_deck_id, map_ja_card
 from ptcgdb.orm import (
     Card,
+    CardNameGroup,
     Deck,
     DeckAppearance,
     DeckCard,
     DeckCardMiss,
+    NameGroup,
     Set,
     Tournament,
 )
@@ -555,3 +557,92 @@ def test_remap_jp_resolves_after_name_ja_backfill(tmp_path):
     part_id = deck_id_of(PART_ENTRIES)
     part_miss = [m for m in query_all(db_path, DeckCardMiss) if m.deck_id == part_id][0]
     assert part_miss.resolved_at is None
+
+
+# ---- 多候选同 name_group 裁决（T9 实跑校准：226 个 ambiguous 名 100% 同组零真分歧）----
+
+
+def _cand(card_id: str, mark: str | None, release: tuple[int, int, int] | None,
+          group: str) -> JaCandidate:
+    return JaCandidate(card_id, mark, date(*release) if release else None, group)
+
+
+SAME_GROUP_INDEX = {
+    "ネストボール": [
+        _cand("CSA-001", "G", (2023, 6, 1), "grp-ネストボール"),
+        _cand("CSB-002", "H", (2025, 1, 1), "grp-ネストボール"),
+        _cand("CSJ-013", "J", (2026, 2, 1), "grp-ネストボール"),
+    ]
+}
+
+
+def test_map_ja_card_group_env_narrowing():
+    """同组多候选 + env GHI：J 标候选被收窄排除，子集内取最新印刷（CSB-002）。"""
+    card_id, rule = map_ja_card("ネストボール", SAME_GROUP_INDEX, ("G", "H", "I"))
+    assert (card_id, rule) == ("CSB-002", "ja_name+group_env")
+
+
+def test_map_ja_card_group_latest_without_env():
+    """无 env 上下文（remap 无日期/赛事 env 未命中）→ 跳过收窄直接最新印刷。"""
+    card_id, rule = map_ja_card("ネストボール", SAME_GROUP_INDEX, None)
+    assert (card_id, rule) == ("CSJ-013", "ja_name+group_latest")
+    # env 子集为空（候选全不在 env 段）同样回退最新印刷
+    card_id2, rule2 = map_ja_card("ネストボール", SAME_GROUP_INDEX, ("Z",))
+    assert (card_id2, rule2) == ("CSJ-013", "ja_name+group_latest")
+    # release_date 并列 → card_id 字典序最小（确定性兜底）
+    tie_index = {
+        "X": [_cand("CSB-009", "H", (2025, 1, 1), "g"), _cand("CSA-008", "H", (2025, 1, 1), "g")]
+    }
+    assert map_ja_card("X", tie_index, None) == ("CSA-008", "ja_name+group_latest")
+
+
+def test_map_ja_card_cross_group_stays_ambiguous():
+    """候选跨 name_group = 真分歧 → 维持 ambiguous miss（不猜）；无 group 行的卡
+    按 group_key=自身兜底，两无组候选同样判跨组。"""
+    cross = {
+        "X": [_cand("CSA-001", "G", (2023, 6, 1), "g1"), _cand("CSB-002", "H", (2025, 1, 1), "g2")]
+    }
+    assert map_ja_card("X", cross, ("G", "H", "I")) == (None, "ja_name+ambiguous")
+    no_group = {  # 两候选均无 group 行 → 各自兜底自身 → 跨组
+        "Y": [
+            _cand("CSA-001", "G", (2023, 6, 1), "CSA-001"),
+            _cand("CSB-002", "H", (2025, 1, 1), "CSB-002"),
+        ]
+    }
+    assert map_ja_card("Y", no_group, ("G", "H", "I")) == (None, "ja_name+ambiguous")
+
+
+def test_group_arbitration_integration(tmp_path):
+    """接线验证：ネストボール 三候选归同一名组后，PART 卡组 ambiguous → full，
+    env GHI 收窄排除 J 标，裁决落 CSB-002（H 最新），无 miss 落库。"""
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_deck_raws(raw_dir)
+    write_article(
+        raw_dir, "7001", "champions", "2025-06-05", "チャンピオンズリーグ2026 名古屋",
+        [("カードショップZ（愛知）", [(C_PART, "優勝")])],
+    )
+    build_db(db_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        session.add(make_card("CSJ-013", "CSJ", "ネストボール", "J", ctype="trainer",
+                              subtype="物品"))
+        session.add(NameGroup(group_key="grp-ネストボール", display_name="ネストボール"))
+        session.add_all([
+            CardNameGroup(card_id=cid, group_key="grp-ネストボール")
+            for cid in ("CSA-001", "CSB-002", "CSJ-013")
+        ])
+        session.commit()
+    engine.dispose()
+
+    result = ingest_jp(raw_dir, db_path)
+    assert result.mapping_rules.get("ja_name+group_env", 0) == 1
+    assert result.mapping_rules.get("ja_name+ambiguous", 0) == 0
+    part_id = deck_id_of(PART_ENTRIES)
+    decks = {d.deck_id: d for d in query_all(db_path, Deck)}
+    assert decks[part_id].mapping_status == "full" and decks[part_id].mapped_ratio == 1.0
+    rows = [c for c in query_all(db_path, DeckCard) if c.deck_id == part_id]
+    by_card = {c.card_id: c for c in rows}
+    assert by_card["CSB-002"].count == 4  # env 收窄（排除 J）后最新印刷
+    assert by_card["CSB-002"].raw_name == "ネストボール"
+    assert all(c.card_id is not None for c in rows)  # 无 NULL 保真行
+    assert query_all(db_path, DeckCardMiss) == []  # 同组裁决不产生 miss

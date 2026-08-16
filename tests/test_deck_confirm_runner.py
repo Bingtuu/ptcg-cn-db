@@ -455,9 +455,10 @@ class ExplodingScraper:
 
 
 def test_ledger_ts_is_request_dispatch_time(tmp_path):
-    """台账 ts = 请求发出时刻（fetch 前捕获），非响应完成时刻。
+    """台账 ts 兜底路径 = 请求发出前捕获（鸭子类型无 last_dispatch_at 戳时）。
 
     慢响应后接快响应时若记完成时刻，相邻 ts 差可 <5s，合规采集被误判违规。
+    真实接线路径（ts = 限速器放行点戳）由 test_ledger_ts_from_limiter_release_stamp 锁定。
     """
     write_article(tmp_path, "1001", "champions", "2025-06-05",
                   [("店A（東京）", [(C1, "優勝"), (C2, "準優勝")])])
@@ -472,6 +473,37 @@ def test_ledger_ts_is_request_dispatch_time(tmp_path):
         # 请求发出先于 scraper 被调用；若记响应完成时刻，50ms 慢响应必使 ts > called_at
         assert ts <= called_at
         assert row["elapsed_ms"] >= 40  # elapsed_ms 保留 = 完整请求耗时
+
+
+def test_ledger_ts_from_limiter_release_stamp(tmp_path):
+    """真实接线路径：台账 ts = HttpClient.last_dispatch_at（限速器放行点戳）。
+
+    T9 口径修正（2026-08-16）：fetch 前捕获的是「进 wait 前」时刻，相邻 ts 差 ≈
+    上一请求耗时，无法证明 ≥5s 间隔；放行点戳相邻差在 start-to-start 语义下
+    恒 ≥ 限速间隔，间隔验收才有意义。
+    """
+    write_article(tmp_path, "1001", "champions", "2025-06-05",
+                  [("店A（東京）", [(C1, "優勝"), (C2, "準優勝")])])
+    site = FakeSite({
+        f"/deck/confirm.html/deckID/{C1}": (200, OK_HTML),
+        f"/deck/confirm.html/deckID/{C2}": (200, OK_HTML),
+    })
+    client = HttpClient(
+        BASE_URL,
+        rate_limiter=RateLimiter(interval=0),
+        retry_wait=wait_none(),
+        transport=httpx.MockTransport(site.handler),
+    )
+    result = DeckConfirmRunner(tmp_path, DeckConfirmScraper(client)).scrape(plan(tmp_path))
+
+    assert result.stats.aborted is False
+    assert len(site.requests) == 2  # 两次真实发报
+    assert client.last_dispatch_at is not None
+    rows = read_ledger(tmp_path)
+    assert len(rows) == 2
+    # 末行 ts 恰为最后一次 wire 发报的放行点戳
+    assert rows[-1]["ts"] == client.last_dispatch_at.isoformat(timespec="milliseconds")
+    assert rows[0]["ts"] <= rows[1]["ts"]
 
 
 def test_unexpected_exception_aborts_with_summary(tmp_path):

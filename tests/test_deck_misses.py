@@ -16,7 +16,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
 
-from ptcgdb.migrations import apply_migrations
+from ptcgdb.migrations import apply_migrations, available_migrations
 from ptcgdb.normalize.deck_misses import (
     backfill_misses,
     classify_miss,
@@ -194,7 +194,7 @@ def misses_by_name(db_path):
 def test_migration_011_creates_table(tmp_path):
     db_path = tmp_path / "t.db"
     version = apply_migrations(db_path)
-    assert version == 11
+    assert version == available_migrations()[-1][0]  # 011 起含 deck_card_misses
     assert query_all(db_path, DeckCardMiss) == []
 
 

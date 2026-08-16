@@ -38,9 +38,12 @@ event）：按出现序对第 n 个（n≥2）追加 `#{n}` 消歧（双胞胎�
   tcgdex 条目是 EN 侧 id（task 023 已证 EN/JA TCGdex id 不共构），TCGdex JA
   raw（ja-cards.json）只能把 (jp_set, jp_number) 查到**日文名**，无法在共享
   同一 name_ja 的多个 CN 印刷间收窄；cards 表也无 JP set/number 字段。故仅
-  名字链：唯一候选 → 映射；**多候选不猜**（不套用 EN 链的 env/最新印刷裁决，
-  拍板口径）→ miss(ambiguous_ja_name)。unknown_card_ids（名表缺 id 的条目）
-  → miss(unknown_card_id，kind 单列)。
+  名字链：唯一候选 → 映射；多候选先判 name_group——**同组（同名再版）照
+  EN 链先例裁决：env 收窄（regulation_mark ∈ 赛事 env 段）→ 最新印刷**
+  （T9 实跑校准：226 个 distinct ambiguous 名候选 100% 落单一 name_group，
+  零真分歧；rule ja_name+group_env / ja_name+group_latest）；**跨组 =
+  真分歧不猜** → miss(ambiguous_ja_name)。unknown_card_ids（名表缺 id 的
+  条目）→ miss(unknown_card_id，kind 单列)。
 - **miss_kind（JP 侧新档，开放字符串）**：no_ja_name_match（name_ja 零命中，
   含简中未印刷与 name_ja 未覆盖两种真因，名字级链路不可区分，故不复用 EN 的
   no_cn_printing）/ ambiguous_ja_name（多候选不猜）/ unknown_card_id（名表
@@ -70,7 +73,7 @@ import warnings
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
@@ -86,9 +89,17 @@ from ptcgdb.normalize.envs import (
     load_calendar,
 )
 from ptcgdb.normalize.ingest_tourneys import DECK_SIZE, _mapping_status, derive_stat_scope
-from ptcgdb.normalize.limitless import CnCandidate
+from ptcgdb.normalize.limitless import _recency_key
 from ptcgdb.normalize.tournaments import VOCAB_DIR, load_tier_map
-from ptcgdb.orm import Card, Deck, DeckAppearance, DeckCard, Set, Tournament
+from ptcgdb.orm import (
+    Card,
+    CardNameGroup,
+    Deck,
+    DeckAppearance,
+    DeckCard,
+    Set,
+    Tournament,
+)
 from ptcgdb.scrapers.deck_confirm import (
     CHAMPIONS_CATEGORY,
     SOURCE,
@@ -148,15 +159,34 @@ def _parse_day(raw: Any) -> date | None:
         return None
 
 
+class JaCandidate(NamedTuple):
+    """CN 库 name_ja 候选卡（同名再版裁决用：group 判定 + env 收窄 + 最新印刷）。
+
+    group_key = cards_name_group 归组；无 group 行（或一卡多组，语义不明）的卡按
+    group_key=自身 card_id 兜底——未知归属不假设同组（跨组 → ambiguous 不猜）。
+    """
+
+    card_id: str
+    regulation_mark: str | None
+    release_date: date | None  # 所属 set 的 release_date
+    group_key: str
+
+
 def _build_ja_index(
     session: Session,
-) -> tuple[dict[str, list[CnCandidate]], dict[str, tuple[str, str | None, str | None]]]:
+) -> tuple[dict[str, list[JaCandidate]], dict[str, tuple[str, str | None, str | None]]]:
     """CN 库 JA 索引：name_ja → 候选卡列表；card_id → stat_scope/env 信息。
 
-    照 ingest_limitless._build_cn_index 的 name_en 版新写 name_ja 版。
+    照 ingest_limitless._build_cn_index 的 name_en 版新写 name_ja 版；候选结构
+    补 name_group（cards_name_group 外联，兜底口径见 JaCandidate）。
     """
-    ja_name_index: dict[str, list[CnCandidate]] = {}
+    ja_name_index: dict[str, list[JaCandidate]] = {}
     card_index: dict[str, tuple[str, str | None, str | None]] = {}
+    groups: dict[str, set[str]] = {}
+    for cid, gkey in session.execute(
+        select(CardNameGroup.card_id, CardNameGroup.group_key)
+    ):
+        groups.setdefault(cid, set()).add(gkey)
     rows = session.execute(
         select(
             Card.card_id, Card.name_ja, Card.regulation_mark, Card.card_type,
@@ -166,21 +196,32 @@ def _build_ja_index(
     for card_id, name_ja, mark, card_type, subtype, release in rows:
         card_index[card_id] = (card_type, subtype, mark)
         if name_ja:
+            gset = groups.get(card_id) or set()
+            group_key = next(iter(gset)) if len(gset) == 1 else card_id
             ja_name_index.setdefault(name_ja, []).append(
-                CnCandidate(card_id, mark, release)
+                JaCandidate(card_id, mark, release, group_key)
             )
     return ja_name_index, card_index
 
 
 def map_ja_card(
     ja_name: str | None,
-    ja_name_index: dict[str, list[CnCandidate]],
+    ja_name_index: dict[str, list[JaCandidate]],
+    env_marks: tuple[str, ...] | None = None,
 ) -> tuple[str | None, str]:
     """单卡 JA 映射：返回 (card_id | None, rule)。仅名字链（库内无 JP 印刷级桥）。
 
-    唯一候选 → ("ja_name+unique")；零命中 → (None, "ja_name+unmapped")；
-    多候选不猜（不套用 EN 链 env/最新印刷裁决，拍板口径）→ (None, "ja_name+ambiguous")。
-    ja_name 缺失（名表缺 id 的条目）由调用方先行分流为 unknown_card_id，不进本函数。
+    唯一候选 → "ja_name+unique"；零命中 → (None, "ja_name+unmapped")。
+    多候选裁决（T9 实跑校准：226 个 distinct ambiguous 名候选 100% 落单一
+    name_group，全是同名再版零真分歧；照 EN 链 env 优先/最新印刷先例）：
+    - 候选跨 name_group → (None, "ja_name+ambiguous")（真分歧不猜，维持 miss）；
+    - 同组 → env 收窄（regulation_mark ∈ env_marks 子集优先，env_marks=None
+      或子集为空跳过本层；rule "ja_name+group_env"），仍多候选取 release_date
+      最新印刷（缺失视为最旧，并列取 card_id 字典序最小，确定性；无 env 收窄
+      时 rule "ja_name+group_latest"）。
+    env_marks 由调用方给（ingest = 赛事 env 段；remap = 最早出战赛事推导，
+    无上下文传 None → 直接最新印刷）。ja_name 缺失（名表缺 id）由调用方先行
+    分流为 unknown_card_id，不进本函数。
     """
     if not ja_name:
         return None, "unknown_card_id"
@@ -189,7 +230,17 @@ def map_ja_card(
         return None, "ja_name+unmapped"
     if len(candidates) == 1:
         return candidates[0].card_id, "ja_name+unique"
-    return None, "ja_name+ambiguous"
+    if len({c.group_key for c in candidates}) > 1:
+        return None, "ja_name+ambiguous"  # 跨 name_group = 真分歧，不猜
+    pool = candidates
+    rule = "ja_name+group_latest"
+    if env_marks:
+        subset = [c for c in candidates if c.regulation_mark in env_marks]
+        if subset:
+            pool = subset
+            rule = "ja_name+group_env"
+    best = min(pool, key=_recency_key)  # 最新印刷 + card_id 字典序兜底（确定性）
+    return best.card_id, rule
 
 
 def _miss_kind(rule: str) -> str:
@@ -267,7 +318,7 @@ def _ingest_one_article(
     rules: JpRules,
     tier_map: dict[str, tuple[str, float]],
     env_calendar: dict[str, Any],
-    ja_name_index: dict[str, list[CnCandidate]],
+    ja_name_index: dict[str, list[JaCandidate]],
     card_index: dict[str, tuple[str, str | None, str | None]],
     result: JpIngestResult,
     window: tuple[date, date] | None,
@@ -336,7 +387,7 @@ def _ingest_one_event(
     rules: JpRules,
     tier_map: dict[str, tuple[str, float]],
     env_calendar: dict[str, Any],
-    ja_name_index: dict[str, list[CnCandidate]],
+    ja_name_index: dict[str, list[JaCandidate]],
     card_index: dict[str, tuple[str, str | None, str | None]],
     result: JpIngestResult,
 ) -> None:
@@ -351,12 +402,13 @@ def _ingest_one_event(
     tier_coef = tier_map[tier][1] if tier in tier_map else None
     name = f"{article_title} / {event.title}" if article_title else event.title
     # env 推导（FR-9.1b）：日期 ∩ JA 日历段；未命中 → NULL + warning，不猜。
-    # JP 名字链不做候选裁决（多候选不猜），故不设 env_marks；交叉校验只用 env_segment。
+    # env_marks 双用：同组多候选裁决的 env 收窄（照 EN 链先例）+ 卡组交叉校验。
     env_segment = derive_env(SOURCE_REGION.get(SOURCE), day, env_calendar)
     if env_segment is None and day is not None:
         result.warnings.append(
             f"赛事环境推导未命中（env=NULL，记 monitor 异常）: {tournament_id} date={day}"
         )
+    env_marks = env_segment.allowed_marks if env_segment is not None else None
 
     # 按内容实体聚合卡组码：同内容多码 = 1 内容行 + N 出战行
     by_deck: dict[str, dict[str, Any]] = {}
@@ -413,7 +465,7 @@ def _ingest_one_event(
         ingested = 0
         for deck_id, slot in by_deck.items():
             ingested += _ingest_one_deck(
-                session, deck_id, slot, tournament_id, env_segment,
+                session, deck_id, slot, tournament_id, env_segment, env_marks,
                 ja_name_index, card_index, rules, result,
             )
         tournament = session.get(Tournament, tournament_id)
@@ -428,7 +480,8 @@ def _ingest_one_deck(
     slot: dict[str, Any],
     tournament_id: str,
     env_segment: EnvSegment | None,
-    ja_name_index: dict[str, list[CnCandidate]],
+    env_marks: tuple[str, ...] | None,
+    ja_name_index: dict[str, list[JaCandidate]],
     card_index: dict[str, tuple[str, str | None, str | None]],
     rules: JpRules,
     result: JpIngestResult,
@@ -463,7 +516,7 @@ def _ingest_one_deck(
                 (raw_name, entry.count, entry.jp_set, entry.jp_number, rule)
             )
             continue
-        card_id, rule = map_ja_card(entry.ja_name, ja_name_index)
+        card_id, rule = map_ja_card(entry.ja_name, ja_name_index, env_marks)
         result.mapping_rules[rule] = result.mapping_rules.get(rule, 0) + 1
         if card_id is None:
             unmapped.append(

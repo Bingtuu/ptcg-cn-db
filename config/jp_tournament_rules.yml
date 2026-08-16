@@ -18,6 +18,8 @@ placements:
   TOP4: 4
   TOP8: 8
   TOP16: 16
+  TOP32: 32     # 实跑实测（2026-08-16 T9）：CL/PJCS 大赛有 TOP32 档
+  32位: 32      # 实跑实测名次词（2026-08-16，PJCS 系文章）
   ベスト4: 4    # pokecardlab 对账源用词（同 TOP4）
 # 标题 tier override（T7，task 037）：event/文章标题子串命中 → tier 覆盖分类 slug 档。
 # PJCS 无独立分类 slug、混在 champions 分类（T5 2026-08-15 首页 + 实网双证），

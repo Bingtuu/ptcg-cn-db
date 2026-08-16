@@ -21,7 +21,10 @@ WITH eligible AS (  -- 全口径赛事范围（WUR 因子与出战条目归一�
 	  AND static_weight IS NOT NULL
 ),
 eligible_b AS (  -- B 层子范围：topcut 名额已知的赛事
+	-- v1.21 task 037：participant_count NULL 也不参与——q0 = slots/participants
+	-- 需人数基准，无人数不猜（JP 聚合站通道无人数，B 层对其不可用）
 	SELECT * FROM eligible WHERE topcut_slots IS NOT NULL
+	  AND participant_count IS NOT NULL
 ),
 app AS (
 	SELECT a.tournament_id, a.deck_id, a.rank,

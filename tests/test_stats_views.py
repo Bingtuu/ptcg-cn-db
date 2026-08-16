@@ -51,6 +51,39 @@ def test_views_exist_and_filter(tmp_path):
         conn.close()
 
 
+def test_static_weight_neutral_when_participant_count_null(tmp_path):
+    """migration 012（task 037 T9）：participant_count NULL（JP 聚合站壳无人数）
+    → static_weight = tier_coef（人数因子置 1 中性化，不猜）；tier_coef 也 NULL
+    时仍 NULL（不猜）。"""
+    db = build_golden_db(tmp_path / "g.db")
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute(
+            "INSERT INTO tournaments (tournament_id, source, series_id, name, tier, "
+            "tier_coef, division, date, location, participant_count, topcut_slots, "
+            "format, regulation_mark, format_end, is_qual, is_team, official_url, "
+            "fetched_at) VALUES ('pokemon_card_jp:1:x', 'pokemon_card_jp', NULL, "
+            "'JP测试赛', 'cl', 2.0, NULL, '2025-06-01', NULL, NULL, 16, "
+            "NULL, NULL, NULL, 0, 0, NULL, '2026-08-16')"
+        )
+        conn.execute(
+            "INSERT INTO tournaments (tournament_id, source, name, date, is_qual, "
+            "is_team, fetched_at) VALUES ('pokemon_card_jp:1:y', 'pokemon_card_jp', "
+            "'JP无tier赛', '2025-06-01', 0, 0, '2026-08-16')"
+        )
+        conn.commit()
+        w = dict(
+            conn.execute(
+                "SELECT tournament_id, static_weight FROM v_tournament_weights"
+            ).fetchall()
+        )
+        assert w["pokemon_card_jp:1:x"] == 2.0  # 人数 NULL → tier_coef 中性化
+        assert w["pokemon_card_jp:1:y"] is None  # tier_coef NULL → 仍 NULL（不猜）
+        assert w[T1] == 4.0  # CN 侧数值零漂移
+    finally:
+        conn.close()
+
+
 def test_caliber_hashes(tmp_path):
     db = build_golden_db(tmp_path / "g.db")
     hashes = write_caliber_hashes(db)

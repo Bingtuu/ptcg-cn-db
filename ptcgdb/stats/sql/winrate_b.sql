@@ -2,6 +2,8 @@
 -- CR(c) = Σ_t W_t·Σ_{d∋c, topcut} w̃_d / Σ_t W_t·Σ_{d∋c} w̃_d
 --   topcut 判定 = rank ≤ tournaments.topcut_slots；topcut_slots NULL 的赛事不参与。
 -- 输出附带 q0（赛事基准转化率 = Σ W_t·(slots/participants) / Σ W_t，每行同值，供 meta）。
+-- participant_count NULL 的赛事不参与（v1.21 task 037：q0 需人数基准，无人数不猜——
+-- JP 聚合站通道全量无人数，B 层对其不可用；且只收上位卡组的通道 CR 恒 1 无意义）。
 -- 参数：:as_of :date_from :date_to :scope :division :tiers :include_qual :include_team
 --       :basis('cn'|'intl_aligned'|'jp'|NULL=全部，v1.14)
 --       division 过滤语义（v1.14 续）：division IS NULL 的赛事不因 :division 被排除
@@ -17,6 +19,7 @@ WITH eligible AS (
 	  AND (:basis IS NULL OR basis = :basis)
 	  AND static_weight IS NOT NULL
 	  AND topcut_slots IS NOT NULL
+	  AND participant_count IS NOT NULL
 ),
 app AS (
 	SELECT a.tournament_id, a.deck_id, a.rank,

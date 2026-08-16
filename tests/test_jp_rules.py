@@ -36,6 +36,8 @@ def test_load_seed_placements_truth():
     assert rules.placement_rank("TOP4") == 4
     assert rules.placement_rank("TOP8") == 8
     assert rules.placement_rank("TOP16") == 16
+    assert rules.placement_rank("TOP32") == 32  # T9 实跑新词：CL/PJCS 大赛 TOP32 档
+    assert rules.placement_rank("32位") == 32  # T9 实跑新词（PJCS 系文章）
     assert rules.placement_rank("ベスト4") == 4  # pokecardlab 用词，同 TOP4
     # 未知名次词 → None 不猜（调用方记 warning）
     assert rules.placement_rank("参加賞") is None

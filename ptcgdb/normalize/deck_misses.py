@@ -33,7 +33,6 @@ from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.envs import SOURCE_REGION, derive_env, load_calendar
 from ptcgdb.normalize.ingest_tourneys import _mapping_status, derive_stat_scope
 from ptcgdb.normalize.limitless import (
-    CnCandidate,
     PtcdSetMissingError,
     _ptcd_lookup,
     load_ptcd_index,
@@ -307,7 +306,7 @@ def remap_decks(
                     deck_source[miss.deck_id] = src
 
                 # JP 源映射链材料：有 JP deck 才建 name_ja 索引（惰性，避免无谓全表扫）
-                ja_name_index: dict[str, list[CnCandidate]] | None = None
+                ja_name_index: dict[str, list[Any]] | None = None  # JaCandidate（惰性导入）
                 if any(src in JP_SOURCES for src in deck_source.values()):
                     from ptcgdb.normalize.ingest_jp import (  # 避免循环导入
                         _build_ja_index,
@@ -330,10 +329,12 @@ def remap_decks(
                             raw_number: str | None,
                             name: str,
                             env_marks: tuple[str, ...] | None,
-                            _idx: dict[str, list[CnCandidate]] = ja_name_index,
+                            _idx: dict[str, list[Any]] = ja_name_index,
                         ) -> tuple[str | None, str]:
-                            del raw_set, raw_number, env_marks  # JP 仅名字链
-                            return map_ja_card(name, _idx)
+                            del raw_set, raw_number  # JP 仅名字链（无印刷级桥）
+                            # env_marks = 该 deck 最早出战赛事推导；无上下文（None）
+                            # 时 map_ja_card 跳过 env 收窄直接最新印刷（同 ingest 口径）
+                            return map_ja_card(name, _idx, env_marks)
                     else:
 
                         def map_fn(

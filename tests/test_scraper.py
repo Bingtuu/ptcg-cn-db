@@ -78,6 +78,22 @@ def test_rate_limiter_zero_interval_never_sleeps():
     assert sleeps == []
 
 
+def test_last_dispatch_at_stamped_per_wire_request():
+    """task 037 T9：last_dispatch_at = 限速器放行点墙钟戳（台账取时用）。
+
+    每次真实发报刷新；熔断闸等零网络路径不刷新。
+    """
+    client = make_client(
+        lambda req: httpx.Response(200, json=ok_envelope({"ok": True}))
+    )
+    assert client.last_dispatch_at is None
+    client.get_json("/x")
+    first = client.last_dispatch_at
+    assert first is not None
+    client.get_json("/x")
+    assert client.last_dispatch_at >= first
+
+
 # ---- 退避与熔断 ----
 
 

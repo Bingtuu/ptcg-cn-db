@@ -93,10 +93,10 @@ def standard_routes() -> dict[str, tuple[int, str]]:
     """标准路由：champions 2 卡（p2 空页停）、city-league 1 卡（p2 空页停）。"""
     return {
         "/": (200, home_html()),
-        "/archives/category/tournament/champions/page/1": (
+        "/archives/category/tournament/champions": (
             200, cat_page([("1001", "2025.06.05"), ("1002", "2025.06.03")])),
         "/archives/category/tournament/champions/page/2": (200, cat_page([])),
-        "/archives/category/tournament/city-league/page/1": (
+        "/archives/category/tournament/city-league": (
             200, cat_page([("2001", "2025.06.04")])),
         "/archives/category/tournament/city-league/page/2": (200, cat_page([])),
         "/archives/1001": (200, ARTICLE_HTML),
@@ -178,11 +178,11 @@ def test_max_pages_cap_warns(tmp_path):
     """硬上限防御：页页有卡且永不触停时，max_pages 截断并记 question。"""
     site = FakeSite({
         "/": (200, home_html()),
-        "/archives/category/tournament/champions/page/1": (
+        "/archives/category/tournament/champions": (
             200, cat_page([("1001", "2025.06.05")])),
         "/archives/category/tournament/champions/page/2": (
             200, cat_page([("1001", "2025.06.05")])),
-        "/archives/category/tournament/city-league/page/1": (200, cat_page([])),
+        "/archives/category/tournament/city-league": (200, cat_page([])),
         "/archives/1001": (200, ARTICLE_HTML),
     })
     result = make_runner(tmp_path, site).scrape("2025-06-01", "2025-06-30", max_pages=2)
@@ -194,7 +194,7 @@ def test_max_pages_cap_warns(tmp_path):
 def test_blocked_page_warns_and_stops(tmp_path):
     """容器缺失+零卡 = 疑似拦截页：记 question 并停（不猜）。"""
     routes = standard_routes()
-    routes["/archives/category/tournament/champions/page/1"] = (
+    routes["/archives/category/tournament/champions"] = (
         200, "<html><body><p>access denied</p></body></html>")
     site = FakeSite(routes)
     result = make_runner(tmp_path, site).scrape("2025-06-01", "2025-06-30")
@@ -255,11 +255,11 @@ def test_check_categories_can_be_disabled(tmp_path):
 def test_non_200_category_goes_question(tmp_path):
     """分类档 404 → question，本分类中止，其他分类不受影响。"""
     routes = standard_routes()
-    routes["/archives/category/tournament/champions/page/1"] = (404, "not found")
+    routes["/archives/category/tournament/champions"] = (404, "not found")
     site = FakeSite(routes)
     result = make_runner(tmp_path, site).scrape("2025-06-01", "2025-06-30")
 
-    assert any(q["endpoint"] == "/archives/category/tournament/champions/page/1"
+    assert any(q["endpoint"] == "/archives/category/tournament/champions"
                for q in result.stats.question)
     assert is_valid_raw(article_path(tmp_path, "2001"))
     assert result.stats.aborted is False
@@ -268,7 +268,7 @@ def test_non_200_category_goes_question(tmp_path):
 def test_unparsable_article_url_goes_question(tmp_path):
     """文章 URL 无 /archives/{id} → question，跳过不猜。"""
     routes = standard_routes()
-    routes["/archives/category/tournament/champions/page/1"] = (
+    routes["/archives/category/tournament/champions"] = (
         200, "<html><body><main><div id=\"list\">"
              '<a href="https://pokecabook.com/weird-page" '
              'class="entry-card-wrap a-wrap cf" title="x">'
@@ -293,7 +293,7 @@ def test_transient_error_aborts_run(tmp_path):
     """5xx 重试耗尽（TransientHttpError）顶层兜底（task 037 T8 存量清偿）：
     记 question + aborted + 保 finish_run 三清单落盘，不炸穿 scrape。"""
     routes = standard_routes()
-    routes["/archives/category/tournament/champions/page/1"] = (500, "server error")
+    routes["/archives/category/tournament/champions"] = (500, "server error")
     site = FakeSite(routes)
     result = make_runner(tmp_path, site).scrape("2025-06-01", "2025-06-30")
 

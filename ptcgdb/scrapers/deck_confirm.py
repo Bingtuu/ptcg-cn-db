@@ -16,9 +16,11 @@
   每行 = 一次**逻辑请求**（一个卡组码的一次抓取；tenacity 退避重试折叠进
   elapsed_ms，wire 级重试不单独成行——T9 验收口径按台账行 = 卡组码请求数）。
   只记真实发出的请求：断点续传缓存跳过是零网络事件，不入账。
-  行 schema：{ts(ISO 带毫秒，**请求发出时刻**——fetch 前捕获，非响应完成时刻，
-  否则慢响应后接快响应时相邻 ts 差可 <5s，合规采集被误判违规；T9 间隔验收
-  按相邻行 ts 差计算), deck_code, url, http_status, elapsed_ms,
+  行 schema：{ts(ISO 带毫秒，**真实 wire 发出时刻**——取自 HttpClient
+  last_dispatch_at 限速器放行点戳，start-to-start 语义下相邻 ts 差恒 ≥ 限速
+  间隔；零网络路径退化为调用方兜底取时。T9 口径修正 2026-08-16：早期实现
+  在 fetch 前捕获 = 进限速器 wait 前，相邻 ts 差 ≈ 上一请求耗时，无法证明
+  ≥5s 间隔）, deck_code, url, http_status, elapsed_ms,
   outcome(ok|http_error|parse_error), run_id}；
 - **TransientHttpError 顶层兜底**（T5 留痕的存量同构缺陷）：重试耗尽不炸穿
   scrape()，保 finish_run/三清单落盘，status=aborted 留痕。
@@ -312,12 +314,21 @@ class DeckConfirmScraper:
     def fetch_deck(self, code: str) -> tuple[int, str]:
         return self._http.get_text(deck_confirm_url_path(code))
 
+    @property
+    def last_dispatch_at(self) -> datetime | None:
+        """最近一次 wire 请求发出时刻（限速器放行点），委托 HttpClient；台账取时用。"""
+        return self._http.last_dispatch_at
+
 
 class RequestLedger:
     """append-only 请求台账：只记真实发出的请求（缓存跳过零网络事件不入账）。
 
     每行一次逻辑请求（一个码的一次抓取；退避重试折叠进 elapsed_ms）。
-    ts 由调用方在请求发出前捕获传入（= 请求发出时刻），不在本方法内取时。
+    ts = 真实 wire 发出时刻（限速器放行点，取自 HttpClient.last_dispatch_at）；
+    调用方在 fetch 前后对比该戳判断本次是否真有发报（熔断闸等零网络路径不刷新，
+    此时 ts 退化为调用方兜底取时）。T9 口径修正（2026-08-16）：fetch 前捕获的
+    时刻是「进限速器 wait 前」而非发出时刻，相邻 ts 差 ≈ 上一请求耗时，不能证明
+    ≥5s 间隔；放行点戳相邻差才恒 ≥ 限速间隔（start-to-start 语义）。
     """
 
     def __init__(self, path: Path) -> None:
@@ -326,7 +337,7 @@ class RequestLedger:
     def append(
         self,
         *,
-        ts: str,  # 请求发出时刻（ISO 带毫秒），调用方 fetch 前捕获
+        ts: str,  # 真实 wire 发出时刻（ISO 带毫秒），调用方取限速器放行点戳
         deck_code: str,
         url: str,
         http_status: int | None,
@@ -346,6 +357,15 @@ class RequestLedger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _resolve_wire_ts(scraper: Any, prev_dispatch: Any, fallback_ts: str) -> str:
+    """台账 ts 取值：fetch 后限速器放行点戳有刷新 → 真实 wire 发出时刻；
+    未刷新（熔断闸在限速器前拦截等零网络路径）或鸭子类型无该戳 → 兜底时刻。"""
+    dispatched = getattr(scraper, "last_dispatch_at", None)
+    if dispatched is not None and dispatched != prev_dispatch:
+        return dispatched.isoformat(timespec="milliseconds")
+    return fallback_ts
 
 
 class DeckConfirmRunner:
@@ -411,12 +431,14 @@ class DeckConfirmRunner:
             return "skipped"
         url = f"{BASE_URL}{deck_confirm_url_path(code)}"
         started = time.monotonic()
-        request_ts = datetime.now(UTC).isoformat(timespec="milliseconds")  # 请求发出时刻
+        prev_dispatch = getattr(self.scraper, "last_dispatch_at", None)
+        fallback_ts = datetime.now(UTC).isoformat(timespec="milliseconds")
         try:
             status, text = self.scraper.fetch_deck(code)
         except (TransientHttpError, CircuitOpenError) as exc:
             self._ledger.append(
-                ts=request_ts, deck_code=code, url=url, http_status=None,
+                ts=_resolve_wire_ts(self.scraper, prev_dispatch, fallback_ts),
+                deck_code=code, url=url, http_status=None,
                 elapsed_ms=_elapsed_ms(started), outcome="http_error", run_id=run_id,
             )
             if isinstance(exc, TransientHttpError):
@@ -430,9 +452,10 @@ class DeckConfirmRunner:
             )
             raise  # 顶层广义兜底置 aborted，保 finish_run
         elapsed = _elapsed_ms(started)
+        wire_ts = _resolve_wire_ts(self.scraper, prev_dispatch, fallback_ts)
         if status != 200:
             self._ledger.append(
-                ts=request_ts, deck_code=code, url=url, http_status=status,
+                ts=wire_ts, deck_code=code, url=url, http_status=status,
                 elapsed_ms=elapsed, outcome="http_error", run_id=run_id,
             )
             stats.question.append(
@@ -444,7 +467,7 @@ class DeckConfirmRunner:
             parse_deck_confirm(text)  # 落盘前解析验证 = WAF 拦截页熔断探针
         except DeckConfirmParseError as exc:
             self._ledger.append(
-                ts=request_ts, deck_code=code, url=url, http_status=status,
+                ts=wire_ts, deck_code=code, url=url, http_status=status,
                 elapsed_ms=elapsed, outcome="parse_error", run_id=run_id,
             )
             stats.question.append(
@@ -452,7 +475,7 @@ class DeckConfirmRunner:
             )
             return "parse_error"
         self._ledger.append(
-            ts=request_ts, deck_code=code, url=url, http_status=status,
+            ts=wire_ts, deck_code=code, url=url, http_status=status,
             elapsed_ms=elapsed, outcome="ok", run_id=run_id,
         )
         write_raw(

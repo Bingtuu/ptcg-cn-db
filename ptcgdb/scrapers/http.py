@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -110,6 +111,17 @@ class HttpClient:
             retry_wait if retry_wait is not None else wait_exponential(multiplier=1, min=1, max=10)
         )
         self._consecutive_failures = 0
+        self._last_dispatch_at: datetime | None = None
+
+    @property
+    def last_dispatch_at(self) -> datetime | None:
+        """最近一次 wire 请求发出的墙钟时刻（限速器放行点，UTC；未发请求为 None）。
+
+        每次实际发报（含退避重试的每个 attempt）都刷新；熔断闸/缓存等零网络
+        路径不刷新。用途 = 请求台账记真实 wire 发出时刻（task 037 T9 口径修正：
+        限速器等待在 fetch 内部，fetch 前捕获的时刻是「进 wait 前」而非发出时刻）。
+        """
+        return self._last_dispatch_at
 
     def __enter__(self) -> HttpClient:
         return self
@@ -168,6 +180,7 @@ class HttpClient:
 
     def _once(self, send: Callable[[], httpx.Response], parse: ResponseParser) -> Any:
         self._limiter.wait()
+        self._last_dispatch_at = datetime.now(UTC)  # 限速器放行点 = wire 发出时刻
         try:
             resp = send()
         except httpx.TransportError as exc:
