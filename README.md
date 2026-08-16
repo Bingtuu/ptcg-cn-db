@@ -6,9 +6,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Phase2·M8·M9达成·JP对齐二期待立项-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.19-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-594%20passed-success.svg?style=flat-square)](STATUS.md)
+[![Status](https://img.shields.io/badge/Status-Phase2·全里程碑达成（M5~M10）-brightgreen.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.21-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-747%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -23,10 +23,10 @@
 ## ✨ 亮点
 
 - **📸 快照化合法性引擎** —— 赛制标记 + 白名单 + 禁卡表 + 视作覆盖 + 能量种类全部按生效日版本化；旧快照永不删除，可回放任意历史环境（`legal_at('2026-08-01', 'standard')`）
-- **🏆 真实赛事卡组管线** —— 80 场赛事（CN mik 26 + EN Limitless 双通道 54）/ 2,491 套卡组内容（full 1,943）/ 2,893 条出战记录入库，pairings 逐桌对阵 479 桌；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用），`mapping_status` 分档、只统计可映射简中环境的卡组；**三赛区旋转日历种子**（`config/tournament_envs.yml`）+ 赛事日期推导环境落库，CN/EN/JP 环境标号对齐有方案（FR-9.1b）；EN 侧 Limitless **API + 主站 HTML 双通道已接入**（官方大赛 Top Cut，含 Worlds 2025 补录与亚洲联赛 MBL/PBL/KL 9 场，tier 系数词表化），`basis` 口径标签不与 CN 混同；无简中对应卡落 `deck_card_misses` 缺口标识（简中进 Mega 环境后可 `remap-decks` 整体刷新，partial→full 单调升级已实战验证）；mik topcut_slots 反推物化 9 场，CN 样本 B 层胜率/WWS 非空
+- **🏆 真实赛事卡组管线（三赛区）** —— 186 场赛事（CN mik 26 + EN Limitless 双通道 54 + JP 聚合站通道 106）/ 2,720 套卡组内容（full 2,100）/ 3,125 条出战记录入库，pairings 逐桌对阵 479 桌；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用），`mapping_status` 分档、只统计可映射简中环境的卡组；**三赛区旋转日历种子**（`config/tournament_envs.yml`）+ 赛事日期推导环境落库，CN/EN/JP 环境标号对齐（FR-9.1b）；EN 侧 Limitless **API + 主站 HTML 双通道**（官方大赛 Top Cut，含 Worlds 2025 补录与亚洲联赛 MBL/PBL/KL 9 场，tier 系数词表化）；JP 侧 **PokecaBook 壳 + 官方 deck confirm 卡表定向解析**（红线定向放宽 + 成本守卫：估算超闸门自动降级最高等级场次），`basis` 口径标签互不混同；无简中对应卡落 `deck_card_misses` 缺口标识（简中进 Mega 环境后可 `remap-decks` 整体刷新，partial→full 单调升级已实战验证）；mik topcut_slots 反推物化 9 场，CN 样本 B 层胜率/WWS 非空
 - **📊 可复算的统计三指标** —— 加权出场率 WUR / 胜率 WR（逐局战绩与 top-cut 转化率两层口径）/ 加权胜率 WWS（贝叶斯收缩）；**公式只在 canonical SQL 文件里**（单一事实源），权重输入全量落库，任何人都能用 SQL 原样重放官方数字
 - **🔍 像写 SQL 一样查库** —— `ptcgdb query` 只读 ad-hoc SQL（mode=ro，拒写操作）；导出 DB 自带统计物化视图，口径词表 hash 版本化进 meta
-- **🌏 三语卡名映射** —— 简中卡 99.3% 挂英文桥（12,337 张），经 TCGdex + pokemon-tcg-data + PokéAPI 链路填充日文名 9,480 张；映射来源经 `external_ids` 体系逐条可溯，pokemon-card.com 官方抽样 31 张核对一致率 100%
+- **🌏 三语卡名映射** —— 简中卡 99.3% 挂英文桥（12,337 张），经 TCGdex + pokemon-tcg-data + PokéAPI 链路 + 人工词表种子填充日文名 11,046 张；映射来源经 `external_ids` 体系逐条可溯，pokemon-card.com 官方抽样 31 张核对一致率 100%
 - **🔌 规则语义一等公民的 SDK** —— 合法性：`legal_at` / `effective_text`；卡组校验：`validate_deck`（结构化违规列表，banned/not_legal 互斥）；统计：`stats_usage` / `stats_winrate` / `stats_wws`；`open_db` / `open_jsonl` 双后端同一接口、契约测试保一致
 - **📦 十三件套导出契约** —— `manifest.json` + 八份 JSONL（cards / sets / relations + 赛事五表含 pairings）+ `legality.json` + 只读 SQLite + `schema.md` + `checksums.sha256`，字段只加不删；双轨版本化（日历版本管数据，SemVer 管 schema），对齐 MTGJSON/Scryfall 惯例
 - **🔄 分级自动更新** —— L0 新卡每日增量入库、L1 赛制页变更自动生成提案、L2 勘误人工维护；目标新包发售 30 分钟内完成更新
@@ -36,7 +36,7 @@
 
 ## 🚀 快速预览
 
-> 当前库内数据：**129 系列 / 12,420 张卡**（active，三语卡名 EN 12,337 / JA 9,480）· **80 场赛事（CN mik 26 + EN Limitless API 5 + 主站 49 含 Worlds 2025 与亚洲联赛）/ 2,491 套卡组（full 1,943）/ 2,893 条出战 / pairings 479 桌** · 合法卡池 standard 5,320 / open 12,413。以下接口均已可用（开发进度见 Roadmap）。
+> 当前库内数据：**129 系列 / 12,420 张卡**（active，三语卡名 EN 12,337 / JA 11,046）· **186 场赛事（CN mik 26 + EN Limitless API 5 + 主站 49 含 Worlds 2025 与亚洲联赛 + JP 106）/ 2,720 套卡组（full 2,100）/ 3,125 条出战 / pairings 479 桌** · 合法卡池 standard 5,320 / open 12,413。以下接口均已可用（开发进度见 Roadmap）。
 
 **CLI**
 
@@ -46,6 +46,8 @@ ptcgdb scrape sets && ptcgdb scrape cards      # 采集卡牌
 ptcgdb scrape tourneys --series-id 54          # 采集赛事卡组
 ptcgdb scrape limitless && ptcgdb ingest-limitless   # EN 对齐窗口 API 通道（Limitless 在线赛）
 ptcgdb scrape limitless-site && ptcgdb ingest-limitless-site   # EN 主站收录通道（官方大赛 Top Cut）
+ptcgdb scrape jp-shells && ptcgdb scrape jp-decks    # JP 通道：聚合站壳 → 官方 deck confirm 卡表（估算超闸门自动降级）
+ptcgdb ingest-jp                                     # JP 赛事入库（name_ja 名字链映射 + 同组裁决）
 ptcgdb ingest --set CSV10C                     # 卡牌入库（raw → draft）
 ptcgdb ingest-tourneys                         # 赛事入库（60 张质量门）
 ptcgdb validate && ptcgdb activate             # FR-2.3 六规则校验 → active
@@ -55,7 +57,7 @@ ptcgdb legal --date 2026-08-01 --format standard   # 某日期的合法卡池（
 ptcgdb deck-check --file deck.yml              # FR-8 卡组校验（ok 退 0 / 违规 1 / 错误 2）
 
 # ── 统计与查询 ──
-ptcgdb stats usage --window-days 90            # 加权出场率 WUR（--basis cn/intl_aligned | winrate / wws / card <名>）
+ptcgdb stats usage --window-days 90            # 加权出场率 WUR（--basis cn/intl_aligned/jp | winrate / wws / card <名>）
 ptcgdb query "SELECT * FROM v_stat_deck_cards LIMIT 5"   # 只读 ad-hoc SQL
 ptcgdb export --out dist/                      # 导出十三件套
 
@@ -66,7 +68,7 @@ ptcgdb backfill-misses && ptcgdb remap-decks   # 映射缺口回填 / 卡库增�
 ptcgdb accept && ptcgdb sample                 # 一键验收 A1~A8；A2/A3 抽样比对清单
 
 # ── 跨语言与机制映射 ──
-ptcgdb map-en && ptcgdb map-tcgdex && ptcgdb map-ja   # EN 桥 → TCGdex ID → JP 名
+ptcgdb map-en && ptcgdb map-tcgdex && ptcgdb map-ja   # EN 桥 → TCGdex ID → JP 名（map-ja-trainer 补 trainer/特殊能量）
 ptcgdb map-tera                                # 太晶识别：ptcd EN subtypes → is_tera
 ```
 
@@ -93,15 +95,16 @@ flowchart TB
         B["官网赛制页 / 公告<br/>合法性权威源"]
         C["官方小程序<br/>接口四层防护不可得 · 人工比对通道"]
         D["TCGdex / pokemon-tcg-data / PokéAPI<br/>跨语言映射源（EN→JA 名字级 dexId 链）"]
-        E["pokemon-card.com<br/>官方卡查 · 抽样权威核对"]
+        E["pokemon-card.com<br/>官方卡查 · 抽样权威核对 + deck confirm 卡表定向解析（JP）"]
         F["Limitless TCG（EN）<br/>逐局胜率源 · API+主站双通道已接入"]
+        G["PokecaBook（JP）<br/>JP 官方赛事上位卡组聚合壳源"]
     end
 
     subgraph PIPE["⚙️ 数据管线"]
         RAW[/"raw/ · append-only 原始层"/]
         NORM["normalize<br/>Pydantic 校验 + 字段归一 + 派生计算"]
         MAP["mapping<br/>EN 桥 → TCGdex ID → JP 名（置信度分档）"]
-        DB[("SQLite (WAL)<br/>draft → 校验 → active<br/>user_version=11")]
+        DB[("SQLite (WAL)<br/>draft → 校验 → active<br/>user_version=12")]
         STATS["stats<br/>canonical SQL 单一事实源<br/>物化视图 v_stat_deck_cards / v_tournament_weights"]
     end
 
@@ -116,6 +119,8 @@ flowchart TB
     A --> RAW
     B --> RAW
     D --> RAW
+    F --> RAW
+    G --> RAW
     RAW --> NORM --> DB
     RAW --> MAP --> DB
     E -.->|抽样核对 31 张 · 一致率 100%| MAP
@@ -133,7 +138,7 @@ flowchart TB
     classDef pipe fill:#fef3c7,stroke:#f59e0b,color:#1e293b;
     classDef out fill:#dcfce7,stroke:#22c55e,color:#1e293b;
     classDef mon fill:#f3e8ff,stroke:#a855f7,color:#1e293b;
-    class A,B,C,D,E,F source;
+    class A,B,C,D,E,F,G source;
     class RAW,NORM,MAP,DB,STATS pipe;
     class CLI,DIST,SDK out;
     class MON mon;
@@ -145,14 +150,14 @@ flowchart TB
 - ✅ **Phase 1a** schema 建库 + 全卡首批入库（129 系列 / 12,420 张）+ 校验报告
 - ✅ **Phase 1b** 环境快照 + 合法性引擎 + 版本化/回滚 + 导出 + SDK 双后端
 - ✅ **Phase 1c** L0/L1 自动更新管线 + M4 验收 A1~A8 全过（赶在 2026-09-16 新包发售前就位）
-- ✅ **Phase 2**（数据质量与扩展）
+- ✅ **Phase 2**（数据质量与扩展，2026-08-16 全里程碑达成）
   - ✅ **M5** 进化解析：跨系列回退解析，未解析 401→5（仅剩化石豁免）
-  - ✅ **M6** 跨语言映射：EN 桥 12,337（99.3%）→ TCGdex ID 12,322（99.88%）→ JP 名 9,480（官方抽样 100%）
+  - ✅ **M6** 跨语言映射：EN 桥 12,337（99.3%）→ TCGdex ID 12,322（99.88%）→ JP 名 11,046（官方抽样 100% + trainer 词表补强）
   - ✅ **M7** 同名计数引擎 + `validate_deck` SDK 双后端 + CLI deck-check（真实卡组 408/408 全过）
-  - ✅ **M8** A2/A3 卡面人工比对全部核销（A2 100/100 = 1,100 项次、A3 62/62 含太晶补验 12 例零误判，一致率均 100%）+ 三件技术债清偿（卡号分母逐系列种子 / 字母能量 `alias_of` / 太晶识别 is_tera 166）+ V-UNION 四部件方位回填 24 张齐全 → **Phase 2 收官**
+  - ✅ **M8** A2/A3 卡面人工比对全部核销（A2 100/100 = 1,100 项次、A3 62/62 含太晶补验 12 例零误判，一致率均 100%）+ 三件技术债清偿（卡号分母逐系列种子 / 字母能量 `alias_of` / 太晶识别 is_tera 166）+ V-UNION 四部件方位回填 24 张齐全
   - ✅ **M9** 赛事卡组管线与统计基建：CN mik + 统计可复算与查询层 + EN Limitless 对齐窗口 API/主站双通道（官方系列赛归类 + 名次截断 `config/site_tournament_rules.yml` 配置化 + decklist→简中映射链含 paren_strip 回退 + pairings 落库）；`basis` 口径标签不与 CN 混同（FR-9.1a/b）；**范围收口：以当前简中环境为起点收集维护，历史不回填**
-  - ✅ **刷新与缺口治理**（task 031/032/033/034）：赛事刷新管线（ingest 窗口守卫 / L0 remap 钩子 / recaliber / monitor tourneys）+ `deck_card_misses` 缺口标识可刷新 + Worlds 2025 补录（tier 6.0）+ 亚洲联赛 9 场收录（MBL/KL=1.5、PBL=1.0）+ mik topcut_slots 反推物化 → 80 赛 / 2,491 卡组（full 1,943）
-  - ⬜ **JP 对齐二期**：JP 壳源 + JP 卡国内赛事 + 卡组聚合站评估
+  - ✅ **刷新与缺口治理**（task 031/032/033/034）：赛事刷新管线（ingest 窗口守卫 / L0 remap 钩子 / recaliber / monitor tourneys）+ `deck_card_misses` 缺口标识可刷新 + Worlds 2025 补录（tier 6.0）+ 亚洲联赛 9 场收录（MBL/KL=1.5、PBL=1.0）+ mik topcut_slots 反推物化
+  - ✅ **M10 JP 对齐二期**（task 036/037）：trainer 日文名表补强（词表 290 条，name_ja +1,566）+ JP 卡级管线（PokecaBook 壳 → deck confirm 卡表定向采集：成本守卫降级 champions-only 229 码 → name_ja 名字链映射入库 106 赛 / 229 卡组，卡级映射 96.3%、Mega 前月段 full 率 99.2%）→ `basis=jp` WUR 统计解锁
 - ⬜ **Phase 3** 效果标签层，配合规则引擎
 - ⬜ **Phase 4** 对战模拟与胜率统计（独立库，主库只读）
 
@@ -162,7 +167,7 @@ flowchart TB
 
 | 文档 | 内容 |
 |---|---|
-| [PRD v1.19](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.8 刷新管线） |
+| [PRD v1.21](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.5 deck confirm 定向放宽与成本守卫 / FR-9.8 刷新管线） |
 | [数据源与接口文档](docs/data-sources.md) | 全部数据源获取方式：mik.moe 主源 API（卡牌 + 赛事）、官网赛制页、TCGdex / pokemon-tcg-data / PokéAPI、Limitless / TopDeck / RK9 与 JP 卡组聚合站（task 028 调研）、pokemon-card.com 抽样核对 |
 | [STATUS.md](STATUS.md) | 当前阶段、里程碑进度、决策日志、技术债 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更（四段式，数据日历版本 + schema SemVer 双轨） |
@@ -170,7 +175,7 @@ flowchart TB
 
 ## 🙏 致谢与对标
 
-站在这些项目的肩膀上：[pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) · [TCGdex](https://github.com/tcgdex/cards-database) · [PokéAPI](https://github.com/PokeAPI/pokeapi) · [type-null/PTCG-database](https://github.com/type-null/PTCG-database) · [TCG ONE](https://github.com/axpendix/tcgone-engine-contrib) · [ryuu-play](https://github.com/keeshii/ryuu-play) · [Limitless TCG](https://play.limitlesstcg.com/) · [MTGJSON](https://mtgjson.com/) · [Cryst's Cards Database](https://tcg.mik.moe/)
+站在这些项目的肩膀上：[pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) · [TCGdex](https://github.com/tcgdex/cards-database) · [PokéAPI](https://github.com/PokeAPI/pokeapi) · [type-null/PTCG-database](https://github.com/type-null/PTCG-database) · [TCG ONE](https://github.com/axpendix/tcgone-engine-contrib) · [ryuu-play](https://github.com/keeshii/ryuu-play) · [Limitless TCG](https://play.limitlesstcg.com/) · [PokecaBook](https://pokecabook.com/) · [MTGJSON](https://mtgjson.com/) · [Cryst's Cards Database](https://tcg.mik.moe/)
 
 ## ⚖️ 合规声明
 
