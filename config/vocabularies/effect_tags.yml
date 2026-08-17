@@ -3,6 +3,10 @@
 # 用途：cards.effect_tags 标注的唯一事实源——`tag-effects-scan`（task 038 命中率评测）
 # 与 `tag-effects`（task 039 落库）共用；代码零内置词。
 #
+# v1 定稿（用户拍板 2026-08-17）：意图标签 28 = 初版 23 + GHI 实测零命中浮出的
+# 5 个新意图类别（coin_manipulate/bench_attack/win_condition/special_summon/
+# counter_shift_self，见 special_behavior 之后各条 note 实证）。
+#
 # 口径：
 # - 文本源 = text_raw（trainer/energy）/ attacks[].effect_text / abilities[].effect_text
 #   （或旧字段 text），逐字匹配，绝不做术语规范化；新旧措辞（灼伤/烧伤等）在 patterns
@@ -264,6 +268,37 @@ tags:
     note: 谜之化石类"训练家卡当宝可梦"/招式学习器 body（卡名带「学习器」或 body 措辞
       「可以使用这张卡牌上的招式」——招式学习器 临危一击/萤石等 text_raw 不含"学习器"
       字样，由 body 措辞承载）/变身出场限制（海豚侠ex「全能之魂」）；人工名单驱动。
+  # ── 以下 5 条为 task 038 GHI 实测零命中浮出、用户拍板（2026-08-17）追加的新意图类别 ──
+  - tag: coin_manipulate
+    cn: 硬币操控
+    patterns:
+      - 视作反面
+      - 对手将抛掷\d?次硬币
+    note: task 038 实测新增。改写硬币结果（可达鸭「胡思乱想」全视作反面）/
+      强制招式掷币判定（海刺龙「致盲墨汁」/润水鸭「泼洒凝胶」反面即失败）。
+  - tag: bench_attack
+    cn: 备战区出招
+    patterns:
+      - 备战区也能使用
+    note: task 038 实测新增。备战区使用招式（胡地ex「维度之手」，GHI 唯一实例）。
+  - tag: win_condition
+    cn: 直接胜利
+    patterns:
+      - 算作自己的胜利
+    note: task 038 实测新增。改写胜负判定（N的象征鸟「胜利象征」，GHI 唯一实例）。
+  - tag: special_summon
+    cn: 特殊登场
+    patterns:
+      - 将这张卡牌放于备战区
+      - 奖赏卡中拿取了这张卡牌
+    note: task 038 实测新增。从手牌/奖赏卡不经常规出场直放备战区
+      （伦琴猫「弥漫闪光」/吉利蛋「幸运奖励」同源：奖赏卡拿取时直放备战区）。
+  - tag: counter_shift_self
+    cn: 己方指示物转移
+    patterns:
+      - 转放于(这只|自己)
+    note: task 038 实测新增。伤害指示物在己方宝可梦间转移（呆壳兽「古怪行为」/
+      火箭队的以欧路普「火箭脑力」）；转给对手归 spread（转放于对手）。
 
 flags:
   - flag: coin_flip

@@ -131,13 +131,16 @@ REAL_TAGS, REAL_FLAGS = load_effect_vocab()
 
 
 def test_real_vocab_shape():
-    assert len(REAL_TAGS) == 23 and len(REAL_FLAGS) == 3
+    assert len(REAL_TAGS) == 28 and len(REAL_FLAGS) == 3
     assert [t.tag for t in REAL_TAGS] == [
         "draw", "search", "mill", "discard_recover", "hand_disrupt",
         "damage_boost", "spread", "heal", "protection", "status",
         "energy_accel", "energy_move", "energy_disrupt", "gust", "switch",
         "bounce", "removal", "ko", "copy", "lock", "modifier", "evolution",
         "special_behavior",
+        # task 038 GHI 实测浮出、用户拍板（2026-08-17）追加
+        "coin_manipulate", "bench_attack", "win_condition", "special_summon",
+        "counter_shift_self",
     ]
     assert [f.flag for f in REAL_FLAGS] == ["coin_flip", "once_per_turn", "conditional"]
 
@@ -467,6 +470,70 @@ SEED_CASES = [
         "[对战中，己方的GX招式只能使用1次。]",
         "attack",
         {"energy_disrupt"},
+    ),
+    # ── task 038 Task7（用户拍板 2026-08-17）：5 个新意图类别，8 条原文全量种子 ──
+    # 可达鸭 胡思乱想（coin_manipulate：硬币结果视作反面）
+    (
+        "在下一个对手的回合，将对手抛掷的硬币的结果，全部视作反面。",
+        "attack",
+        {"coin_manipulate"},
+    ),
+    # 海刺龙 致盲墨汁（coin_manipulate：强制招式掷币判定）
+    (
+        "在下一个对手的回合，受到这个招式影响的宝可梦在使用招式时，"
+        "对手将抛掷2次硬币。只要出现1次反面，那么那个招式失败。",
+        "attack",
+        {"coin_manipulate"},
+    ),
+    # 润水鸭 泼洒凝胶（coin_manipulate：强制招式掷币判定）
+    (
+        "在下一个对手的回合，受到这个招式影响的宝可梦在使用招式时，"
+        "对手将抛掷1次硬币。如果为反面则那个招式失败。",
+        "attack",
+        {"coin_manipulate"},
+    ),
+    # 胡地ex 维度之手（bench_attack：备战区出招）
+    (
+        "这个招式，即使这只宝可梦在备战区也能使用。",
+        "attack",
+        {"bench_attack"},
+    ),
+    # N的象征鸟 胜利象征（win_condition：直接胜利）
+    (
+        "使用这个招式时，如果自己的剩余奖赏卡张数为1张的话，"
+        "则这场对战算作自己的胜利。",
+        "attack",
+        {"win_condition"},
+    ),
+    # 伦琴猫 弥漫闪光（special_summon：手牌直放备战区）
+    (
+        "在自己的回合，如果这张卡牌在手牌中，自己的剩余奖赏卡张数，"
+        "比对手的剩余奖赏卡张数多的话，则可以使用1次。将这张卡牌放于备战区。",
+        "ability",
+        {"special_summon"},
+    ),
+    # 吉利蛋 幸运奖励（special_summon 同源：奖赏卡拿取时直放备战区）
+    (
+        "在自己的回合，当从反面朝上的自己的奖赏卡中拿取了这张卡牌时，"
+        "如果自己的备战区有空位的话，则在加入手牌前可以使用。"
+        "将这只宝可梦放于自己的备战区。然后，抛掷1次硬币如果为正面，"
+        "则额外拿取1张奖赏卡。",
+        "ability",
+        {"special_summon"},
+    ),
+    # 呆壳兽 古怪行为（counter_shift_self：己方指示物转移）
+    (
+        "在自己的回合可以使用任意次。选择自己场上宝可梦身上放置的1个伤害指示物，"
+        "转放于这只宝可梦身上。",
+        "ability",
+        {"counter_shift_self"},
+    ),
+    # 火箭队的以欧路普 火箭脑力（counter_shift_self：己方指示物转移）
+    (
+        "在自己的回合可以使用任意次。选择自己场上的「火箭队的宝可梦」身上放置的"
+        "1个伤害指示物，转放于自己的其他宝可梦身上。",
+        "ability",
+        {"counter_shift_self"},
     ),
     # 招式学习器 临危一击（special_behavior：body 措辞承载，text 无"学习器"字样）
     (
