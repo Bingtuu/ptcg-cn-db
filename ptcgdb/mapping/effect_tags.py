@@ -1,6 +1,6 @@
 """task 038：效果粗粒度标签词表 loader + 文本匹配（PRD v1.22 §6.4）。
 
-词表 = 唯一事实源 `config/vocabularies/effect_tags.yml`（23 意图标签 + 3 机制 flag，
+词表 = 唯一事实源 `config/vocabularies/effect_tags.yml`（28 意图标签 + 3 机制 flag，
 开放追加）；代码零内置词——新标签/新措辞 = 只改 yml（扩展性验收锚，spec 拍板④）。
 不猜原则：零命中/模式冲突不落半个标签，由 scan 层浮出 zero_hits 人工归类。
 落库标注器（tag_card / CLI tag-effects）在 task 039 叠加于本模块之上。
