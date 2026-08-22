@@ -6,7 +6,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class AttackCost(BaseModel):
@@ -16,6 +16,30 @@ class AttackCost(BaseModel):
 
     type: str  # 属性（词表 config/vocabularies/energy_types.yml）
     count: int
+
+
+class EffectTagDetail(BaseModel):
+    """效果标签分项明细（PRD v1.23 §6.4）：规则引擎精确定位消费面。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    attacks: dict[str, list[str]] = {}  # 招式下标（字符串）→ 意图标签
+    ability: list[str] = []  # 特性段合并去重
+    text: list[str] = []  # 卡面文本段（trainer/energy 的 text_raw）
+    flags: list[str] = []  # 机制 flag（coin_flip/once_per_turn/conditional）
+
+
+class EffectTags(BaseModel):
+    """cards.effect_tags 填充结构（PRD v1.23 §6.4）。
+
+    空对象 = 已标注无命中，NULL = 未标注；labels = mik 机制标签原样保留。
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tags: list[str] = []  # 卡级去重意图标签集（顺序 = 词表顺序）
+    detail: EffectTagDetail = EffectTagDetail()
+    labels: list[str] = []  # mik 机制标签（一击/连击/汇流/古代/未来/究极异兽等）
 
 
 class Attack(BaseModel):
@@ -96,7 +120,7 @@ class Card(BaseModel):
     provides: list[str] | None
     is_basic_energy: bool
     text_raw: str
-    effect_tags: list[str] | None
+    effect_tags: EffectTags | None  # 粗粒度标签（PRD §6.4，v1.23 {tags, detail, labels}）
     alias_of: str | None = None  # mik 双重列示别名→正本 card_id（v1.11 增量，只加不删）
     name_en: str | None
     name_ja: str | None
@@ -104,6 +128,18 @@ class Card(BaseModel):
     source: str
     fetched_at: datetime
     status: str
+
+    @field_validator("effect_tags", mode="before")
+    @classmethod
+    def _convert_legacy_label_list(cls, v: object) -> object:
+        """过渡期兼容（task 039）：ingest 旧 list 形态（mik 机制标签）→ labels 键。
+
+        首标/重标前库内仍是 list 值（= 未标注 + 机制标签），读库侧不炸；
+        tag-effects 幂等转换后落库为 dict 结构，本转换不再触发。
+        """
+        if isinstance(v, list):
+            return {"tags": [], "detail": {}, "labels": v}
+        return v
 
 
 class Set(BaseModel):

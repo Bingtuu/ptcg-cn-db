@@ -3,7 +3,8 @@
 词表 = 唯一事实源 `config/vocabularies/effect_tags.yml`（28 意图标签 + 3 机制 flag，
 开放追加）；代码零内置词——新标签/新措辞 = 只改 yml（扩展性验收锚，spec 拍板④）。
 不猜原则：零命中/模式冲突不落半个标签，由 scan 层浮出 zero_hits 人工归类。
-落库标注器（tag_card / CLI tag-effects）在 task 039 叠加于本模块之上。
+task 039 落库标注器：tag_card 纯函数核 + run_tagging（PRD v1.23 结构
+{tags, detail, labels}，labels = mik 机制标签原样保留，用户拍板 2026-08-22）。
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from ptcgdb.legal.engine import legal_at
+from ptcgdb.schemas.models import EffectTagDetail, EffectTags
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
 DEFAULT_VOCAB_PATH = CONFIG_DIR / "vocabularies" / "effect_tags.yml"
@@ -283,3 +285,311 @@ def run_scan(
     finally:
         engine.dispose()
     return scan_texts(items, tags, flags, label=label)
+
+
+# ── 落库标注器（task 039；PRD v1.23 结构 {tags, detail, labels}） ──
+
+
+def extract_labels(current: object) -> list[str]:
+    """从 cards.effect_tags 现存值提取 mik 机制标签（三形态：NULL / 旧 list / 新 dict）。"""
+    if isinstance(current, dict):
+        labels = current.get("labels") or []
+        return [str(x) for x in labels]
+    if isinstance(current, list):
+        return [str(x) for x in current]
+    return []
+
+
+def _ordered(hits: set[str], order: Collection[str]) -> list[str]:
+    """命中集合按词表顺序输出（确定性锚）。"""
+    return [name for name in order if name in hits]
+
+
+def tag_card(
+    card_type: str,
+    text_raw: str | None,
+    attacks: list[dict] | None,
+    abilities: list[dict] | None,
+    *,
+    labels: list[str] | None = None,
+    tag_entries: list[EffectTagEntry],
+    flag_entries: list[EffectFlagEntry],
+) -> EffectTags:
+    """卡级聚合标注纯函数核：分项各跑词表 → 卡级去重（顺序 = 词表顺序）。
+
+    确定性 + 幂等：同输入同输出。宝可梦的 text_raw 不打标（与 038 抽取口径一致，
+    规则框/卡面数值由结构化字段承载）；trainer/energy 打 text 段。
+    """
+    tag_order = [e.tag for e in tag_entries]
+    flag_order = [f.flag for f in flag_entries]
+    attack_hits: dict[str, list[str]] = {}
+    ability_hits: set[str] = set()
+    text_hits: set[str] = set()
+    flag_hits: set[str] = set()
+    segment_texts: list[tuple[str, str]] = []  # (kind, text) 供 flag 聚合
+
+    if card_type in ("trainer", "energy"):
+        t = (text_raw or "").strip()
+        if t:
+            text_hits.update(match_tags(t, tag_entries, card_type))
+            segment_texts.append((card_type, t))
+    for i, a in enumerate(attacks or []):
+        t = ((a or {}).get("effect_text") or "").strip()
+        if t:
+            hits = match_tags(t, tag_entries, "attack")
+            if hits:
+                attack_hits[str(i)] = list(hits)
+            segment_texts.append(("attack", t))
+    for ab in abilities or []:
+        t = ((ab or {}).get("effect_text") or (ab or {}).get("text") or "").strip()
+        if t:
+            ability_hits.update(match_tags(t, tag_entries, "ability"))
+            segment_texts.append(("ability", t))
+    for _, t in segment_texts:
+        flag_hits.update(match_flags(t, flag_entries))
+
+    all_tags = set(text_hits) | ability_hits | {h for hits in attack_hits.values() for h in hits}
+    return EffectTags(
+        tags=_ordered(all_tags, tag_order),
+        detail=EffectTagDetail(
+            attacks=attack_hits,
+            ability=_ordered(ability_hits, tag_order),
+            text=_ordered(text_hits, tag_order),
+            flags=_ordered(flag_hits, flag_order),
+        ),
+        labels=list(labels or []),
+    )
+
+
+# 零命中归类器：038 人工归类五类 + 039 首标实测新增六类的码化（报告口径），
+# None = 未知 → question 不猜
+def classify_zero_text(text: str) -> str | None:
+    t = text.strip()
+    if not t:
+        return "no_effect_text"
+    if "硬币" in t and "失败" in t:
+        return "coin_failure"
+    if "失败" in t:
+        return "conditional_failure"
+    # 计数型变量伤害（含小写 x / ×N点伤害 / 相同数值 变体）——damage_modifier 承载
+    if re.search(r"[×xX]\s*\d+\s*点?伤害", t) or "相同数值的伤害" in t:
+        return "variable_damage"
+    if re.search(r"给这只宝可梦.{0,4}也造成", t):
+        return "recoil"
+    if re.search(r"身上附着的[^。]{0,24}放于(弃牌区|放逐区)", t) or re.search(
+        r"附着于[^，。]{0,12}身上的[^。]{0,24}放于(弃牌区|放逐区)", t
+    ):
+        return "self_cost"
+    if re.search(r"只有[^。]{0,44}才可(以)?使?用", t) or "才可以使用招式" in t:
+        return "self_constraint"
+    # task 039 用户拍板：以下四类全库各 1~2 种卡的孤立旧机制，归类不打标
+    # 手牌↔牌库顶互换（智挥猩「智慧猩」/掉包杯）
+    if "与牌库上方的卡牌互换" in t:
+        return "top_swap"
+    # KO 去向改写为放逐区（放逐市，竞技场规则文）
+    if "不将该宝可梦放于弃牌区，而是放于放逐区" in t:
+        return "ko_destination_override"
+    # 放逐对手弃牌区卡牌（弗拉达利◇）
+    if re.search(r"对手弃牌区中.{0,50}放于放逐区", t):
+        return "banish_opponent_discard"
+    # 自弃备战区宝可梦及附着卡（望罗）
+    if re.search(r"备战区[^。]{0,40}全部放于弃牌区", t):
+        return "self_bench_clear"
+    # GX/VSTAR 规则文独占条目（规则语义由 rule_box_type 承载）
+    if re.fullmatch(r"(\[对战中，己方的(GX|VSTAR)[^\]]*\]\s*)+", t):
+        return "legacy_rule_text"
+    # 退场旧机制特殊效果（额外回合等 GX/VSTAR 力量，整理性打标从简口径）
+    if "再开始1次" in t:
+        return "legacy_mechanic"
+    # 源数据噪音（如 CSNC-005 effect_text="clear"），如实记录
+    if re.fullmatch(r"[a-zA-Z\s]+", t):
+        return "data_artifact"
+    return None
+
+
+@dataclass(frozen=True)
+class ZeroTagCard:
+    card_id: str
+    name: str
+    categories: tuple[str, ...]  # 归类（no_effect_text/variable_damage/self_cost/…）
+
+
+@dataclass(frozen=True)
+class TaggingResult:
+    label: str
+    dry_run: bool
+    total: int  # 本次打标卡数（active，按 sets 过滤后）
+    changed: int  # 写入有变化（dry_run 时 = 将会变化）
+    unchanged: int  # 幂等零漂移计数
+    labels_preserved: int  # 带非空 labels 的卡数
+    tag_hits: dict[str, int]  # 标签 → 命中卡数
+    flag_hits: dict[str, int]
+    # 卡级 ≥3 意图标签（模式冲突审视）：(card_id, name, tags)
+    multi_hits: tuple[tuple[str, str, tuple[str, ...]], ...]
+    zero_tag_cards: tuple[ZeroTagCard, ...]  # 零命中卡（已归类）
+    questions: dict[str, list[str]]  # unknown → card_ids（疑似新机制，不猜）
+    # 当前环境卡池核验（env_fmt 给定时）：零命中卡按归类计数 + 未知数
+    env_label: str | None = None
+    env_zero_categories: dict[str, int] | None = None
+    env_unknown: int = 0
+
+
+def _classify_zero_card(items: list[TextItem]) -> tuple[str, ...] | None:
+    """零命中卡归类：无效果文本 → no_effect_text；逐文本归类，任一未知 → None。"""
+    if not items:
+        return ("no_effect_text",)
+    cats: set[str] = set()
+    for it in items:
+        c = classify_zero_text(it.text)
+        if c is None:
+            return None
+        cats.add(c)
+    return tuple(sorted(cats))
+
+
+def run_tagging(
+    db_path: Path,
+    *,
+    sets: Collection[str] | None = None,
+    dry_run: bool = False,
+    vocab_path: Path = DEFAULT_VOCAB_PATH,
+    env_fmt: str | None = None,
+) -> TaggingResult:
+    """全库/分系列首标落库：tag_card 逐卡计算 → 有变化才写（幂等，复跑零漂移）。
+
+    只处理 status='active'；旧 list 形态机制标签保留进 labels；零命中卡写空对象
+    （已标注无命中），NULL 仅历史遗留。dry_run 只出统计零写入。
+    env_fmt 给定时附当前环境卡池零命中核验（无快照/无表时如实跳过）。
+    """
+    from sqlalchemy.exc import OperationalError
+
+    tag_entries, flag_entries = load_effect_vocab(vocab_path)
+    set_allow = set(sets) if sets is not None else None
+    engine = create_engine(f"sqlite:///{db_path}")
+    changed = unchanged = labels_preserved = 0
+    tag_hits = {e.tag: 0 for e in tag_entries}
+    flag_hits = {f.flag: 0 for f in flag_entries}
+    multi: list[tuple[str, str, tuple[str, ...]]] = []
+    zero_cards: list[ZeroTagCard] = []
+    unknown: list[str] = []
+    try:
+        with Session(engine) as s:
+            rows = s.execute(
+                sa_text(
+                    "SELECT card_id, name_full, card_type, text_raw, attacks, abilities,"
+                    " set_id, effect_tags FROM cards WHERE status = 'active'"
+                    " ORDER BY card_id"
+                )
+            ).all()
+            for card_id, name, ctype, text_raw, attacks, abilities, set_id, cur in rows:
+                if set_allow is not None and set_id not in set_allow:
+                    continue
+                current = json.loads(cur) if cur is not None else None
+                labels = extract_labels(current)
+                et = tag_card(
+                    ctype,
+                    text_raw,
+                    json.loads(attacks) if attacks else None,
+                    json.loads(abilities) if abilities else None,
+                    labels=labels,
+                    tag_entries=tag_entries,
+                    flag_entries=flag_entries,
+                )
+                payload = et.model_dump(mode="json")
+                if labels:
+                    labels_preserved += 1
+                for t in et.tags:
+                    tag_hits[t] += 1
+                for f in et.detail.flags:
+                    flag_hits[f] += 1
+                if len(et.tags) >= 3:
+                    multi.append((card_id, name, tuple(et.tags)))
+                if not et.tags:
+                    items = [
+                        TextItem(kind=k, who=name, text=t)
+                        for k, t in _card_segment_texts(
+                            ctype, text_raw,
+                            json.loads(attacks) if attacks else None,
+                            json.loads(abilities) if abilities else None,
+                        )
+                    ]
+                    cats = _classify_zero_card(items)
+                    if cats is None:
+                        unknown.append(card_id)
+                    else:
+                        zero_cards.append(
+                            ZeroTagCard(card_id=card_id, name=name, categories=cats)
+                        )
+                if payload != current:
+                    changed += 1
+                    if not dry_run:
+                        s.execute(
+                            sa_text(
+                                "UPDATE cards SET effect_tags = :v WHERE card_id = :i"
+                            ),
+                            {"v": json.dumps(payload, ensure_ascii=False), "i": card_id},
+                        )
+                else:
+                    unchanged += 1
+            env_label = None
+            env_zero_categories: dict[str, int] | None = None
+            env_unknown = 0
+            if env_fmt:
+                try:
+                    pool = legal_at(s, date.today(), env_fmt)
+                    pool_ids = set(pool.card_ids)
+                    env_label = f"{env_fmt} {pool.snapshot_id} @ {pool.date}"
+                    env_zero_categories = {}
+                    zero_by_id = {z.card_id: z.categories for z in zero_cards}
+                    for cid in sorted(pool_ids):
+                        if cid in zero_by_id:
+                            key = "+".join(zero_by_id[cid])
+                            env_zero_categories[key] = env_zero_categories.get(key, 0) + 1
+                        elif cid in unknown:
+                            env_unknown += 1
+                except (LookupError, OperationalError):
+                    env_label = f"{env_fmt}（无快照/无表，环境核验跳过）"
+            if not dry_run:
+                s.commit()
+    finally:
+        engine.dispose()
+    label = f"系列 {','.join(sorted(set_allow))}" if set_allow else "全库 active"
+    return TaggingResult(
+        label=label,
+        dry_run=dry_run,
+        total=changed + unchanged,
+        changed=changed,
+        unchanged=unchanged,
+        labels_preserved=labels_preserved,
+        tag_hits=tag_hits,
+        flag_hits=flag_hits,
+        multi_hits=tuple(multi),
+        zero_tag_cards=tuple(zero_cards),
+        questions={"unknown": unknown} if unknown else {},
+        env_label=env_label,
+        env_zero_categories=env_zero_categories,
+        env_unknown=env_unknown,
+    )
+
+
+def _card_segment_texts(
+    card_type: str,
+    text_raw: str | None,
+    attacks: list[dict] | None,
+    abilities: list[dict] | None,
+) -> list[tuple[str, str]]:
+    """卡的效果文本分段（与 tag_card/iter_card_texts 同口径，供零命中归类）。"""
+    out: list[tuple[str, str]] = []
+    if card_type in ("trainer", "energy"):
+        t = (text_raw or "").strip()
+        if t:
+            out.append((card_type, t))
+    for a in attacks or []:
+        t = ((a or {}).get("effect_text") or "").strip()
+        if t:
+            out.append(("attack", t))
+    for ab in abilities or []:
+        t = ((ab or {}).get("effect_text") or (ab or {}).get("text") or "").strip()
+        if t:
+            out.append(("ability", t))
+    return out

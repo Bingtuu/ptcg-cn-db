@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ptcgdb.mapping.effect_tags import ScanReport
+from ptcgdb.mapping.effect_tags import ScanReport, TaggingResult
 from ptcgdb.mapping.en import EnFillResult
 from ptcgdb.mapping.ja import JaFillResult
 from ptcgdb.mapping.ja_trainer import JaTrainerFillResult
@@ -282,6 +282,98 @@ def write_scan_report(result: ScanReport, out_dir: Path) -> Path:
     ]
     for z in result.zero_hits:
         lines.append(f"- [{z.kind}] {z.who} :: {z.text.replace(chr(10), ' / ')}")
+    lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+_ZERO_CATEGORY_NOTES = {
+    "no_effect_text": "无效果文本（纯伤害招式无 effect_text / 基本能量 / 白板）",
+    "variable_damage": "计数型变量伤害（由 attacks.damage_modifier 承载，spec 明确不打标）",
+    "self_cost": "自付代价弃置（规则引擎读 text_raw，非意图标签）",
+    "conditional_failure": "条件失败/自身约束（不…则招式失败类）",
+    "coin_failure": "硬币失败约束（coin_flip flag 已覆盖随机性本身）",
+    "recoil": "自身反伤（自伤代价，数值由 attacks 结构承载）",
+    "self_constraint": "招式/特性自身使用约束（spec 明确不做④，规则引擎读 text_raw）",
+    "legacy_rule_text": "GX/VSTAR 规则文残留（规则语义由 rule_box_type 承载）",
+    "legacy_mechanic": "退场旧机制特殊效果（额外回合等，整理性打标从简口径）",
+    "top_swap": "手牌↔牌库顶互换（智挥猩/掉包杯，孤立旧机制，task 039 拍板不打标）",
+    "ko_destination_override": "KO 去向改写为放逐区（放逐市规则文，task 039 拍板不打标）",
+    "banish_opponent_discard": "放逐对手弃牌区卡牌（弗拉达利◇，孤立旧机制，task 039 拍板不打标）",
+    "self_bench_clear": "自弃备战区宝可梦及附着卡（望罗，孤立旧机制，task 039 拍板不打标）",
+    "data_artifact": "源数据噪音（如实记录）",
+}
+
+
+def write_tagging_report(result: TaggingResult, out_dir: Path) -> Path:
+    """效果标签首标报告（task 039）。
+
+    分标签命中卡数 + 零命中卡归类（零未知项验收锚）+ 多命中审视 + labels 保留统计。
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d")
+    slug = re.sub(r"[^0-9A-Za-z一-鿿]+", "-", result.label).strip("-")[:40].strip("-")
+    path = out_dir / f"tag-effects-{slug}-{stamp}.md"
+    unknown = result.questions.get("unknown", [])
+    lines = [
+        f"# 效果标签首标报告（{stamp}，task 039）",
+        "",
+        f"- 范围：{result.label}{'（**dry-run 零写入**）' if result.dry_run else ''}",
+        f"- 打标卡数：{result.total}（写入变化 {result.changed} / 幂等不变 {result.unchanged}）",
+        f"- mik 机制标签保留（labels 键）：{result.labels_preserved} 张",
+        f"- 多重命中卡（≥3 意图标签，模式冲突审视）：{len(result.multi_hits)}",
+        f"- 零命中卡：{len(result.zero_tag_cards)} 张全归类；"
+        f"疑似新机制未归类（unknown，不猜）：{len(unknown)}",
+        "",
+        "## 分标签命中卡数",
+        "",
+        "| 标签 | 命中卡数 |",
+        "|---|---|",
+    ]
+    for tag, n in sorted(result.tag_hits.items(), key=lambda kv: -kv[1]):
+        lines.append(f"| {tag} | {n} |")
+    lines += ["", "## 机制 flag 命中卡数", "", "| flag | 命中卡数 |", "|---|---|"]
+    for flag, n in sorted(result.flag_hits.items(), key=lambda kv: -kv[1]):
+        lines.append(f"| {flag} | {n} |")
+    if result.env_label:
+        lines += ["", "## 当前环境卡池零命中核验", "", f"- 卡池：{result.env_label}"]
+        if result.env_zero_categories is None:
+            lines.append("- 环境核验不可用（无快照/无表），跳过")
+        else:
+            total_zero = sum(result.env_zero_categories.values())
+            lines.append(
+                f"- 零命中卡 {total_zero} 张，全归类如下；"
+                f"未知（疑似新机制）：{result.env_unknown}"
+            )
+            lines += ["", "| 归类 | 卡数 | 说明 |", "|---|---|---|"]
+            for cats, n in sorted(
+                result.env_zero_categories.items(), key=lambda kv: -kv[1]
+            ):
+                note = "；".join(
+                    _ZERO_CATEGORY_NOTES.get(c, c) for c in cats.split("+")
+                )
+                lines.append(f"| {cats} | {n} | {note} |")
+    lines += [
+        "",
+        "## 零命中卡归类（全量清单）",
+        "",
+        "| 卡 | 名称 | 归类 |",
+        "|---|---|---|",
+    ]
+    for z in result.zero_tag_cards:
+        lines.append(f"| `{z.card_id}` | {z.name} | {'+'.join(z.categories)} |")
+    if unknown:
+        lines += [
+            "",
+            "## 疑似新机制（unknown，不猜——人工归类三出口：旧标签新措辞 / 新意图类别 / 无需打标）",
+            "",
+        ]
+        for card_id in unknown:
+            lines.append(f"- `{card_id}`")
+    if result.multi_hits:
+        lines += ["", "## 多重命中卡清单（≥3 意图标签，人工审视是否误标）", ""]
+        for card_id, name, tags in result.multi_hits:
+            lines.append(f"- `{card_id}` {name} :: {', '.join(tags)}")
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path

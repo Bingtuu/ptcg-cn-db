@@ -406,6 +406,40 @@ def tag_effects_scan(
     typer.echo(f"报告: {path}")
 
 
+@app.command("tag-effects")
+def tag_effects_cmd(
+    set_id: Annotated[
+        str | None, typer.Option("--set", help="只标指定系列（默认全库 active）")
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="只出统计与报告，零写入")
+    ] = False,
+    env: Annotated[
+        str, typer.Option("--env", help="当前环境赛制（零命中归类核验），空串跳过")
+    ] = "standard",
+    db_path: Path = DEFAULT_DB_PATH,
+    out_dir: Path = Path("reports"),
+) -> None:
+    """效果标签首标落库（task 039，PRD v1.23）：{tags, detail, labels} 幂等写入。"""
+    from ptcgdb.mapping.effect_tags import run_tagging
+    from ptcgdb.mapping.report import write_tagging_report
+
+    result = run_tagging(
+        db_path,
+        sets=[set_id] if set_id else None,
+        dry_run=dry_run,
+        env_fmt=env or None,
+    )
+    path = write_tagging_report(result, out_dir)
+    unknown = len(result.questions.get("unknown", []))
+    typer.echo(
+        f"total={result.total} changed={result.changed} unchanged={result.unchanged} "
+        f"zero_tag={len(result.zero_tag_cards)} unknown={unknown}"
+        f"{' (dry-run)' if result.dry_run else ''}"
+    )
+    typer.echo(f"报告: {path}")
+
+
 @app.command("seed-face-totals")
 def seed_face_totals(
     db_path: Path = DEFAULT_DB_PATH,

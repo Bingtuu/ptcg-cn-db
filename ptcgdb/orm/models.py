@@ -74,7 +74,9 @@ class Card(Base):
     provides: Mapped[list[str] | None] = mapped_column(JSON)  # 能量卡提供的能量类型数组
     is_basic_energy: Mapped[bool] = mapped_column(Boolean, index=True)  # 派生：基本能量
     text_raw: Mapped[str] = mapped_column(Text)  # 卡面全部文字逐字保留，绝不规范化
-    effect_tags: Mapped[list[str] | None] = mapped_column(JSON)  # 粗粒度标签（PRD §6.4）
+    effect_tags: Mapped[dict[str, Any] | None] = mapped_column(JSON)  # 粗粒度标签（PRD §6.4）
+    # v1.23 起填 {tags, detail, labels} 结构；ingest 过渡期仍写 mik label list，
+    # tag-effects 幂等转换为 dict（labels 随行保留）
     # mik 双重列示别名→正本（v1.11）
     alias_of: Mapped[str | None] = mapped_column(ForeignKey("cards.card_id"))
     name_en: Mapped[str | None] = mapped_column(String)  # 跨语言映射（Phase 2 填充）
