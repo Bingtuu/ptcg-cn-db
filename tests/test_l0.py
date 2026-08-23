@@ -500,3 +500,92 @@ def test_l0_remap_hook_not_triggered_without_activation(tmp_path):
         miss = session.get(DeckCardMiss, (deck_id, "Rainbow Energy", "", ""))
         assert miss.resolved_card_id is None  # 未触发刷新，保持未解
     engine.dispose()
+
+
+# ---- L0 tag-effects 钩子（task 040）：新卡入库自动打标 ----
+
+
+def _effect_tags_dict(db_path: Path, card_id: str) -> dict | None:
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        et = session.get(Card, card_id).effect_tags
+    engine.dispose()
+    return et
+
+
+def test_l0_tag_effects_hook_tags_activated_set(tmp_path):
+    """L0 合入新卡 → 钩子对 activated 系列打标：effect_tags 落 {tags, detail, labels}。"""
+    raw_dir = _setup_raw(tmp_path, CARDS_INIT, 6)
+    db_path = tmp_path / "test.db"
+    _ingest_and_activate(raw_dir, db_path)
+
+    events: list[tuple[str, dict]] = []
+    scraper = _make_scraper(CARDS_INIT + [CARD_NEW], 7)
+    result = run_l0(
+        db_path, raw_dir, scraper,
+        changelog_path=tmp_path / "CHANGELOG.md",
+        on_event=lambda e, p: events.append((e, p)),
+    )
+
+    assert result.activated == [SET_ID]
+    assert result.tagging is not None
+    assert result.tagging.total == 7  # activated 系列全量打标（幂等）
+    assert len(result.tagging.questions.get("unknown", [])) == 0
+    for idx in CARDS_INIT + [CARD_NEW]:
+        et = _effect_tags_dict(db_path, f"{SET_ID}-{idx}")
+        assert isinstance(et, dict), f"{idx} 未打标"
+        assert {"tags", "detail", "labels"} <= set(et), f"{idx} 缺键: {et}"
+        assert isinstance(et["tags"], list) and isinstance(et["labels"], list)
+    assert any(e == "tag_effects" for e, _ in events)
+    changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "效果标签" in changelog
+
+
+def test_l0_tag_effects_hook_unknown_surfaces(tmp_path):
+    """新卡文本词表/归类双不命中（疑似新机制）→ unknown 浮出：事件 + CHANGELOG。"""
+    raw_dir = _setup_raw(tmp_path, CARDS_INIT, 6)
+    db_path = tmp_path / "test.db"
+    _ingest_and_activate(raw_dir, db_path)
+
+    unknown_card = _card_payload(CARD_NEW)
+    unknown_card["data"]["description"] = "启动一种从未见过的扭蛋机制，掷骰子决定命运。"
+    scraper = FakeScraper(
+        products=_products_payload([{"setId": SET_ID, "name": "x", "cardsNum": 7}]),
+        details={SET_ID: _detail_payload(CARDS_INIT + [CARD_NEW], 7)},
+        cards={**{(SET_ID, i): _card_payload(i) for i in CARDS_INIT},
+               (SET_ID, CARD_NEW): unknown_card},
+    )
+    events: list[tuple[str, dict]] = []
+    result = run_l0(
+        db_path, raw_dir, scraper,
+        changelog_path=tmp_path / "CHANGELOG.md",
+        on_event=lambda e, p: events.append((e, p)),
+    )
+
+    assert result.activated == [SET_ID]
+    assert result.tagging is not None
+    assert f"{SET_ID}-{CARD_NEW}" in result.tagging.questions.get("unknown", [])
+    tag_events = [p for e, p in events if e == "tag_effects"]
+    assert tag_events and tag_events[0]["unknown"] >= 1
+    changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "疑似新机制" in changelog
+    assert f"{SET_ID}-{CARD_NEW}" in changelog
+
+
+def test_l0_tag_effects_hook_skipped_without_activation(tmp_path):
+    """无增量（卡库未增长）→ 不打标，无 tag_effects 事件。"""
+    raw_dir = _setup_raw(tmp_path, CARDS_INIT, 6)
+    db_path = tmp_path / "test.db"
+    _ingest_and_activate(raw_dir, db_path)
+
+    events: list[tuple[str, dict]] = []
+    scraper = _make_scraper(CARDS_INIT, 6)
+    result = run_l0(
+        db_path, raw_dir, scraper,
+        changelog_path=tmp_path / "CHANGELOG.md",
+        on_event=lambda e, p: events.append((e, p)),
+    )
+
+    assert result.activated == []
+    assert result.tagging is None
+    assert not any(e == "tag_effects" for e, _ in events)

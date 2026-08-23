@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ptcgdb.mapping.effect_tags import ScanReport, TaggingResult
+from ptcgdb.mapping.effect_tags import MultiHitAudit, ScanReport, TaggingResult
 from ptcgdb.mapping.en import EnFillResult
 from ptcgdb.mapping.ja import JaFillResult
 from ptcgdb.mapping.ja_trainer import JaTrainerFillResult
@@ -295,12 +295,18 @@ _ZERO_CATEGORY_NOTES = {
     "coin_failure": "硬币失败约束（coin_flip flag 已覆盖随机性本身）",
     "recoil": "自身反伤（自伤代价，数值由 attacks 结构承载）",
     "self_constraint": "招式/特性自身使用约束（spec 明确不做④，规则引擎读 text_raw）",
+    "deck_peek": "窥视对手牌库顶（信息获取类，词表无意图标签对应，task 040 归类不打标）",
     "legacy_rule_text": "GX/VSTAR 规则文残留（规则语义由 rule_box_type 承载）",
     "legacy_mechanic": "退场旧机制特殊效果（额外回合等，整理性打标从简口径）",
     "top_swap": "手牌↔牌库顶互换（智挥猩/掉包杯，孤立旧机制，task 039 拍板不打标）",
     "ko_destination_override": "KO 去向改写为放逐区（放逐市规则文，task 039 拍板不打标）",
     "banish_opponent_discard": "放逐对手弃牌区卡牌（弗拉达利◇，孤立旧机制，task 039 拍板不打标）",
     "self_bench_clear": "自弃备战区宝可梦及附着卡（望罗，孤立旧机制，task 039 拍板不打标）",
+    "promote_override": "接管对手上场选择权（引梦貘人「诱导钟摆」，孤立机制，task 040 归类不打标）",
+    "transform_swap": (
+        "弃牌区互换变身（继承状态/原位替换：捩木/默丹/鬼之假面/索罗亚克「幻影变幻」，"
+        "孤立机制，task 040 归类不打标）"
+    ),
     "data_artifact": "源数据噪音（如实记录）",
 }
 
@@ -375,5 +381,49 @@ def write_tagging_report(result: TaggingResult, out_dir: Path) -> Path:
         for card_id, name, tags in result.multi_hits:
             lines.append(f"- `{card_id}` {name} :: {', '.join(tags)}")
     lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def write_audit_report(audit: MultiHitAudit, out_dir: Path) -> Path:
+    """多命中 pattern 级审查报告（task 040）。
+
+    误命中是 pattern 级问题：审查单位 = 标签×pattern 桶（非逐卡）。人工判定三出口：
+    纯净桶（不动）/ 污染桶（修 pattern 一处，全库收敛）/ 纯误桶（删或改写 pattern）。
+    修正后 `tag-effects` 幂等复跑收敛，本报告可复跑对比。
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d")
+    slug = re.sub(r"[^0-9A-Za-z一-鿿]+", "-", audit.label).strip("-")[:40].strip("-")
+    path = out_dir / f"tag-effects-audit-{slug}-{stamp}.md"
+    lines = [
+        f"# 效果标签多命中审查报告（{stamp}，task 040）",
+        "",
+        f"- 范围：{audit.label}（只读，零写入）",
+        f"- 多命中卡（≥{audit.min_tags} 意图标签）：{audit.total_multi} 张",
+        f"- 涉及桶（标签×pattern）：{len(audit.buckets)} 个",
+        "",
+        "判定三出口：**纯净桶**（命中全为真意图，不动）/ **污染桶**（真命中与误命中混合，"
+        "修 pattern 一处全库收敛）/ **纯误桶**（整个 pattern 皆误，删或改写）。"
+        "修正后 `ptcgdb tag-effects` 幂等复跑收敛；本报告复跑可对比桶数与卡数变化。",
+        "",
+        "## 桶总表（卡数降序）",
+        "",
+        "| # | 标签 | pattern | 卡数 | distinct 文本 |",
+        "|---|---|---|---|---|",
+    ]
+    for i, b in enumerate(audit.buckets, 1):
+        lines.append(
+            f"| {i} | {b.tag} | `{b.pattern}` | {b.card_count} | {b.distinct_texts} |"
+        )
+    lines += ["", "## 桶明细（代表文本 + 示例卡）", ""]
+    for i, b in enumerate(audit.buckets, 1):
+        lines.append(f"### {i}. {b.tag} :: `{b.pattern}`（{b.card_count} 卡）")
+        lines.append("")
+        for t in b.sample_texts:
+            lines.append(f"> {t}")
+        lines.append("")
+        lines.append(f"示例卡：{', '.join(f'`{c}`' for c in b.sample_cards)}")
+        lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path

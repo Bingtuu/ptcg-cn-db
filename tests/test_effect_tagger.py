@@ -294,6 +294,33 @@ def test_classify_zero_text_task039_categories():
         "选择自己备战区中的1只「宝可梦V」，将被选择的宝可梦，以及放于其身上的卡牌，"
         "全部放于弃牌区。"
     ) == "self_bench_clear"
+    # task 040 收窄核销新增归类：
+    # self_constraint：自身同名招式封锁（破破舵轮VMAX「极巨船锚」/伽勒尔葱游兵「流星突击」）
+    assert classify_zero_text(
+        "在下一个自己的回合，这只宝可梦无法使用「极巨船锚」。"
+    ) == "self_constraint"
+    # deck_peek：窥视对手牌库顶（信息获取类，词表无对应意图标签）
+    assert classify_zero_text(
+        "在自己的回合可以使用任意次。查看对手牌库上方1张卡牌，放回原处。"
+    ) == "deck_peek"
+    # task 040 第四轮核销新增归类：
+    # promote_override：接管对手上场选择权（引梦貘人「诱导钟摆」，孤立机制归类不打标）
+    assert classify_zero_text(
+        "只要这只宝可梦在场上，当对手的战斗宝可梦【昏厥】时，自己抛掷1次硬币。"
+        "如果为正面，则下一只被放于对手战斗场的备战宝可梦，由这只宝可梦的持有者选择。"
+    ) == "promote_override"
+    # task 040 第五轮（人工抽检衍生）：
+    # transform_swap：弃牌区互换变身（捩木/默丹/鬼之假面/索罗亚克「幻影变幻」，孤立机制不打标）
+    assert classify_zero_text(
+        "选择自己弃牌区中的1张【基础】宝可梦，与自己场上的1只【基础】宝可梦互换"
+        "（继承所有放于其身上的卡牌、伤害指示物、特殊状态、效果等等）。"
+        "将被互换的宝可梦放于弃牌区。"
+    ) == "transform_swap"
+    assert classify_zero_text(
+        "选择自己弃牌区中的1张【1阶进化】宝可梦（除「索罗亚克」外）。然后，"
+        "将这只宝可梦，以及放于其身上的所有卡牌，放于弃牌区，"
+        "将被选择的宝可梦放于这只宝可梦原先的位置。"
+    ) == "transform_swap"
 
 
 # ── run_tagging 落库（临时库） ──
@@ -488,4 +515,102 @@ def test_cli_tag_effects(tmp_path):
         app, ["tag-effects", "--dry-run", "--db-path", str(db2), "--out-dir", str(out)]
     )
     assert r3.exit_code == 0 and "dry-run" in r3.output
-    assert _read_raw(db2, "T1") is None
+    assert _read_raw(db2, "T1") is None  # dry-run 零写入
+
+
+# ── task 040：扩展性验证（新增标签 = 仅改词表 yml 复跑生效） ──
+
+
+def test_extensibility_new_tag_via_vocab_only(tmp_path):
+    """新增标签零代码改动：词表 yml 追加一条 → 复跑生效 + unknown 清偿 + 幂等。"""
+    import yaml
+
+    db = _mk_db(tmp_path)
+    base = run_tagging(db)
+    assert "P4" in base.questions["unknown"]  # 「一种从未见过的全新机制措辞。」
+
+    from ptcgdb.mapping.effect_tags import DEFAULT_VOCAB_PATH
+
+    vocab = yaml.safe_load(DEFAULT_VOCAB_PATH.read_text(encoding="utf-8"))
+    vocab["tags"].append({
+        "tag": "gimmick_test",
+        "cn": "测试机制",
+        "patterns": ["全新机制"],
+        "note": "task 040 扩展性验证用例",
+    })
+    vocab_path = tmp_path / "vocab_ext.yml"
+    vocab_path.write_text(yaml.safe_dump(vocab, allow_unicode=True), encoding="utf-8")
+
+    rerun = run_tagging(db, vocab_path=vocab_path)
+    p4 = _read_tags(db, "P4")
+    assert "gimmick_test" in p4["tags"]  # 仅改词表即生效
+    assert rerun.questions == {}  # unknown 清偿
+    assert run_tagging(db, vocab_path=vocab_path).changed == 0  # 幂等零漂移
+
+
+# ── task 040：多命中 pattern 级审查（audit） ──
+
+
+def _seed_multi_hit_card(db: Path) -> None:
+    eng = create_engine(f"sqlite:///{db}")
+    with eng.begin() as c:
+        c.execute(
+            text("INSERT INTO cards VALUES ('M1','多效卡','trainer',"
+                 "'抽2张卡。将对手牌库上方的1张卡牌放于弃牌区。"
+                 "选择自己弃牌区中的1张宝可梦加入手牌。',"
+                 "NULL,NULL,'SA','active',NULL)")
+        )
+    eng.dispose()
+
+
+def test_audit_multi_hits_buckets(tmp_path):
+    """多命中卡按 标签×pattern 分桶：桶带 pattern 原文 / 卡数 / 代表文本 / 示例卡。"""
+    from ptcgdb.mapping.effect_tags import audit_multi_hits
+
+    db = _mk_db(tmp_path)
+    _seed_multi_hit_card(db)
+    audit = audit_multi_hits(db)
+
+    assert audit.total_multi == 1  # 仅 M1 ≥3 标签
+    by_tag = {b.tag: b for b in audit.buckets}
+    assert {"draw", "mill", "discard_recover"} <= set(by_tag)
+    b = by_tag["draw"]
+    assert b.card_count == 1 and b.sample_cards == ("M1",)
+    assert "抽" in b.pattern  # 命中的具体 pattern 原文浮出
+    assert b.sample_texts and "抽2张卡" in b.sample_texts[0]
+    # 确定性：桶按卡数降序，同数按 标签/pattern 字典序
+    keys = [(-b.card_count, b.tag, b.pattern) for b in audit.buckets]
+    assert keys == sorted(keys)
+
+
+def test_write_audit_report(tmp_path):
+    from ptcgdb.mapping.effect_tags import audit_multi_hits
+    from ptcgdb.mapping.report import write_audit_report
+
+    db = _mk_db(tmp_path)
+    _seed_multi_hit_card(db)
+    audit = audit_multi_hits(db)
+    path = write_audit_report(audit, tmp_path / "reports")
+
+    text_ = path.read_text(encoding="utf-8")
+    assert path.name.startswith("tag-effects-audit-")
+    assert "多命中卡" in text_ and "桶" in text_
+    assert "draw" in text_ and "M1" in text_
+    assert "纯净" in text_ and "污染" in text_  # 判定三出口说明
+
+
+def test_cli_tag_effects_audit(tmp_path):
+    from typer.testing import CliRunner
+
+    from ptcgdb.cli import app
+
+    db = _mk_db(tmp_path)
+    _seed_multi_hit_card(db)
+    out = tmp_path / "reports"
+    r = CliRunner().invoke(
+        app, ["tag-effects-audit", "--db-path", str(db), "--out-dir", str(out)]
+    )
+    assert r.exit_code == 0, r.output
+    assert "multi=1" in r.output and "buckets=" in r.output
+    assert list(out.glob("tag-effects-audit-*.md"))  # 报告落盘
+    assert _read_raw(db, "M1") is None  # 只读：零写入

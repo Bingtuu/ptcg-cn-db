@@ -36,6 +36,7 @@ from ptcgdb.orm import (
     Tournament,
 )
 from ptcgdb.schemas.models import Card as CardSchema
+from ptcgdb.schemas.models import EffectTagDetail, EffectTags
 from ptcgdb.schemas.models import ErrataRecord as ErrataSchema
 from ptcgdb.schemas.models import LegalitySnapshot as SnapshotSchema
 from ptcgdb.schemas.models import Set as SetSchema
@@ -83,6 +84,18 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _prop_type(prop: dict) -> str:
+    """字段类型列：直型直取；anyOf 解析 $ref 定义名 / 非 null 子型（task 040）。"""
+    if prop.get("type"):
+        return prop["type"]
+    for sub in prop.get("anyOf", []):
+        if "$ref" in sub:
+            return sub["$ref"].rsplit("/", 1)[-1]
+        if sub.get("type") and sub["type"] != "null":
+            return sub["type"]
+    return "?"
+
+
 def _schema_md() -> str:
     """字段字典：由 Pydantic 模型半自动生成（FR-7）。"""
     lines = [
@@ -92,14 +105,14 @@ def _schema_md() -> str:
         "> 消费指引：JSONL 适合全量灌库/流式分析；规则语义（legal_at / effective_text）请走 SDK。",
         "",
     ]
-    for model in (CardSchema, SetSchema, SnapshotSchema):
+    for model in (CardSchema, SetSchema, SnapshotSchema, EffectTags, EffectTagDetail):
         schema = model.model_json_schema()
         lines.append(f"## {schema['title']}")
         lines.append("")
         lines.append("| 字段 | 类型 | 说明 |")
         lines.append("|---|---|---|")
         for name, prop in schema["properties"].items():
-            type_ = prop.get("type") or prop.get("anyOf", [{}])[0].get("type", "?")
+            type_ = _prop_type(prop)
             desc = (prop.get("description") or "").replace("|", "\\|")
             lines.append(f"| `{name}` | {type_} | {desc} |")
         lines.append("")

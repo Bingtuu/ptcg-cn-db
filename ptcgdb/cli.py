@@ -440,6 +440,24 @@ def tag_effects_cmd(
     typer.echo(f"报告: {path}")
 
 
+@app.command("tag-effects-audit")
+def tag_effects_audit_cmd(
+    min_tags: Annotated[
+        int, typer.Option("--min-tags", help="多命中阈值（卡级意图标签数）")
+    ] = 3,
+    db_path: Path = DEFAULT_DB_PATH,
+    out_dir: Path = Path("reports"),
+) -> None:
+    """多命中 pattern 级审查（task 040，只读）：标签×pattern 分桶清单落报告。"""
+    from ptcgdb.mapping.effect_tags import audit_multi_hits
+    from ptcgdb.mapping.report import write_audit_report
+
+    audit = audit_multi_hits(db_path, min_tags=min_tags)
+    path = write_audit_report(audit, out_dir)
+    typer.echo(f"multi={audit.total_multi} buckets={len(audit.buckets)}")
+    typer.echo(f"报告: {path}")
+
+
 @app.command("seed-face-totals")
 def seed_face_totals(
     db_path: Path = DEFAULT_DB_PATH,
@@ -1298,6 +1316,14 @@ def monitor_l0(
             f"remap: attempted={result.remap.attempted} resolved={result.remap.resolved} "
             f"decks_upgraded={result.remap.decks_upgraded}"
         )
+    if result.tagging is not None:
+        unknown_ids = result.tagging.questions.get("unknown", [])
+        typer.echo(
+            f"tag-effects: changed={result.tagging.changed} "
+            f"zero_tag={len(result.tagging.zero_tag_cards)} unknown={len(unknown_ids)}"
+        )
+        if unknown_ids:
+            typer.echo(f"疑似新机制待人工归类: {', '.join(unknown_ids)}", err=True)
     if result.blocked:
         raise typer.Exit(code=1)
 

@@ -6,7 +6,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AttackCost(BaseModel):
@@ -120,7 +120,10 @@ class Card(BaseModel):
     provides: list[str] | None
     is_basic_energy: bool
     text_raw: str
-    effect_tags: EffectTags | None  # 粗粒度标签（PRD §6.4，v1.23 {tags, detail, labels}）
+    effect_tags: EffectTags | None = Field(
+        description="粗粒度效果标签 {tags, detail, labels}（PRD §6.4，v1.23）；"
+        "空对象 = 已标注无命中，null = 未标注",
+    )  # 粗粒度标签（PRD §6.4，v1.23 {tags, detail, labels}）
     alias_of: str | None = None  # mik 双重列示别名→正本 card_id（v1.11 增量，只加不删）
     name_en: str | None
     name_ja: str | None

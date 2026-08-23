@@ -1,30 +1,31 @@
-# 效果标签首标报告（20260822，task 039）
+# 效果标签首标报告（20260823，task 039）
 
 - 范围：全库 active
 - 打标卡数：12420（写入变化 0 / 幂等不变 12420）
 - mik 机制标签保留（labels 键）：812 张
-- 多重命中卡（≥3 意图标签，模式冲突审视）：1229
-- 零命中卡：2164 张全归类；疑似新机制未归类（unknown，不猜）：0
+- 多重命中卡（≥3 意图标签，模式冲突审视）：1265
+- 零命中卡：2151 张全归类；疑似新机制未归类（unknown，不猜）：0
 
 ## 分标签命中卡数
 
 | 标签 | 命中卡数 |
 |---|---|
 | search | 1756 |
-| lock | 1713 |
-| status | 1293 |
+| lock | 1463 |
 | damage_boost | 1270 |
+| status | 1261 |
 | draw | 1209 |
 | spread | 1131 |
-| energy_accel | 1097 |
+| energy_accel | 1082 |
 | bounce | 1010 |
-| protection | 957 |
+| protection | 955 |
 | heal | 694 |
 | modifier | 667 |
-| evolution | 605 |
 | discard_recover | 491 |
+| evolution | 459 |
+| cooldown | 423 |
+| hand_disrupt | 357 |
 | switch | 342 |
-| hand_disrupt | 339 |
 | energy_disrupt | 332 |
 | gust | 317 |
 | energy_move | 247 |
@@ -49,8 +50,8 @@
 
 ## 当前环境卡池零命中核验
 
-- 卡池：standard standard-2026-07-16 @ 2026-08-22
-- 零命中卡 1161 张，全归类如下；未知（疑似新机制）：0
+- 卡池：standard standard-2026-07-16 @ 2026-08-23
+- 零命中卡 1150 张，全归类如下；未知（疑似新机制）：0
 
 | 归类 | 卡数 | 说明 |
 |---|---|---|
@@ -60,10 +61,11 @@
 | self_cost | 51 | 自付代价弃置（规则引擎读 text_raw，非意图标签） |
 | coin_failure | 33 | 硬币失败约束（coin_flip flag 已覆盖随机性本身） |
 | recoil+variable_damage | 22 | 自身反伤（自伤代价，数值由 attacks 结构承载）；计数型变量伤害（由 attacks.damage_modifier 承载，spec 明确不打标） |
-| self_constraint | 14 | 招式/特性自身使用约束（spec 明确不做④，规则引擎读 text_raw） |
 | self_cost+variable_damage | 11 | 自付代价弃置（规则引擎读 text_raw，非意图标签）；计数型变量伤害（由 attacks.damage_modifier 承载，spec 明确不打标） |
-| self_constraint+variable_damage | 7 | 招式/特性自身使用约束（spec 明确不做④，规则引擎读 text_raw）；计数型变量伤害（由 attacks.damage_modifier 承载，spec 明确不打标） |
 | conditional_failure | 7 | 条件失败/自身约束（不…则招式失败类） |
+| self_constraint+variable_damage | 5 | 招式/特性自身使用约束（spec 明确不做④，规则引擎读 text_raw）；计数型变量伤害（由 attacks.damage_modifier 承载，spec 明确不打标） |
+| transform_swap | 3 | 弃牌区互换变身（继承状态/原位替换：捩木/默丹/鬼之假面/索罗亚克「幻影变幻」，孤立机制，task 040 归类不打标） |
+| self_constraint | 2 | 招式/特性自身使用约束（spec 明确不做④，规则引擎读 text_raw） |
 | deck_peek | 2 | 窥视对手牌库顶（信息获取类，词表无意图标签对应，task 040 归类不打标） |
 | conditional_failure+variable_damage | 1 | 条件失败/自身约束（不…则招式失败类）；计数型变量伤害（由 attacks.damage_modifier 承载，spec 明确不打标） |
 
@@ -368,7 +370,6 @@
 | `CS1aC-037` | 来电汪 | no_effect_text |
 | `CS1aC-040` | 电音婴 | no_effect_text |
 | `CS1aC-079` | 地鼠 | no_effect_text |
-| `CS1aC-082` | 伽勒尔 葱游兵 | self_constraint |
 | `CS1aC-085` | 幼基拉斯 | no_effect_text |
 | `CS1aC-091` | 泥泥鳅 | no_effect_text |
 | `CS1aC-093` | 天秤偶 | no_effect_text |
@@ -382,7 +383,6 @@
 | `CS1aC-144` | 刺梭鱼 | no_effect_text |
 | `CS1aC-145` | 戽斗尖梭 | conditional_failure |
 | `CS1aC-149` | 电音婴 | no_effect_text |
-| `CS1aC-165` | 伽勒尔 葱游兵 | self_constraint |
 | `CS1aC-166` | 伽勒尔 哭哭面具 | recoil |
 | `CS1aC-168` | 小炭仔 | no_effect_text |
 | `CS1aC-169` | 大炭车 | no_effect_text |
@@ -575,7 +575,6 @@
 | `CS3aC-021` | 炎兔儿 | no_effect_text |
 | `CS3aC-024` | 可达鸭 | no_effect_text |
 | `CS3aC-027` | 圆蝌蚪 | no_effect_text |
-| `CS3aC-028` | 电击兽 | self_constraint |
 | `CS3aC-031` | 茸茸羊 | no_effect_text |
 | `CS3aC-034` | 卡璞・鸣鸣V | variable_damage |
 | `CS3aC-040` | 鬼斯通 | no_effect_text |
@@ -601,7 +600,6 @@
 | `CS3bC-017` | 索侦虫 | no_effect_text |
 | `CS3bC-020` | 火焰鸡V | self_cost |
 | `CS3bC-023` | 小狮狮 | no_effect_text |
-| `CS3bC-025` | 水箭龟V | self_constraint |
 | `CS3bC-027` | 玛瑙水母 | no_effect_text |
 | `CS3bC-030` | 海刺龙 | no_effect_text |
 | `CS3bC-033` | 伽勒尔 踏冰人偶 | variable_damage |
@@ -628,7 +626,6 @@
 | `CS3bC-096` | 多边兽2型 | variable_damage |
 | `CS3bC-126` | 列阵兵 | variable_damage |
 | `CS3bC-128` | 火焰鸡V | self_cost |
-| `CS3bC-129` | 水箭龟V | self_constraint |
 | `CS3bC-130` | 白马蕾冠王V | self_cost |
 | `CS3bC-131` | 白马蕾冠王V | self_cost |
 | `CS3bC-150` | 火焰鸡V | self_cost |
@@ -646,6 +643,7 @@
 | `CS4.5C-019` | 胖丁 | variable_damage |
 | `CS4.5C-023` | 美洛耶塔 | variable_damage |
 | `CS4.5C-034` | 索罗亚 | no_effect_text |
+| `CS4.5C-035` | 索罗亚克 | transform_swap |
 | `CS4.5C-036` | 伊裴尔塔尔 | no_effect_text |
 | `CS4.5C-037` | 托戈德玛尔 | variable_damage |
 | `CS4.5C-043` | 卷卷耳 | variable_damage |
@@ -653,7 +651,6 @@
 | `CS4DaC-005` | 蜻蜻蜓 | no_effect_text |
 | `CS4DaC-006` | 远古巨蜓 | recoil |
 | `CS4DaC-008` | 蘑蘑菇 | no_effect_text |
-| `CS4DaC-009` | 斗笠菇 | self_constraint |
 | `CS4DaC-010` | 刺球仙人掌 | no_effect_text |
 | `CS4DaC-015` | 樱花宝 | no_effect_text |
 | `CS4DaC-019` | 花椰猴 | no_effect_text |
@@ -776,7 +773,6 @@
 | `CS4DaC-PSY` | 基本超能量 | no_effect_text |
 | `CS4DaC-WAT` | 基本水能量 | no_effect_text |
 | `CS4aC-005` | 蘑蘑菇 | no_effect_text |
-| `CS4aC-006` | 斗笠菇 | self_constraint |
 | `CS4aC-010` | 花椰猴 | no_effect_text |
 | `CS4aC-012` | 沙铃仙人掌 | variable_damage |
 | `CS4aC-015` | 甜冷美后V | variable_damage |
@@ -823,7 +819,6 @@
 | `CS4bC-033` | 伽勒尔 火红不倒翁 | recoil |
 | `CS4bC-038` | 咩利羊 | no_effect_text |
 | `CS4bC-042` | 伞电蜥 | no_effect_text |
-| `CS4bC-045` | 逐电犬VMAX | self_constraint+variable_damage |
 | `CS4bC-050` | 伽勒尔 太阳珊瑚 | no_effect_text |
 | `CS4bC-052` | 食梦梦 | no_effect_text |
 | `CS4bC-058` | 多龙巴鲁托 | variable_damage |
@@ -844,7 +839,6 @@
 | `CS4bC-115` | 蓝鸦 | variable_damage |
 | `CS4bC-135` | 暴鲤龙V | variable_damage |
 | `CS4bC-157` | 朽木妖VMAX | variable_damage |
-| `CS4bC-160` | 逐电犬VMAX | self_constraint+variable_damage |
 | `CS4bC-176` | 基本雷能量 | no_effect_text |
 | `CS4bC-177` | 基本超能量 | no_effect_text |
 | `CS5.1C-001` | 泪眼蜥 | no_effect_text |
@@ -853,12 +847,14 @@
 | `CS5.1C-006` | 基本斗能量 | no_effect_text |
 | `CS5.1C-007` | 基本恶能量 | no_effect_text |
 | `CS5.1C-018` | 白马蕾冠王VMAX | variable_damage |
+| `CS5.5C-003` | 洗翠 顽皮雷弹V | self_cost+variable_damage |
 | `CS5.5C-012` | 杰尼龟 | no_effect_text |
 | `CS5.5C-013` | 卡咪龟 | variable_damage |
 | `CS5.5C-017` | 蚊香君 | variable_damage |
 | `CS5.5C-023` | 波皇子 | no_effect_text |
 | `CS5.5C-043` | 腕力 | no_effect_text |
 | `CS5.5C-044` | 豪力 | no_effect_text |
+| `CS5.5C-067` | 洗翠 顽皮雷弹V | self_cost+variable_damage |
 | `CS5DC-001` | 蛋蛋 | no_effect_text |
 | `CS5DC-003` | 飞天螳螂 | no_effect_text |
 | `CS5DC-013` | 盖盖虫 | no_effect_text |
@@ -899,7 +895,6 @@
 | `CS5DC-098` | 卡比兽 | no_effect_text |
 | `CS5DC-100` | 惊角鹿 | variable_damage |
 | `CS5DC-103` | 毛头小鹰 | coin_failure |
-| `CS5DC-104` | 洗翠 勇士雄鹰 | self_constraint+variable_damage |
 | `CS5DC-108` | 贪心栗鼠 | no_effect_text |
 | `CS5DC-154` | 凯路迪欧 | variable_damage |
 | `CS5aC-002` | 火恐龙 | self_cost |
@@ -936,6 +931,7 @@
 | `CS5bC-011` | 蜻蜻蜓 | no_effect_text |
 | `CS5bC-018` | 蘑蘑菇 | no_effect_text |
 | `CS5bC-022` | 草苗龟 | no_effect_text |
+| `CS5bC-024` | 土台龟 | variable_damage |
 | `CS5bC-025` | 结草儿 | no_effect_text |
 | `CS5bC-029` | 蜂女王 | variable_damage |
 | `CS5bC-030` | 谢米V | variable_damage |
@@ -1007,9 +1003,12 @@
 | `CS6aC-116` | 小箭雀 | no_effect_text |
 | `CS6aC-117` | 猫鼬少 | no_effect_text |
 | `CS6aC-124` | 望罗 | self_bench_clear |
+| `CS6aC-127` | 捩木 | transform_swap |
 | `CS6aC-148` | 望罗 | self_bench_clear |
 | `CS6aC-149` | 望罗 | self_bench_clear |
+| `CS6aC-151` | 捩木 | transform_swap |
 | `CS6aC-162` | 望罗 | self_bench_clear |
+| `CS6aC-164` | 捩木 | transform_swap |
 | `CS6aC-168` | 基本草能量 | no_effect_text |
 | `CS6aC-169` | 基本钢能量 | no_effect_text |
 | `CS6bC-001` | 小海狮 | no_effect_text |
@@ -1100,6 +1099,7 @@
 | `CSM1DC-184` | 玛力露 | no_effect_text |
 | `CSM1DC-186` | 布鲁 | recoil |
 | `CSM1DC-219` | 猫鼬少 | no_effect_text |
+| `CSM1DC-282` | 默丹 | transform_swap |
 | `CSM1DC-DAR` | 基本恶能量 | no_effect_text |
 | `CSM1DC-FAI` | 基本妖能量 | no_effect_text |
 | `CSM1DC-FIG` | 基本斗能量 | no_effect_text |
@@ -1117,7 +1117,6 @@
 | `CSM1aC-032` | 天然雀 | variable_damage |
 | `CSM1aC-039` | 怨影娃娃 | no_effect_text |
 | `CSM1aC-045` | 迭失棺 | variable_damage |
-| `CSM1aC-068` | 三合一磁怪 | self_constraint |
 | `CSM1aC-073` | 铁哑铃 | self_cost |
 | `CSM1aC-074` | 金属怪 | self_cost |
 | `CSM1aC-082` | 种子铁球 | variable_damage |
@@ -1127,7 +1126,6 @@
 | `CSM1aC-113` | 凤王 | variable_damage |
 | `CSM1aC-116` | 火箭雀 | coin_failure |
 | `CSM1aC-156` | 怨影娃娃 | no_effect_text |
-| `CSM1aC-161` | 三合一磁怪 | self_constraint |
 | `CSM1aC-163` | 铁哑铃 | self_cost |
 | `CSM1aC-164` | 金属怪 | self_cost |
 | `CSM1bC-005` | 阿罗拉 椰蛋树 | variable_damage |
@@ -1142,12 +1140,14 @@
 | `CSM1bC-057` | 落雷兽 | no_effect_text |
 | `CSM1bC-061` | 斑斑马 | no_effect_text |
 | `CSM1bC-074` | 阿罗拉 小拉达 | no_effect_text |
+| `CSM1bC-079` | 阿罗拉 臭泥 | variable_damage |
 | `CSM1bC-088` | 扒手猫 | variable_damage |
 | `CSM1bC-090` | 索罗亚 | no_effect_text |
 | `CSM1bC-094` | 单首龙 | coin_failure |
 | `CSM1bC-095` | 双首暴龙 | variable_damage |
 | `CSM1bC-108` | 伊布 | variable_damage |
 | `CSM1bC-109` | 大奶罐 | variable_damage |
+| `CSM1bC-135` | 默丹 | transform_swap |
 | `CSM1bC-152` | 木木枭 | no_effect_text |
 | `CSM1bC-158` | 索罗亚 | no_effect_text |
 | `CSM1cC-006` | 蚊香蝌蚪 | variable_damage |
@@ -1161,6 +1161,7 @@
 | `CSM1cC-071` | 布鲁 | variable_damage |
 | `CSM1cC-074` | 奇鲁莉安 | no_effect_text |
 | `CSM1cC-077` | 木棉球 | variable_damage |
+| `CSM1cC-097` | 拉帝欧斯◇ | variable_damage |
 | `CSM1cC-100` | 肯泰罗GX | variable_damage |
 | `CSM1cC-107` | 掘掘兔 | no_effect_text |
 | `CSM1cC-110` | 喇叭啄鸟 | deck_peek |
@@ -1206,7 +1207,6 @@
 | `CSM2DC-100` | 伞电蜥 | no_effect_text |
 | `CSM2DC-127` | 小木灵 | no_effect_text |
 | `CSM2DC-138` | 独角犀牛 | no_effect_text |
-| `CSM2DC-142` | 玛沙那 | self_constraint |
 | `CSM2DC-149` | 圆陆鲨 | no_effect_text |
 | `CSM2DC-150` | 尖牙陆鲨 | no_effect_text |
 | `CSM2DC-152` | 螺钉地鼠 | no_effect_text |
@@ -1227,6 +1227,7 @@
 | `CSM2DC-217` | 猫鼬斩 | variable_damage |
 | `CSM2DC-223` | 小箭雀 | no_effect_text |
 | `CSM2DC-227` | 银伴战兽 | self_cost+variable_damage |
+| `CSM2DC-302` | 默丹 | transform_swap |
 | `CSM2aC-001` | 盖盖虫 | recoil |
 | `CSM2aC-020` | 小海狮 | no_effect_text |
 | `CSM2aC-023` | 金鱼王 | variable_damage |
@@ -1255,7 +1256,6 @@
 | `CSM2bC-049` | 引梦貘人 | promote_override+variable_damage |
 | `CSM2bC-052` | 瓦斯弹 | no_effect_text |
 | `CSM2bC-063` | 飘飘球 | no_effect_text |
-| `CSM2bC-098` | 玛沙那 | self_constraint |
 | `CSM2bC-100` | 太古羽虫 | no_effect_text |
 | `CSM2bC-103` | 利欧路 | no_effect_text |
 | `CSM2bC-122` | 肯泰罗 | variable_damage |
@@ -1278,7 +1278,6 @@
 | `CSM2cC-100` | 嗡蝠 | self_cost |
 | `CSM2cC-105` | 烈雀 | no_effect_text |
 | `CSM2cC-107` | 嘟嘟 | variable_damage |
-| `CSM2cC-108` | 嘟嘟利 | self_constraint+variable_damage |
 | `CSM2cC-118` | 豆豆鸽 | no_effect_text |
 | `CSM2cC-119` | 咕咕鸽 | self_cost |
 | `CSM2cC-121` | 小箭雀 | no_effect_text |
@@ -1440,7 +1439,6 @@
 | `CSV2C-087` | 乌鸦头头 | conditional_failure |
 | `CSV2C-093` | 夜盗火蜥 | no_effect_text |
 | `CSV2C-094` | 焰后蜥 | no_effect_text |
-| `CSV2C-097` | 盔甲鸟 | self_constraint |
 | `CSV2C-098` | 铜象 | no_effect_text |
 | `CSV2C-100` | 吉利蛋 | variable_damage |
 | `CSV2C-102` | 姆克儿 | no_effect_text |
@@ -1504,7 +1502,6 @@
 | `CSV4C-073` | 盐石垒 | variable_damage |
 | `CSV4C-081` | 巨钳螳螂 | variable_damage |
 | `CSV4C-083` | 独剑鞘 | no_effect_text |
-| `CSV4C-084` | 双剑鞘 | self_constraint |
 | `CSV4C-090` | 迷你龙 | no_effect_text |
 | `CSV4C-091` | 哈克龙 | variable_damage |
 | `CSV4C-094` | 嗡蝠 | no_effect_text |
@@ -1538,7 +1535,6 @@
 | `CSV5C-061` | 小小象 | no_effect_text |
 | `CSV5C-066` | 圆陆鲨 | no_effect_text |
 | `CSV5C-067` | 尖牙陆鲨 | self_cost |
-| `CSV5C-069` | 胡帕ex | self_constraint+variable_damage |
 | `CSV5C-074` | 缠红鹤 | variable_damage |
 | `CSV5C-085` | 滑滑小子 | no_effect_text |
 | `CSV5C-090` | 狡小狐 | coin_failure |
@@ -1553,7 +1549,6 @@
 | `CSV5C-113` | 缠红鹤 | recoil |
 | `CSV5C-132` | 电电虫 | variable_damage |
 | `CSV5C-137` | 爱吃豚 | no_effect_text |
-| `CSV5C-142` | 胡帕ex | self_constraint+variable_damage |
 | `CSV5C-146` | 坚盾剑怪ex | recoil+variable_damage |
 | `CSV6C-001` | 溜溜糖球 | variable_damage |
 | `CSV6C-007` | 石居蟹 | no_effect_text |
@@ -1579,7 +1574,6 @@
 | `CSV6C-102` | 多边兽2型 | self_cost |
 | `CSV6C-111` | 掘掘兔 | variable_damage |
 | `CSV7C-001` | 蔓藤怪 | no_effect_text |
-| `CSV7C-003` | 飞天螳螂 | self_constraint |
 | `CSV7C-005` | 圆丝蛛 | no_effect_text |
 | `CSV7C-007` | 向日种子 | variable_damage |
 | `CSV7C-011` | 长鼻叶 | variable_damage |
@@ -1592,9 +1586,7 @@
 | `CSV7C-037` | 力壮鸡 | no_effect_text |
 | `CSV7C-041` | 猛火猴 | self_cost |
 | `CSV7C-044` | 熔蚁兽 | self_cost |
-| `CSV7C-046` | 炎热喵 | self_constraint |
 | `CSV7C-048` | 烧火蚣 | recoil |
-| `CSV7C-051` | 破空焰ex | self_constraint |
 | `CSV7C-055` | 利牙鱼 | no_effect_text |
 | `CSV7C-058` | 冰鬼护 | self_cost+variable_damage |
 | `CSV7C-070` | 波普海豚 | no_effect_text |
@@ -1620,9 +1612,6 @@
 | `CSV7C-149` | 美录坦 | no_effect_text |
 | `CSV7C-150` | 美录梅塔 | no_effect_text |
 | `CSV7C-171` | 奇诺栗鼠 | variable_damage |
-| `CSV7C-215` | 破空焰ex | self_constraint |
-| `CSV7C-238` | 破空焰ex | self_constraint |
-| `CSV7C-252` | 破空焰ex | self_constraint |
 | `CSV8C-002` | 椰蛋树 | variable_damage |
 | `CSV8C-003` | 芭瓢虫 | no_effect_text |
 | `CSV8C-006` | 甜甜萤 | self_constraint |
@@ -1659,6 +1648,7 @@
 | `CSV8C-162` | 喵喵 | variable_damage |
 | `CSV8C-163` | 猫老大 | variable_damage |
 | `CSV8C-170` | 童偶熊 | recoil |
+| `CSV8C-174` | 鬼之假面 | transform_swap |
 | `CSV8C-208` | 燃烧虫 | no_effect_text |
 | `CSV9.5C-001` | 蛋蛋 | no_effect_text |
 | `CSV9.5C-003` | 凯罗斯 | no_effect_text |
@@ -1669,7 +1659,6 @@
 | `CSV9.5C-015` | 虫滚泥 | recoil |
 | `CSV9.5C-024` | 小狮狮 | no_effect_text |
 | `CSV9.5C-026` | 炭小侍 | no_effect_text |
-| `CSV9.5C-030` | 破空焰ex | self_constraint |
 | `CSV9.5C-031` | 呆呆兽 | no_effect_text |
 | `CSV9.5C-041` | 丑丑鱼 | variable_damage |
 | `CSV9.5C-059` | 捷拉奥拉 | variable_damage |
@@ -1692,12 +1681,12 @@
 | `CSV9.5C-117` | 铁哑铃 | recoil |
 | `CSV9.5C-120` | 铜镜怪 | no_effect_text |
 | `CSV9.5C-123` | 独剑鞘 | recoil |
-| `CSV9.5C-124` | 双剑鞘 | self_constraint |
 | `CSV9.5C-126` | 铝钢龙 | variable_damage |
 | `CSV9.5C-132` | 多龙梅西亚 | no_effect_text |
 | `CSV9.5C-145` | 大奶罐 | self_constraint |
 | `CSV9.5C-146` | 卷卷耳 | no_effect_text |
 | `CSV9.5C-147` | 长耳兔 | no_effect_text |
+| `CSV9.5C-157` | 鬼之假面 | transform_swap |
 | `CSV9.5C-224` | 苍炎刃鬼ex | self_cost+variable_damage |
 | `CSV9C-009` | 幼棉棉 | variable_damage |
 | `CSV9C-011` | 啃果虫 | no_effect_text |
@@ -1754,6 +1743,7 @@
 | `CSVE1C-075` | 列阵兵 | variable_damage |
 | `CSVE1C-081` | 戴鲁比 | no_effect_text |
 | `CSVE1C-094` | 青绵鸟 | variable_damage |
+| `CSVE1C-157` | 捩木 | transform_swap |
 | `CSVE1C-DAR` | 基本恶能量 | no_effect_text |
 | `CSVE1C-FIG` | 基本斗能量 | no_effect_text |
 | `CSVE1C-FIR` | 基本火能量 | no_effect_text |
@@ -1789,10 +1779,12 @@
 | `CSVE2C-118` | 大葱鸭 | variable_damage |
 | `CSVE2C-123` | 图图犬 | variable_damage |
 | `CSVE2C-148` | 掉包杯 | top_swap |
+| `CSVE2C-189` | 捩木 | transform_swap |
 | `CSVE2pC-012` | 基本火能量 | no_effect_text |
 | `CSVE2pC-024` | 基本水能量 | no_effect_text |
 | `CSVH1C-002` | 斗笠菇 | no_effect_text |
 | `CSVH1C-003` | 草苗龟 | no_effect_text |
+| `CSVH1C-005` | 土台龟 | variable_damage |
 | `CSVH1C-008` | 皮卡丘ex | self_cost |
 | `CSVH1C-009` | 灯笼鱼 | no_effect_text |
 | `CSVH1C-011` | 咩利羊 | no_effect_text |
@@ -1822,7 +1814,6 @@
 | `CSVH2C-007` | 呱呱泡蛙 | coin_failure |
 | `CSVH2C-012` | 利欧路 | recoil |
 | `CSVH2C-021` | 偶叫獒 | no_effect_text |
-| `CSVH2C-023` | 盔甲鸟 | self_constraint |
 | `CSVH2C-033` | 嘟嘟 | recoil |
 | `CSVH2pC-001` | 狗仔包 | no_effect_text |
 | `CSVH2pC-003` | 墓仔狗 | variable_damage |
@@ -2004,6 +1995,7 @@
 | `CSVM1bC-008` | 飘飘球 | variable_damage |
 | `CSVM2aC-010` | 咕咕 | variable_damage |
 | `CSVM2bC-005` | 多龙梅西亚 | no_effect_text |
+| `CSVNC-032` | 鬼之假面 | transform_swap |
 | `CSVSC-003` | 豆蟋蟀 | no_effect_text |
 | `CSVSC-004` | 烈腿蝗 | no_effect_text |
 | `CSVSC-005` | 原野水母 | no_effect_text |
@@ -2075,13 +2067,11 @@
 | `SSP-018` | 雪吞虫 | no_effect_text |
 | `SSP-021` | 拳拳蛸 | no_effect_text |
 | `SSP-029` | 雷丘GX | legacy_rule_text |
-| `SSP-031` | 三合一磁怪 | self_constraint |
 | `SSP-032` | 电击兽 | recoil |
 | `SSP-035` | 咩利羊 | self_cost |
 | `SSP-036` | 茸茸羊 | self_cost |
 | `SSP-038` | 基本雷能量 | no_effect_text |
 | `SSP-045` | 咚咚鼠 | variable_damage |
-| `SSP-048` | 鬃岩狼人 | self_constraint |
 | `SSP-049` | 圆丝蛛 | no_effect_text |
 | `SSP-050` | 掘掘兔 | variable_damage |
 | `SSP-051` | 啃果虫 | variable_damage |
@@ -2176,7 +2166,6 @@
 | `SVP-166` | 一对鼠 | variable_damage |
 | `SVP-169` | 虫电宝 | no_effect_text |
 | `SVP-171` | 榛果球 | no_effect_text |
-| `SVP-176` | 炎热喵 | self_constraint |
 | `SVP-178` | 蚊香蝌蚪 | variable_damage |
 | `SVP-193` | 佛烈托斯 | recoil+variable_damage |
 | `SVP-221` | 甜舞妮 | variable_damage |
@@ -2241,6 +2230,7 @@
 - `151C-044` 臭臭花 :: search, energy_accel, bounce, evolution
 - `151C-045` 霸王花 :: search, energy_accel, bounce, evolution
 - `151C-093` 鬼斯通 :: discard_recover, bounce, evolution
+- `151C-105` 嘎啦嘎啦 :: spread, lock, cooldown
 - `151C-106` 飞腿郎 :: spread, switch, lock
 - `151C-110` 双弹瓦斯 :: spread, ko, lock
 - `151C-122` 魔墙人偶 :: spread, protection, energy_accel
@@ -2254,12 +2244,6 @@
 - `151C-184` 闪电鸟ex :: spread, lock, modifier
 - `151C-190` 闪电鸟ex :: spread, lock, modifier
 - `CBB2C-0214` 水伊布VMAX :: discard_recover, damage_boost, energy_accel
-- `CBB2C-0402` 火伊布 :: status, energy_accel, energy_disrupt
-- `CBB2C-0404` 火伊布 :: status, energy_accel, energy_disrupt
-- `CBB2C-0406` 火伊布 :: status, energy_accel, energy_disrupt
-- `CBB2C-0408` 火伊布 :: status, energy_accel, energy_disrupt
-- `CBB2C-0410` 火伊布 :: status, energy_accel, energy_disrupt
-- `CBB2C-0412` 火伊布 :: status, energy_accel, energy_disrupt
 - `CBB2C-0413` 火伊布V :: search, status, energy_accel
 - `CBB2C-0602` 月亮伊布 :: spread, status, lock
 - `CBB2C-0604` 月亮伊布 :: spread, status, lock
@@ -2268,13 +2252,19 @@
 - `CBB2C-0610` 月亮伊布 :: spread, status, lock
 - `CBB2C-0612` 月亮伊布 :: spread, status, lock
 - `CBB2C-0615` 月亮伊布 :: spread, status, lock
-- `CBB2C-0702` 叶伊布 :: search, energy_accel, lock
-- `CBB2C-0704` 叶伊布 :: search, energy_accel, lock
-- `CBB2C-0706` 叶伊布 :: search, energy_accel, lock
-- `CBB2C-0708` 叶伊布 :: search, energy_accel, lock
-- `CBB2C-0710` 叶伊布 :: search, energy_accel, lock
-- `CBB2C-0712` 叶伊布 :: search, energy_accel, lock
-- `CBB2C-0715` 叶伊布 :: search, energy_accel, lock
+- `CBB2C-0702` 叶伊布 :: search, energy_accel, cooldown
+- `CBB2C-0704` 叶伊布 :: search, energy_accel, cooldown
+- `CBB2C-0706` 叶伊布 :: search, energy_accel, cooldown
+- `CBB2C-0708` 叶伊布 :: search, energy_accel, cooldown
+- `CBB2C-0710` 叶伊布 :: search, energy_accel, cooldown
+- `CBB2C-0712` 叶伊布 :: search, energy_accel, cooldown
+- `CBB2C-0715` 叶伊布 :: search, energy_accel, cooldown
+- `CBB2C-0801` 冰伊布 :: spread, lock, cooldown
+- `CBB2C-0803` 冰伊布 :: spread, lock, cooldown
+- `CBB2C-0805` 冰伊布 :: spread, lock, cooldown
+- `CBB2C-0807` 冰伊布 :: spread, lock, cooldown
+- `CBB2C-0809` 冰伊布 :: spread, lock, cooldown
+- `CBB2C-0811` 冰伊布 :: spread, lock, cooldown
 - `CBB2C-0814` 冰伊布VMAX :: spread, protection, lock
 - `CBB2C-0902` 仙子伊布 :: damage_boost, energy_disrupt, bounce
 - `CBB2C-0904` 仙子伊布 :: damage_boost, energy_disrupt, bounce
@@ -2298,12 +2288,15 @@
 - `CS1.5C-060` 苹裹龙 :: spread, energy_disrupt, bounce
 - `CS1.5C-079` 古月鸟V :: search, spread, lock
 - `CS1.5C-086` 古月鸟V :: search, spread, lock
+- `CS1DC-020` 轰擂金刚猩 :: spread, lock, cooldown
 - `CS1DC-059` 千面避役 :: hand_disrupt, energy_disrupt, bounce
 - `CS1DC-083` 伽勒尔 烈焰马 :: heal, protection, status
+- `CS1DC-105` 路卡利欧V :: spread, lock, cooldown
 - `CS1DC-126` 狡小狐 :: draw, hand_disrupt, bounce
 - `CS1DC-202` 玛俐 :: draw, hand_disrupt, bounce
 - `CS1DC-216` 狡小狐 :: draw, hand_disrupt, bounce
 - `CS1aC-008` 拉普拉斯V :: energy_accel, switch, bounce
+- `CS1aC-013` 伽勒尔 达摩狒狒 :: spread, lock, cooldown
 - `CS1aC-017` 千面避役 :: search, spread, lock, evolution
 - `CS1aC-018` 千面避役V :: hand_disrupt, spread, lock
 - `CS1aC-019` 千面避役VMAX :: spread, energy_disrupt, bounce, lock
@@ -2314,6 +2307,7 @@
 - `CS1aC-063` 梦梦蚀 :: damage_boost, heal, status
 - `CS1aC-092` 鲶鱼王 :: spread, protection, lock
 - `CS1aC-132` 玛俐 :: draw, hand_disrupt, bounce
+- `CS1aC-137` 伽勒尔 达摩狒狒 :: spread, lock, cooldown
 - `CS1aC-140` 千面避役 :: search, spread, lock, evolution
 - `CS1aC-148` 冰砌鹅 :: spread, protection, lock
 - `CS1aC-154` 伽勒尔 烈焰马 :: heal, protection, status
@@ -2331,12 +2325,12 @@
 - `CS1bC-043` 水晶灯火灵 :: protection, status, modifier
 - `CS1bC-061` 伽勒尔 堵拦熊 :: spread, protection, evolution
 - `CS1bC-083` 巨钳螳螂 :: damage_boost, protection, evolution
-- `CS1bC-103` 苍响V :: search, energy_accel, lock
+- `CS1bC-103` 苍响V :: search, energy_accel, cooldown
 - `CS1bC-147` 伽勒尔 堵拦熊 :: spread, protection, evolution
 - `CS1bC-164` 煤炭龟V :: mill, damage_boost, energy_disrupt
-- `CS1bC-170` 苍响V :: search, energy_accel, lock
+- `CS1bC-170` 苍响V :: search, energy_accel, cooldown
 - `CS1bC-191` 伽勒尔 堵拦熊 :: spread, protection, evolution
-- `CS1bC-192` 苍响V :: search, energy_accel, lock
+- `CS1bC-192` 苍响V :: search, energy_accel, cooldown
 - `CS2.5C-013` 大剑鬼 :: protection, energy_disrupt, bounce
 - `CS2.5C-030` 基拉祈 :: search, energy_accel, bounce
 - `CS2.5C-037` 大王铜象 :: damage_boost, protection, status
@@ -2344,31 +2338,33 @@
 - `CS2.5C-061` 大王铜象 :: damage_boost, protection, status
 - `CS2DaC-048` 裁判 :: draw, hand_disrupt, bounce
 - `CS2aC-012` 铁面忍者 :: search, heal, evolution
+- `CS2aC-017` 盖诺赛克特 :: spread, lock, cooldown
 - `CS2aC-020` 木木枭 :: spread, lock, modifier
 - `CS2aC-022` 狙射树枭 :: spread, protection, lock
 - `CS2aC-026` 萨戮德V :: heal, energy_accel, lock
 - `CS2aC-047` 沙漠蜻蜓 :: protection, removal, lock
 - `CS2aC-062` 巨炭山VMAX :: mill, damage_boost, energy_accel
-- `CS2aC-075` 巨金怪 :: lock, modifier, evolution
+- `CS2aC-092` 暴飞龙VMAX :: spread, lock, cooldown
 - `CS2aC-100` 喇叭啄鸟 :: search, energy_accel, bounce, evolution
 - `CS2aC-116` 木木枭 :: spread, lock, modifier
 - `CS2aC-118` 狙射树枭 :: spread, protection, lock
 - `CS2aC-122` 萨戮德V :: heal, energy_accel, lock
 - `CS2aC-136` 巨炭山VMAX :: mill, damage_boost, energy_accel
+- `CS2aC-138` 暴飞龙VMAX :: spread, lock, cooldown
 - `CS2bC-027` 电龙V :: spread, status, lock
 - `CS2bC-038` 麻麻鳗鱼王 :: spread, energy_accel, lock
-- `CS2bC-051` 麒麟奇 :: draw, spread, bounce
+- `CS2bC-051` 麒麟奇 :: draw, hand_disrupt, spread, bounce
 - `CS2bC-068` 霜奶仙 :: draw, status, evolution
 - `CS2bC-073` 阿利多斯 :: status, gust, evolution
 - `CS2bC-105` 稀有化石 :: protection, status, lock
 - `CS2bC-124` 电龙V :: spread, status, lock
 - `CS3.5C-019` 飘浮泡泡 雨水的样子 :: spread, lock, modifier
 - `CS3.5C-043` 花岩怪 :: discard_recover, spread, bounce
-- `CS3.5C-048` 坚盾剑怪 :: protection, status, bounce
 - `CS3.5C-050` 大舌舔 :: mill, hand_disrupt, gust
 - `CS3.5C-054` 藏饱栗鼠 :: discard_recover, protection, bounce
 - `CS3.5C-064` 冲击能量 :: heal, protection, status, modifier
 - `CS3.5C-065` 螺旋能量 :: heal, protection, status, modifier
+- `CS3DC-007` 盖诺赛克特 :: spread, lock, cooldown
 - `CS3DC-072` 奈克洛兹玛V :: damage_boost, spread, lock
 - `CS3DC-089` 乌鸦头头 :: damage_boost, protection, status
 - `CS3DC-093` 黑鲁加 :: search, spread, energy_accel
@@ -2378,16 +2374,20 @@
 - `CS3DC-178` 裁判 :: draw, hand_disrupt, bounce
 - `CS3aC-032` 电龙 :: hand_disrupt, damage_boost, status
 - `CS3aC-045` 克雷色利亚 :: search, damage_boost, energy_accel
+- `CS3aC-071` 一击武道熊师V :: search, energy_accel, cooldown
 - `CS3aC-080` 乌鸦头头 :: damage_boost, protection, status
 - `CS3aC-085` 黑鲁加 :: search, spread, energy_accel
 - `CS3aC-097` 幸福蛋V :: heal, status, energy_accel
+- `CS3aC-140` 一击武道熊师V :: search, energy_accel, cooldown
+- `CS3aC-141` 一击武道熊师V :: search, energy_accel, cooldown
 - `CS3aC-145` 幸福蛋V :: heal, status, energy_accel
 - `CS3aC-146` 幸福蛋V :: heal, status, energy_accel
+- `CS3aC-158` 一击武道熊师V :: search, energy_accel, cooldown
 - `CS3aC-160` 幸福蛋V :: heal, status, energy_accel
 - `CS3aC-177` 克雷色利亚 :: search, damage_boost, energy_accel
 - `CS3aC-178` 黑鲁加 :: search, spread, energy_accel
 - `CS3bC-026` 水箭龟VMAX :: search, spread, energy_accel, lock
-- `CS3bC-040` 雪妖女 :: energy_accel, lock, evolution
+- `CS3bC-040` 雪妖女 :: energy_accel, evolution, cooldown
 - `CS3bC-050` 伦琴猫 :: damage_boost, spread, switch, lock
 - `CS3bC-057` 引梦貘人 :: damage_boost, heal, status
 - `CS3bC-065` 奈克洛兹玛V :: damage_boost, spread, lock
@@ -2403,8 +2403,8 @@
 - `CS3bC-163` 沙螺蟒VMAX :: spread, energy_move, lock
 - `CS3bC-164` 连击武道熊师VMAX :: damage_boost, spread, lock
 - `CS3bC-165` 连击武道熊师VMAX :: damage_boost, spread, lock
-- `CS3bC-175` 雪妖女 :: energy_accel, lock, evolution
-- `CS4.1C-022` 苍响V :: search, energy_accel, lock
+- `CS3bC-175` 雪妖女 :: energy_accel, evolution, cooldown
+- `CS4.1C-022` 苍响V :: search, energy_accel, cooldown
 - `CS4.5C-005` 拉普拉斯 :: spread, status, bounce, lock
 - `CS4.5C-013` 几何雪花 :: search, energy_accel, bounce
 - `CS4.5C-015` 千面避役VMAX :: damage_boost, spread, bounce
@@ -2424,7 +2424,7 @@
 - `CS4DaC-079` 刺甲贝 :: spread, protection, lock
 - `CS4DaC-086` 拉普拉斯 :: spread, status, bounce, lock
 - `CS4DaC-095` 巨沼怪 :: spread, energy_accel, lock
-- `CS4DaC-099` 雪妖女 :: energy_accel, lock, evolution
+- `CS4DaC-099` 雪妖女 :: energy_accel, evolution, cooldown
 - `CS4DaC-103` 冰伊布V :: search, removal, evolution
 - `CS4DaC-104` 冰伊布VMAX :: spread, protection, lock
 - `CS4DaC-106` 几何雪花 :: search, energy_accel, bounce
@@ -2435,16 +2435,16 @@
 - `CS4DaC-166` 引梦貘人 :: damage_boost, heal, status
 - `CS4DaC-182` 克雷色利亚 :: search, damage_boost, energy_accel
 - `CS4DaC-198` 奈克洛兹玛V :: damage_boost, spread, lock
-- `CS4DaC-216` 快拳郎 :: damage_boost, lock, evolution
+- `CS4DaC-221` 恰雷姆V :: spread, lock, cooldown
 - `CS4DaC-235` 鬃岩狼人VMAX :: spread, ko, lock
 - `CS4DaC-242` 沙螺蟒VMAX :: spread, energy_move, lock
+- `CS4DaC-247` 一击武道熊师V :: search, energy_accel, cooldown
 - `CS4DaC-262` 黑鲁加 :: search, spread, energy_accel
 - `CS4DaC-298` 波士可多拉 :: spread, protection, lock
 - `CS4DaC-299` 波士可多拉V :: damage_boost, spread, lock
 - `CS4DaC-305` 骑士蜗牛 :: spread, protection, lock
 - `CS4DaC-321` 音波龙V :: damage_boost, spread, lock
 - `CS4DaC-334` 幸福蛋V :: heal, status, energy_accel
-- `CS4DaC-357` 摔角鹰人 :: damage_boost, energy_accel, evolution
 - `CS4DaC-387` 香氛姐姐 :: draw, heal, status
 - `CS4DaC-398` 裁判 :: draw, hand_disrupt, bounce
 - `CS4aC-008` 叶伊布V :: search, damage_boost, energy_accel
@@ -2453,6 +2453,7 @@
 - `CS4aC-031` 巨沼怪 :: spread, energy_accel, lock
 - `CS4aC-034` 冰伊布V :: search, removal, evolution
 - `CS4aC-035` 冰伊布VMAX :: spread, protection, lock
+- `CS4aC-080` 恰雷姆V :: spread, lock, cooldown
 - `CS4aC-082` 念力土偶 :: spread, gust, switch
 - `CS4aC-133` 叶伊布V :: search, damage_boost, energy_accel
 - `CS4aC-134` 叶伊布V :: search, damage_boost, energy_accel
@@ -2460,6 +2461,8 @@
 - `CS4aC-137` 火伊布V :: search, status, energy_accel
 - `CS4aC-140` 冰伊布V :: search, removal, evolution
 - `CS4aC-141` 冰伊布V :: search, removal, evolution
+- `CS4aC-149` 恰雷姆V :: spread, lock, cooldown
+- `CS4aC-150` 恰雷姆V :: spread, lock, cooldown
 - `CS4aC-167` 冰伊布VMAX :: spread, protection, lock
 - `CS4aC-168` 冰伊布VMAX :: spread, protection, lock
 - `CS4bC-002` 毽子花 :: search, energy_accel, evolution
@@ -2468,7 +2471,6 @@
 - `CS4bC-029` 大力鳄 :: mill, energy_disrupt, evolution
 - `CS4bC-044` 逐电犬V :: spread, switch, lock
 - `CS4bC-048` 梦幻V :: search, energy_accel, bounce
-- `CS4bC-061` 快拳郎 :: damage_boost, lock, evolution
 - `CS4bC-068` 鬃岩狼人VMAX :: spread, ko, lock
 - `CS4bC-081` 猾大狐 :: draw, hand_disrupt, bounce, evolution
 - `CS4bC-116` 可中奖棒冰 :: discard_recover, heal, bounce
@@ -2479,13 +2481,13 @@
 - `CS4bC-163` 鬃岩狼人VMAX :: spread, ko, lock
 - `CS5.1C-022` 连击武道熊师VMAX :: damage_boost, spread, lock
 - `CS5.5C-002` 派拉斯特 :: damage_boost, status, evolution
-- `CS5.5C-006` 毕力吉翁V :: heal, protection, status, lock
+- `CS5.5C-006` 毕力吉翁V :: heal, protection, status, cooldown
 - `CS5.5C-024` 帝王拿波 :: draw, discard_recover, spread, lock, special_summon
 - `CS5.5C-026` 雷吉艾勒奇 :: discard_recover, spread, lock
 - `CS5.5C-029` 耿鬼 :: discard_recover, spread, special_summon
-- `CS5.5C-045` 怪力 :: damage_boost, lock, modifier
+- `CS5.5C-045` 怪力 :: damage_boost, modifier, cooldown
 - `CS5.5C-065` 杜娟 :: draw, hand_disrupt, bounce
-- `CS5.5C-068` 毕力吉翁V :: heal, protection, status, lock
+- `CS5.5C-068` 毕力吉翁V :: heal, protection, status, cooldown
 - `CS5.5C-076` 杜娟 :: draw, hand_disrupt, bounce
 - `CS5.5C-080` 杜娟 :: draw, hand_disrupt, bounce
 - `CS5.5C-086` 杜娟 :: draw, hand_disrupt, bounce
@@ -2494,7 +2496,6 @@
 - `CS5DC-081` 阿勃梭鲁 :: damage_boost, spread, lock
 - `CS5DC-089` 自爆磁怪 :: search, energy_accel, bounce
 - `CS5DC-091` 骑士蜗牛 :: spread, protection, lock
-- `CS5DC-106` 摔角鹰人 :: damage_boost, energy_accel, evolution
 - `CS5DC-112` 可中奖棒冰 :: discard_recover, heal, bounce
 - `CS5DC-141` 裁判 :: draw, hand_disrupt, bounce
 - `CS5aC-042` 梦妖魔 :: search, hand_disrupt, status
@@ -2513,7 +2514,7 @@
 - `CS5bC-131` 自爆磁怪 :: search, energy_accel, bounce
 - `CS6.1C-015` 眷恋云V :: protection, energy_accel, lock
 - `CS6.5C-001` 阿罗拉 椰蛋树V :: search, energy_accel, lock
-- `CS6.5C-006` 叶伊布 :: search, energy_accel, lock
+- `CS6.5C-006` 叶伊布 :: search, energy_accel, cooldown
 - `CS6.5C-012` 妖火红狐V :: spread, status, lock
 - `CS6.5C-017` 美纳斯 :: spread, status, lock
 - `CS6.5C-018` 盖欧卡 :: search, spread, energy_accel, bounce, lock
@@ -2529,10 +2530,11 @@
 - `CS6.5C-081` 雷吉铎拉戈V :: mill, spread, energy_accel, lock
 - `CS6.5C-082` 雷吉铎拉戈V :: mill, spread, energy_accel, lock
 - `CS6.5C-091` 雷吉铎拉戈VSTAR :: mill, discard_recover, copy
+- `CS6aC-015` 远古巨蜓 :: spread, lock, cooldown
 - `CS6aC-016` 热带龙 :: heal, protection, status
 - `CS6aC-018` 洗翠 裙儿小姐 :: spread, switch, lock
 - `CS6aC-020` 洗翠 裙儿小姐VSTAR :: search, damage_boost, bounce
-- `CS6aC-043` 莱希拉姆V :: search, energy_accel, lock
+- `CS6aC-043` 莱希拉姆V :: search, energy_accel, cooldown
 - `CS6aC-048` 烈箭鹰 :: damage_boost, spread, lock
 - `CS6aC-056` 电击魔兽 :: damage_boost, spread, lock
 - `CS6aC-064` 自爆磁怪V :: spread, gust, lock
@@ -2542,7 +2544,7 @@
 - `CS6aC-126` 莎莉娜 :: draw, search, gust
 - `CS6aC-129` 野贼三姐妹 :: mill, discard_recover, bounce
 - `CS6aC-133` 电击魔兽 :: damage_boost, spread, lock
-- `CS6aC-139` 莱希拉姆V :: search, energy_accel, lock
+- `CS6aC-139` 莱希拉姆V :: search, energy_accel, cooldown
 - `CS6aC-140` 自爆磁怪V :: spread, gust, lock
 - `CS6aC-142` 玛机雅娜V :: damage_boost, spread, lock
 - `CS6aC-150` 莎莉娜 :: draw, search, gust
@@ -2557,7 +2559,7 @@
 - `CS6bC-046` 人造细胞卵 :: discard_recover, spread, bounce
 - `CS6bC-087` 阿勃梭鲁 :: damage_boost, spread, lock
 - `CS6bC-088` 坦克臭鼬V :: spread, status, lock, modifier
-- `CS6bC-106` 快龙VSTAR :: search, energy_accel, bounce, lock
+- `CS6bC-106` 快龙VSTAR :: search, energy_accel, bounce, cooldown
 - `CS6bC-113` 卡比兽 :: heal, protection, status
 - `CS6bC-114` 晃晃斑 :: spread, status, lock
 - `CS6bC-131` 滋养能量 :: heal, modifier, evolution
@@ -2565,9 +2567,10 @@
 - `CS6bC-137` 多刺菊石兽V :: search, lock, evolution
 - `CS6bC-143` 坦克臭鼬V :: spread, status, lock, modifier
 - `CS6bC-144` 坦克臭鼬V :: spread, status, lock, modifier
-- `CS6bC-163` 快龙VSTAR :: search, energy_accel, bounce, lock
+- `CS6bC-163` 快龙VSTAR :: search, energy_accel, bounce, cooldown
 - `CSAC-003` 拉普拉斯V :: energy_accel, switch, bounce
 - `CSAC-022` 玛俐 :: draw, hand_disrupt, bounce
+- `CSBC-003` 一击武道熊师V :: search, energy_accel, cooldown
 - `CSBC-016` 玛俐 :: draw, hand_disrupt, bounce
 - `CSCC-015` 玛俐 :: draw, hand_disrupt, bounce
 - `CSDC-006` 盖欧卡 :: mill, spread, lock
@@ -2591,21 +2594,20 @@
 - `CSJC-003` 伽勒尔 急冻鸟 :: spread, energy_accel, lock
 - `CSM1.5C-006` 刺龙王GX :: spread, switch, lock
 - `CSM1.5C-007` 帕奇利兹 :: damage_boost, status, removal
-- `CSM1.5C-010` 捷拉奥拉GX :: energy_accel, lock, modifier
+- `CSM1.5C-010` 捷拉奥拉GX :: energy_accel, modifier, cooldown
 - `CSM1.5C-012` 阿罗拉 臭臭泥 :: hand_disrupt, energy_disrupt, lock
 - `CSM1.5C-013` 骑拉帝纳 :: discard_recover, spread, special_summon
 - `CSM1.5C-021` 奈克洛兹玛 拂晓之翼GX :: protection, switch, lock
-- `CSM1.5C-024` 投掷猴 :: damage_boost, lock, evolution
 - `CSM1.5C-029` 炽焰咆哮虎GX :: search, spread, energy_accel, energy_disrupt
 - `CSM1.5C-032` 索尔迦雷欧GX :: heal, protection, energy_accel, modifier
 - `CSM1.5C-050` 朝蜜 :: search, energy_accel, bounce
 - `CSM1.5C-062` 刺龙王GX :: spread, switch, lock
-- `CSM1.5C-063` 捷拉奥拉GX :: energy_accel, lock, modifier
+- `CSM1.5C-063` 捷拉奥拉GX :: energy_accel, modifier, cooldown
 - `CSM1.5C-064` 奈克洛兹玛 拂晓之翼GX :: protection, switch, lock
 - `CSM1.5C-065` 炽焰咆哮虎GX :: search, spread, energy_accel, energy_disrupt
 - `CSM1.5C-070` 朝蜜 :: search, energy_accel, bounce
 - `CSM1.5C-075` 刺龙王GX :: spread, switch, lock
-- `CSM1.5C-076` 捷拉奥拉GX :: energy_accel, lock, modifier
+- `CSM1.5C-076` 捷拉奥拉GX :: energy_accel, modifier, cooldown
 - `CSM1.5C-077` 奈克洛兹玛 拂晓之翼GX :: protection, switch, lock
 - `CSM1.5C-078` 炽焰咆哮虎GX :: search, spread, energy_accel, energy_disrupt
 - `CSM1.5C-081` 索尔迦雷欧GX :: heal, protection, energy_accel, modifier
@@ -2614,17 +2616,15 @@
 - `CSM1DC-017` 毕力吉翁GX :: draw, damage_boost, bounce
 - `CSM1DC-023` 投羽枭 :: damage_boost, spread, lock
 - `CSM1DC-037` 席多蓝恩 :: mill, spread, lock
-- `CSM1DC-047` 花舞鸟 :: search, energy_accel, energy_disrupt
 - `CSM1DC-060` 美纳斯 :: spread, status, lock
 - `CSM1DC-073` 甲贺忍蛙GX :: spread, bounce, lock, evolution
 - `CSM1DC-090` 伦琴猫 :: spread, protection, lock
 - `CSM1DC-121` 卡璞・蝶蝶GX :: search, heal, lock
-- `CSM1DC-125` 怪力GX :: damage_boost, removal, lock, evolution
+- `CSM1DC-125` 怪力GX :: damage_boost, removal, lock
 - `CSM1DC-136` 海兔兽 :: spread, status, lock
-- `CSM1DC-145` 穿着熊 :: damage_boost, protection, evolution
+- `CSM1DC-137` 打击鬼 :: protection, lock, cooldown
 - `CSM1DC-150` 班基拉斯 :: damage_boost, spread, lock
 - `CSM1DC-162` 伊裴尔塔尔GX :: heal, ko, lock
-- `CSM1DC-166` 巨钳螳螂GX :: damage_boost, protection, evolution
 - `CSM1DC-175` 席多蓝恩 :: search, energy_accel, bounce
 - `CSM1DC-183` 阿罗拉 九尾GX :: search, spread, ko, lock, evolution
 - `CSM1DC-185` 玛力露丽 :: search, damage_boost, energy_accel, bounce
@@ -2643,7 +2643,6 @@
 - `CSM1DC-284` 裁判 :: draw, hand_disrupt, bounce
 - `CSM1DC-299` 碧珂 :: draw, hand_disrupt, bounce
 - `CSM1DC-300` 小枫与小南 :: draw, switch, bounce
-- `CSM1DC-316` 虚无之海 :: heal, status, evolution
 - `CSM1DC-326` 阿罗拉 九尾GX :: search, spread, ko, lock, evolution
 - `CSM1DC-329` 碧珂 :: draw, hand_disrupt, bounce
 - `CSM1DC-332` 阿罗拉 九尾GX :: search, spread, ko, lock, evolution
@@ -2651,7 +2650,7 @@
 - `CSM1aC-001` 飞天螳螂 :: search, protection, lock
 - `CSM1aC-003` 火恐龙 :: mill, energy_accel, evolution
 - `CSM1aC-013` 炎帝GX :: spread, status, lock
-- `CSM1aC-014` 凤王GX :: discard_recover, spread, lock
+- `CSM1aC-014` 凤王GX :: discard_recover, spread, lock, cooldown
 - `CSM1aC-024` 莱希拉姆GX :: search, status, energy_accel
 - `CSM1aC-040` 诅咒娃娃 :: discard_recover, spread, evolution
 - `CSM1aC-054` 卡璞・蝶蝶GX :: search, heal, lock
@@ -2661,30 +2660,32 @@
 - `CSM1aC-061` 毒贝比 :: status, ko, lock
 - `CSM1aC-063` 四颚针龙GX :: draw, bounce, lock, modifier
 - `CSM1aC-066` 阿罗拉 三地鼠 :: spread, lock, modifier
-- `CSM1aC-070` 巨钳螳螂GX :: damage_boost, protection, evolution
+- `CSM1aC-076` 巨金怪GX :: search, energy_accel, cooldown
 - `CSM1aC-077` 基拉祈 :: search, status, bounce
 - `CSM1aC-078` 基拉祈◇ :: status, modifier, special_summon
 - `CSM1aC-083` 坚果哑铃 :: spread, protection, lock
 - `CSM1aC-085` 勾帕路翁GX :: damage_boost, heal, protection, status, lock
 - `CSM1aC-090` 索尔迦雷欧GX :: search, energy_accel, switch
 - `CSM1aC-099` 暴飞龙GX :: spread, lock, modifier
+- `CSM1aC-112` 多边兽乙型 :: bounce, evolution, cooldown
 - `CSM1aC-114` 旋转洛托姆 :: spread, lock, modifier
 - `CSM1aC-117` 烈箭鹰 :: search, energy_accel, bounce
 - `CSM1aC-142` 小枫与小南 :: draw, switch, bounce
 - `CSM1aC-152` 飞天螳螂 :: search, protection, lock
 - `CSM1aC-154` 火恐龙 :: mill, energy_accel, evolution
 - `CSM1aC-159` 毒贝比 :: status, ko, lock
-- `CSM1aC-169` 凤王GX :: discard_recover, spread, lock
+- `CSM1aC-169` 凤王GX :: discard_recover, spread, lock, cooldown
 - `CSM1aC-170` 莱希拉姆GX :: search, status, energy_accel
 - `CSM1aC-174` 卡璞・蝶蝶GX :: search, heal, lock
 - `CSM1aC-175` 露奈雅拉GX :: heal, energy_move, lock
 - `CSM1aC-176` 四颚针龙GX :: draw, bounce, lock, modifier
+- `CSM1aC-177` 巨金怪GX :: search, energy_accel, cooldown
 - `CSM1aC-178` 索尔迦雷欧GX :: search, energy_accel, switch
 - `CSM1aC-187` 小枫与小南 :: draw, switch, bounce
-- `CSM1aC-191` 凤王GX :: discard_recover, spread, lock
+- `CSM1aC-191` 凤王GX :: discard_recover, spread, lock, cooldown
 - `CSM1aC-192` 莱希拉姆GX :: search, status, energy_accel
 - `CSM1aC-197` 四颚针龙GX :: draw, bounce, lock, modifier
-- `CSM1aC-198` 巨钳螳螂GX :: damage_boost, protection, evolution
+- `CSM1aC-199` 巨金怪GX :: search, energy_accel, cooldown
 - `CSM1aC-202` 卡璞・蝶蝶GX :: search, heal, lock
 - `CSM1aC-203` 露奈雅拉GX :: heal, energy_move, lock
 - `CSM1aC-204` 索尔迦雷欧GX :: search, energy_accel, switch
@@ -2701,10 +2702,12 @@
 - `CSM1bC-080` 阿罗拉 臭臭泥 :: mill, discard_recover, status, bounce, evolution
 - `CSM1bC-081` 阿罗拉 臭臭泥GX :: status, energy_disrupt, gust
 - `CSM1bC-083` 月亮伊布GX :: spread, energy_disrupt, switch, lock
-- `CSM1bC-086` 达克莱伊GX :: discard_recover, status, energy_accel, ko, lock, special_summon
+- `CSM1bC-086` 达克莱伊GX :: discard_recover, energy_accel, ko, lock, special_summon
 - `CSM1bC-087` 达克莱伊◇ :: heal, status, energy_accel
+- `CSM1bC-098` 胡帕GX :: search, lock, cooldown
 - `CSM1bC-100` 恶食大王GX :: mill, energy_accel, modifier
 - `CSM1bC-104` 烈空坐GX :: draw, mill, energy_accel
+- `CSM1bC-107` 大嘴雀 :: draw, hand_disrupt, bounce, cooldown
 - `CSM1bC-113` 阿尔宙斯◇ :: search, protection, energy_accel
 - `CSM1bC-115` 智挥猩 :: discard_recover, status, bounce
 - `CSM1bC-117` 老翁龙GX :: draw, damage_boost, energy_disrupt, bounce
@@ -2715,7 +2718,7 @@
 - `CSM1bC-163` 具甲武者GX :: damage_boost, protection, switch
 - `CSM1bC-167` 电束木GX :: mill, hand_disrupt, protection
 - `CSM1bC-168` 月亮伊布GX :: spread, energy_disrupt, switch, lock
-- `CSM1bC-169` 达克莱伊GX :: discard_recover, status, energy_accel, ko, lock, special_summon
+- `CSM1bC-169` 达克莱伊GX :: discard_recover, energy_accel, ko, lock, special_summon
 - `CSM1bC-171` 恶食大王GX :: mill, energy_accel, modifier
 - `CSM1bC-172` 烈空坐GX :: draw, mill, energy_accel
 - `CSM1bC-174` 老翁龙GX :: draw, damage_boost, energy_disrupt, bounce
@@ -2723,7 +2726,7 @@
 - `CSM1bC-185` 具甲武者GX :: damage_boost, protection, switch
 - `CSM1bC-187` 电束木GX :: mill, hand_disrupt, protection
 - `CSM1bC-188` 月亮伊布GX :: spread, energy_disrupt, switch, lock
-- `CSM1bC-189` 达克莱伊GX :: discard_recover, status, energy_accel, ko, lock, special_summon
+- `CSM1bC-189` 达克莱伊GX :: discard_recover, energy_accel, ko, lock, special_summon
 - `CSM1bC-191` 恶食大王GX :: mill, energy_accel, modifier
 - `CSM1bC-192` 烈空坐GX :: draw, mill, energy_accel
 - `CSM1bC-194` 老翁龙GX :: draw, damage_boost, energy_disrupt, bounce
@@ -2731,7 +2734,7 @@
 - `CSM1cC-008` 蚊香泳士 :: damage_boost, heal, status
 - `CSM1cC-012` 鲤鱼王 :: search, protection, evolution
 - `CSM1cC-014` 拉普拉斯 :: search, status, bounce
-- `CSM1cC-015` 拉普拉斯GX :: draw, status, lock
+- `CSM1cC-015` 拉普拉斯GX :: draw, status, cooldown
 - `CSM1cC-016` 急冻鸟GX :: energy_move, energy_disrupt, switch
 - `CSM1cC-021` 水君GX :: protection, switch, bounce
 - `CSM1cC-026` 冰伊布GX :: hand_disrupt, spread, lock
@@ -2740,10 +2743,10 @@
 - `CSM1cC-032` 甲贺忍蛙GX :: spread, bounce, lock, evolution
 - `CSM1cC-033` 波尔凯尼恩◇ :: spread, gust, lock
 - `CSM1cC-036` 卡璞・鳍鳍GX :: spread, switch, bounce, lock
-- `CSM1cC-043` 战槌龙 :: damage_boost, ko, evolution
 - `CSM1cC-044` 海兔兽 :: spread, status, lock
 - `CSM1cC-047` 烈咬陆鲨 :: damage_boost, spread, lock
 - `CSM1cC-052` 怪颚龙 :: damage_boost, protection, energy_disrupt
+- `CSM1cC-064` 爆肌蚊GX :: spread, lock, cooldown
 - `CSM1cC-068` 阿罗拉 九尾GX :: search, spread, ko, lock, evolution
 - `CSM1cC-076` 沙奈朵GX :: discard_recover, energy_accel, bounce
 - `CSM1cC-081` 花洁夫人 :: discard_recover, protection, bounce
@@ -2757,11 +2760,13 @@
 - `CSM1cC-171` 冰伊布GX :: hand_disrupt, spread, lock
 - `CSM1cC-172` 甲贺忍蛙GX :: spread, bounce, lock, evolution
 - `CSM1cC-173` 卡璞・鳍鳍GX :: spread, switch, bounce, lock
+- `CSM1cC-177` 爆肌蚊GX :: spread, lock, cooldown
 - `CSM1cC-178` 沙奈朵GX :: discard_recover, energy_accel, bounce
 - `CSM1cC-180` 七夕青鸟GX :: heal, protection, status, lock
 - `CSM1cC-192` 急冻鸟GX :: energy_move, energy_disrupt, switch
 - `CSM1cC-193` 冰伊布GX :: hand_disrupt, spread, lock
 - `CSM1cC-194` 甲贺忍蛙GX :: spread, bounce, lock, evolution
+- `CSM1cC-198` 爆肌蚊GX :: spread, lock, cooldown
 - `CSM1cC-199` 沙奈朵GX :: discard_recover, energy_accel, bounce
 - `CSM1cC-201` 七夕青鸟GX :: heal, protection, status, lock
 - `CSM1cC-203` 卡璞・鳍鳍GX :: spread, switch, bounce, lock
@@ -2772,7 +2777,7 @@
 - `CSM2.1C-051` 耿鬼&谜拟丘GX :: draw, hand_disrupt, lock
 - `CSM2.1C-052` 卡璞・蝶蝶GX :: search, heal, lock
 - `CSM2.1C-053` 烈空坐GX :: draw, mill, energy_accel
-- `CSM2.1C-054` 伊布&卡比兽GX :: draw, damage_boost, energy_accel, evolution
+- `CSM2.1C-054` 伊布&卡比兽GX :: draw, damage_boost, energy_accel
 - `CSM2.5C-001` 妙蛙花&藤藤蛇GX :: spread, heal, energy_accel, gust, lock
 - `CSM2.5C-006` 喷火龙&长尾火狐GX :: search, status, energy_accel
 - `CSM2.5C-008` 波尔凯尼恩 :: search, damage_boost, energy_accel
@@ -2810,6 +2815,7 @@
 - `CSM2DC-024` 毕力吉翁 :: spread, energy_accel, lock
 - `CSM2DC-047` 火神蛾GX :: spread, energy_disrupt, bounce
 - `CSM2DC-050` 烈箭鹰 :: spread, status, lock
+- `CSM2DC-066` 帝牙海狮 :: spread, lock, cooldown
 - `CSM2DC-082` 皮卡丘GX :: protection, status, lock
 - `CSM2DC-091` 雷伊布GX :: spread, protection, lock
 - `CSM2DC-094` 负电拍拍 :: draw, spread, lock
@@ -2835,6 +2841,7 @@
 - `CSM2DC-233` 无理取闹喷雾 :: discard_recover, hand_disrupt, bounce
 - `CSM2DC-237` 能量循环装置 :: discard_recover, hand_disrupt, bounce
 - `CSM2DC-270` 莉莉艾的皮皮玩偶 :: bounce, ko, lock
+- `CSM2DC-271` 重置印章 :: draw, hand_disrupt, bounce
 - `CSM2DC-273` 救援担架 :: discard_recover, hand_disrupt, bounce
 - `CSM2DC-289` 回转滑板 :: discard_recover, bounce, modifier
 - `CSM2DC-291` 伊利马 :: draw, hand_disrupt, bounce
@@ -2853,6 +2860,8 @@
 - `CSM2aC-008` 水箭龟 :: search, energy_accel, bounce
 - `CSM2aC-009` 水箭龟GX :: protection, energy_accel, bounce
 - `CSM2aC-017` 毒刺水母 :: spread, status, energy_move
+- `CSM2aC-031` 冰鬼护 :: status, energy_disrupt, cooldown
+- `CSM2aC-035` 帝牙海狮 :: spread, lock, cooldown
 - `CSM2aC-040` 霏欧纳 :: discard_recover, gust, bounce
 - `CSM2aC-043` 酋雷姆 :: search, status, energy_accel
 - `CSM2aC-054` 皮卡丘&捷克罗姆GX :: search, spread, energy_accel, lock
@@ -2915,8 +2924,8 @@
 - `CSM2bC-175` 四颚针龙GX :: draw, spread, lock
 - `CSM2bC-186` 赤红&青绿 :: search, energy_accel, evolution
 - `CSM2bC-189` 烈咬陆鲨&骑拉帝纳GX :: damage_boost, spread, lock
+- `CSM2cC-001` 莱希拉姆&喷火龙GX :: damage_boost, lock, cooldown
 - `CSM2cC-004` 喷火龙 :: search, spread, energy_accel
-- `CSM2cC-020` 煤炭龟 :: discard_recover, energy_accel, energy_disrupt
 - `CSM2cC-025` 炎武王 :: search, energy_accel, bounce, evolution
 - `CSM2cC-032` 火神蛾GX :: spread, energy_disrupt, bounce
 - `CSM2cC-034` 烈箭鹰 :: spread, status, lock
@@ -2924,32 +2933,37 @@
 - `CSM2cC-050` 乌鸦头头GX :: hand_disrupt, spread, lock
 - `CSM2cC-053` 巨牙鲨 :: search, energy_accel, bounce, evolution
 - `CSM2cC-067` 乌贼王 :: mill, hand_disrupt, copy
-- `CSM2cC-072` 沙奈朵&仙子伊布GX :: search, energy_accel, energy_move, bounce
+- `CSM2cC-072` 沙奈朵&仙子伊布GX :: search, hand_disrupt, energy_accel, energy_move, bounce
 - `CSM2cC-088` 花洁夫人 :: hand_disrupt, status, evolution
 - `CSM2cC-090` 芳香精 :: hand_disrupt, status, bounce
 - `CSM2cC-101` 音波龙 :: mill, spread, lock
-- `CSM2cC-103` 伊布&卡比兽GX :: draw, damage_boost, energy_accel, evolution
+- `CSM2cC-103` 伊布&卡比兽GX :: draw, damage_boost, energy_accel
 - `CSM2cC-104` 火焰鸟&闪电鸟&急冻鸟GX :: spread, bounce, lock
 - `CSM2cC-110` 大舌舔 :: mill, hand_disrupt, energy_disrupt
 - `CSM2cC-111` 袋兽GX :: draw, damage_boost, status
 - `CSM2cC-117` 长毛狗 :: spread, energy_disrupt, lock, evolution
 - `CSM2cC-126` 银伴战兽GX :: draw, damage_boost, ko
 - `CSM2cC-131` 莉莉艾的皮皮玩偶 :: bounce, ko, lock
-- `CSM2cC-151` 煤炭龟 :: discard_recover, energy_accel, energy_disrupt
+- `CSM2cC-132` 重置印章 :: draw, hand_disrupt, bounce
 - `CSM2cC-152` 长毛狗 :: spread, energy_disrupt, lock, evolution
+- `CSM2cC-153` 莱希拉姆&喷火龙GX :: damage_boost, lock, cooldown
+- `CSM2cC-154` 莱希拉姆&喷火龙GX :: damage_boost, lock, cooldown
 - `CSM2cC-156` 火神蛾GX :: spread, energy_disrupt, bounce
 - `CSM2cC-163` 乌鸦头头GX :: hand_disrupt, spread, lock
-- `CSM2cC-166` 沙奈朵&仙子伊布GX :: search, energy_accel, energy_move, bounce
-- `CSM2cC-167` 沙奈朵&仙子伊布GX :: search, energy_accel, energy_move, bounce
-- `CSM2cC-170` 伊布&卡比兽GX :: draw, damage_boost, energy_accel, evolution
-- `CSM2cC-171` 伊布&卡比兽GX :: draw, damage_boost, energy_accel, evolution
+- `CSM2cC-166` 沙奈朵&仙子伊布GX :: search, hand_disrupt, energy_accel, energy_move, bounce
+- `CSM2cC-167` 沙奈朵&仙子伊布GX :: search, hand_disrupt, energy_accel, energy_move, bounce
+- `CSM2cC-170` 伊布&卡比兽GX :: draw, damage_boost, energy_accel
+- `CSM2cC-171` 伊布&卡比兽GX :: draw, damage_boost, energy_accel
 - `CSM2cC-172` 火焰鸟&闪电鸟&急冻鸟GX :: spread, bounce, lock
 - `CSM2cC-173` 火焰鸟&闪电鸟&急冻鸟GX :: spread, bounce, lock
 - `CSM2cC-174` 银伴战兽GX :: draw, damage_boost, ko
+- `CSM2cC-183` 莱希拉姆&喷火龙GX :: damage_boost, lock, cooldown
 - `CSM2cC-185` 火焰鸟&闪电鸟&急冻鸟GX :: spread, bounce, lock
 - `CSM2cC-188` 莉莉艾的皮皮玩偶 :: bounce, ko, lock
+- `CSM2cC-189` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMAC-001` 阿尔宙斯&帝牙卢卡&帕路奇亚GX :: search, damage_boost, energy_accel, modifier
 - `CSMAC-002` 阿尔宙斯&帝牙卢卡&帕路奇亚GX :: search, damage_boost, energy_accel, modifier
+- `CSMAC-009` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMC-008` 阿利多斯 :: status, gust, evolution
 - `CSMC-010` 伽勒尔 堵拦熊 :: spread, protection, evolution
 - `CSMJC-009` 闪耀阿尔宙斯 :: spread, protection, lock
@@ -2959,28 +2973,37 @@
 - `CSMLC-004` 索尔迦雷欧GX :: search, energy_accel, switch
 - `CSMPaC-001` 妙蛙花&藤藤蛇GX :: spread, heal, energy_accel, gust, lock
 - `CSMPaC-007` 谢米 :: draw, damage_boost, bounce
+- `CSMPaC-016` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMPaC-019` 裁判 :: draw, hand_disrupt, bounce
 - `CSMPbC-001` 喷火龙&长尾火狐GX :: search, status, energy_accel
 - `CSMPbC-004` 喷火龙 :: search, spread, energy_accel
 - `CSMPbC-007` 波尔凯尼恩 :: search, damage_boost, energy_accel
+- `CSMPbC-017` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMPbC-021` 裁判 :: draw, hand_disrupt, bounce
 - `CSMPcC-001` 水箭龟&波加曼GX :: damage_boost, heal, status, energy_accel
 - `CSMPcC-002` 鲤鱼王 :: search, protection, evolution
+- `CSMPcC-007` 盖欧卡 :: spread, lock, cooldown
+- `CSMPcC-017` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMPcC-021` 裁判 :: draw, hand_disrupt, bounce
 - `CSMPdC-005` 咚咚鼠 :: spread, status, lock
+- `CSMPdC-013` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMPdC-014` 救援担架 :: discard_recover, hand_disrupt, bounce
 - `CSMPdC-018` 碧珂 :: draw, hand_disrupt, bounce
 - `CSMPeC-004` 诅咒娃娃 :: discard_recover, spread, evolution
 - `CSMPeC-007` 骑拉帝纳 :: discard_recover, spread, special_summon
+- `CSMPeC-013` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMPeC-014` 救援担架 :: discard_recover, hand_disrupt, bounce
 - `CSMPeC-019` 裁判 :: draw, hand_disrupt, bounce
 - `CSMPfC-007` 烈咬陆鲨 :: damage_boost, spread, lock
+- `CSMPfC-012` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMPfC-013` 救援担架 :: discard_recover, hand_disrupt, bounce
 - `CSMPfC-018` 裁判 :: draw, hand_disrupt, bounce
 - `CSMPgC-004` 班基拉斯 :: damage_boost, spread, lock
+- `CSMPgC-014` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMPgC-015` 救援担架 :: discard_recover, hand_disrupt, bounce
 - `CSMPgC-018` 裁判 :: draw, hand_disrupt, bounce
 - `CSMPhC-008` 大舌舔 :: mill, hand_disrupt, energy_disrupt
+- `CSMPhC-014` 重置印章 :: draw, hand_disrupt, bounce
 - `CSMPhC-016` 救援担架 :: discard_recover, hand_disrupt, bounce
 - `CSMPhC-022` 碧珂 :: draw, hand_disrupt, bounce
 - `CSMPiC-001` 叶伊布GX :: search, heal, evolution
@@ -2993,7 +3016,7 @@
 - `CSMPjC-003` 毕力吉翁 :: spread, energy_accel, lock
 - `CSMPjC-004` 毕力吉翁GX :: draw, damage_boost, bounce
 - `CSMPkC-001` 炎帝GX :: spread, status, lock
-- `CSMPkC-002` 凤王GX :: discard_recover, spread, lock
+- `CSMPkC-002` 凤王GX :: discard_recover, spread, lock, cooldown
 - `CSMPkC-003` 煤炭龟 :: mill, status, energy_accel
 - `CSMPkC-006` 老翁龙GX :: draw, damage_boost, energy_disrupt, bounce
 - `CSMPlC-002` 急冻鸟GX :: energy_move, energy_disrupt, switch
@@ -3002,8 +3025,10 @@
 - `CSMPmC-001` 皮卡丘GX :: protection, status, lock
 - `CSMPmC-006` 咚咚鼠GX :: draw, status, switch, bounce
 - `CSMPnC-005` 卡璞・蝶蝶GX :: search, heal, lock
+- `CSMPoC-002` 打击鬼 :: protection, lock, cooldown
 - `CSMPoC-003` 土地云 :: spread, energy_move, lock
 - `CSMPpC-003` 伊裴尔塔尔GX :: heal, ko, lock
+- `CSMPpC-005` 胡帕GX :: search, lock, cooldown
 - `CSMPpC-006` 袋兽GX :: draw, damage_boost, status
 - `CSMPqC-002` 基拉祈 :: search, status, bounce
 - `CSMPqC-006` 铁火辉夜GX :: draw, energy_move, modifier
@@ -3028,11 +3053,12 @@
 - `CSV10C-045` 小霞的可达鸭 :: search, mill, discard_recover, bounce
 - `CSV10C-062` 浩大鲸ex :: damage_boost, protection, removal
 - `CSV10C-067` 电击魔兽ex :: damage_boost, spread, lock
-- `CSV10C-110` 雷吉洛克ex :: damage_boost, energy_accel, evolution
 - `CSV10C-129` 火箭队的大嘴蝠 :: spread, status, evolution
 - `CSV10C-130` 火箭队的叉字蝠ex :: spread, bounce, evolution
 - `CSV10C-148` 玛俐的长毛巨魔ex :: search, spread, energy_accel, lock, evolution
+- `CSV10C-151` 派帕的獒教父ex :: damage_boost, spread, cooldown
 - `CSV10C-160` 赫普的钢铠鸦 :: spread, protection, lock
+- `CSV10C-161` 赫普的苍响ex :: spread, lock, cooldown
 - `CSV10C-170` 火箭队的猫老大ex :: status, bounce, copy
 - `CSV10C-193` 调换票 :: draw, bounce, modifier
 - `CSV10C-206` 裁判 :: draw, hand_disrupt, bounce
@@ -3042,13 +3068,16 @@
 - `CSV10C-230` 奥利瓦ex :: heal, status, lock
 - `CSV10C-234` 浩大鲸ex :: damage_boost, protection, removal
 - `CSV10C-236` 电击魔兽ex :: damage_boost, spread, lock
-- `CSV10C-240` 雷吉洛克ex :: damage_boost, energy_accel, evolution
 - `CSV10C-244` 火箭队的叉字蝠ex :: spread, bounce, evolution
+- `CSV10C-246` 派帕的獒教父ex :: damage_boost, spread, cooldown
+- `CSV10C-247` 赫普的苍响ex :: spread, lock, cooldown
 - `CSV10C-249` 火箭队的猫老大ex :: status, bounce, copy
 - `CSV10C-254` 裁判 :: draw, hand_disrupt, bounce
 - `CSV10C-258` 火箭队的阿波罗 :: draw, hand_disrupt, bounce
 - `CSV10C-262` 远古巨蜓ex :: search, energy_accel, energy_move
 - `CSV10C-271` 火箭队的叉字蝠ex :: spread, bounce, evolution
+- `CSV10C-273` 派帕的獒教父ex :: damage_boost, spread, cooldown
+- `CSV10C-274` 赫普的苍响ex :: spread, lock, cooldown
 - `CSV10C-284` 火箭队的叉字蝠ex :: spread, bounce, evolution
 - `CSV1C-008` 狙射树枭ex :: spread, switch, lock
 - `CSV1C-041` 米立龙 :: search, energy_accel, bounce
@@ -3057,7 +3086,7 @@
 - `CSV1C-098` 铁辙迹ex :: spread, switch, lock
 - `CSV1C-101` 爱管侍 :: search, status, evolution
 - `CSV1C-104` 怒鹦哥 :: search, protection, lock
-- `CSV1C-106` 摩托蜥ex :: search, energy_accel, lock
+- `CSV1C-106` 摩托蜥ex :: search, energy_accel, cooldown
 - `CSV1C-107` 电气发生器 :: search, energy_accel, bounce
 - `CSV1C-119` 坂木的领导力 :: energy_accel, energy_disrupt, bounce
 - `CSV1C-125` 米莫莎 :: draw, discard_recover, bounce
@@ -3070,6 +3099,7 @@
 - `CSV2C-017` 火炎狮 :: spread, status, lock
 - `CSV2C-030` 甲贺忍蛙ex :: damage_boost, spread, lock
 - `CSV2C-033` 狂欢浪舞鸭ex :: gust, switch, bounce
+- `CSV2C-048` 电海燕 :: draw, hand_disrupt, bounce
 - `CSV2C-055` 沙奈朵ex :: spread, heal, status, energy_accel
 - `CSV2C-083` 臭臭泥 :: heal, status, evolution
 - `CSV2C-099` 大王铜象ex :: spread, protection, lock
@@ -3100,6 +3130,7 @@
 - `CSV3C-149` 奇树 :: draw, hand_disrupt, bounce
 - `CSV3C-160` 奇树 :: draw, hand_disrupt, bounce
 - `CSV4C-029` 波普海豚 :: search, switch, evolution
+- `CSV4C-076` 月亮伊布 :: spread, lock, cooldown
 - `CSV4C-119` 招式学习器 能量涡轮 :: search, energy_accel, special_behavior
 - `CSV4C-120` 招式学习器 暗中奇袭 :: spread, lock, special_behavior
 - `CSV4C-121` 奥尔迪加 :: draw, hand_disrupt, bounce
@@ -3112,6 +3143,7 @@
 - `CSV5C-049` 捷克罗姆 :: spread, removal, lock
 - `CSV5C-075` 喷火龙ex :: search, energy_accel, evolution
 - `CSV5C-091` 猾大狐 :: hand_disrupt, energy_disrupt, evolution
+- `CSV5C-109` 藏饱栗鼠ex :: draw, search, cooldown
 - `CSV5C-115` 卡比兽娃娃 :: protection, status, ko, lock
 - `CSV5C-119` 招式学习器 进化 :: search, evolution, special_behavior
 - `CSV5C-120` 招式学习器 退化 :: bounce, evolution, special_behavior
@@ -3126,7 +3158,6 @@
 - `CSV6C-031` 美纳斯 :: discard_recover, status, evolution
 - `CSV6C-034` 冷水猿 :: spread, lock, modifier
 - `CSV6C-038` 甜冷美后ex :: spread, heal, status
-- `CSV6C-042` 铁包袱 :: gust, lock, evolution
 - `CSV6C-048` 花舞鸟 :: draw, status, bounce
 - `CSV6C-061` 超能艳鸵 :: damage_boost, protection, evolution
 - `CSV6C-089` 帕底亚 土王 :: mill, status, lock
@@ -3143,10 +3174,10 @@
 - `CSV6C-155` 轰鸣月ex :: damage_boost, removal, ko
 - `CSV6C-157` 也慈 :: search, energy_accel, lock
 - `CSV6C-161` 轰鸣月ex :: damage_boost, removal, ko
-- `CSV7C-033` 铁斑叶ex :: energy_move, switch, lock
+- `CSV7C-033` 铁斑叶ex :: energy_move, switch, cooldown
 - `CSV7C-043` 比克提尼 :: draw, energy_disrupt, bounce
 - `CSV7C-050` 古玉鱼 :: draw, damage_boost, removal
-- `CSV7C-074` 波荡水ex :: damage_boost, status, lock
+- `CSV7C-054` 大力鳄 :: damage_boost, spread, cooldown
 - `CSV7C-092` 魔墙人偶 :: hand_disrupt, status, copy
 - `CSV7C-098` 人造细胞卵 :: search, status, bounce
 - `CSV7C-106` 麻花犬ex :: heal, status, evolution
@@ -3156,32 +3187,28 @@
 - `CSV7C-141` 奇麒麟ex :: spread, protection, lock
 - `CSV7C-147` 金属怪 :: search, energy_accel, bounce
 - `CSV7C-157` 伊布 :: search, damage_boost, evolution
-- `CSV7C-169` 高傲雉鸡 :: energy_disrupt, bounce, lock
+- `CSV7C-169` 高傲雉鸡 :: energy_disrupt, bounce, cooldown
 - `CSV7C-192` 悟松 :: draw, hand_disrupt, bounce
-- `CSV7C-201` 重力山 :: protection, modifier, evolution
-- `CSV7C-212` 铁斑叶ex :: energy_move, switch, lock
-- `CSV7C-216` 波荡水ex :: damage_boost, status, lock
+- `CSV7C-212` 铁斑叶ex :: energy_move, switch, cooldown
 - `CSV7C-220` 麻花犬ex :: heal, status, evolution
 - `CSV7C-222` 铁头壳ex :: damage_boost, spread, lock
 - `CSV7C-223` 甲贺忍蛙ex :: search, spread, lock
 - `CSV7C-225` 奇麒麟ex :: spread, protection, lock
 - `CSV7C-229` 悟松 :: draw, hand_disrupt, bounce
-- `CSV7C-237` 铁斑叶ex :: energy_move, switch, lock
-- `CSV7C-239` 波荡水ex :: damage_boost, status, lock
+- `CSV7C-237` 铁斑叶ex :: energy_move, switch, cooldown
 - `CSV7C-240` 麻花犬ex :: heal, status, evolution
 - `CSV7C-241` 铁头壳ex :: damage_boost, spread, lock
 - `CSV7C-242` 甲贺忍蛙ex :: search, spread, lock
-- `CSV7C-251` 铁斑叶ex :: energy_move, switch, lock
-- `CSV7C-253` 波荡水ex :: damage_boost, status, lock
+- `CSV7C-251` 铁斑叶ex :: energy_move, switch, cooldown
 - `CSV7C-254` 铁头壳ex :: damage_boost, spread, lock
 - `CSV8C-004` 安瓢虫 :: gust, lock, evolution
 - `CSV8C-046` 蚊香泳士 :: damage_boost, status, bounce
-- `CSV8C-063` 海豚侠 :: search, status, bounce
 - `CSV8C-067` 厄诡椪 水井面具ex :: spread, bounce, lock
 - `CSV8C-083` 黑夜魔灵 :: spread, ko, lock
 - `CSV8C-093` 超能艳鸵 :: heal, bounce, evolution
 - `CSV8C-133` 够赞狗ex :: search, damage_boost, status, energy_accel
 - `CSV8C-135` 吉雉鸡ex :: draw, spread, lock
+- `CSV8C-148` 大王铜象 :: damage_boost, lock, cooldown
 - `CSV8C-173` 不公印章 :: draw, hand_disrupt, bounce
 - `CSV8C-179` 妨碍书信 :: draw, hand_disrupt, bounce
 - `CSV8C-194` 管理员 :: draw, discard_recover, bounce
@@ -3194,19 +3221,18 @@
 - `CSV8C-245` 厄诡椪 水井面具ex :: spread, bounce, lock
 - `CSV8C-247` 够赞狗ex :: search, damage_boost, status, energy_accel
 - `CSV8C-249` 吉雉鸡ex :: draw, spread, lock
-- `CSV8C-261` 重力山 :: protection, modifier, evolution
-- `CSV9.5C-018` 铁斑叶ex :: energy_move, switch, lock
-- `CSV9.5C-023` 火伊布ex :: search, energy_accel, lock
+- `CSV9.5C-018` 铁斑叶ex :: energy_move, switch, cooldown
+- `CSV9.5C-023` 火伊布ex :: search, energy_accel, cooldown
+- `CSV9.5C-036` 水伊布ex :: spread, lock, cooldown
+- `CSV9.5C-039` 大力鳄 :: damage_boost, spread, cooldown
 - `CSV9.5C-045` 烈咬陆鲨ex :: spread, energy_accel, lock
 - `CSV9.5C-047` 冰伊布ex :: spread, ko, lock
-- `CSV9.5C-051` 海豚侠 :: search, status, bounce
-- `CSV9.5C-053` 铁包袱 :: gust, lock, evolution
-- `CSV9.5C-055` 波荡水ex :: damage_boost, status, lock
 - `CSV9.5C-056` 厄诡椪 水井面具ex :: spread, bounce, lock
 - `CSV9.5C-057` 雷伊布 :: damage_boost, spread, lock
 - `CSV9.5C-071` 黑夜魔灵 :: spread, ko, lock
-- `CSV9.5C-076` 仙子伊布ex :: protection, bounce, lock
+- `CSV9.5C-076` 仙子伊布ex :: protection, bounce, cooldown
 - `CSV9.5C-085` 铁头壳ex :: damage_boost, spread, lock
+- `CSV9.5C-103` 月亮伊布 :: spread, lock, cooldown
 - `CSV9.5C-115` 轰鸣月ex :: damage_boost, removal, ko
 - `CSV9.5C-118` 金属怪 :: search, energy_accel, bounce
 - `CSV9.5C-155` 铁脖颈 :: spread, lock, modifier
@@ -3218,25 +3244,28 @@
 - `CSV9.5C-212` 秋明 :: draw, status, bounce
 - `CSV9.5C-213` 秋明 :: draw, status, bounce
 - `CSV9.5C-220` 蕾荷 :: search, discard_recover, bounce
-- `CSV9.5C-223` 火伊布ex :: search, energy_accel, lock
+- `CSV9.5C-223` 火伊布ex :: search, energy_accel, cooldown
+- `CSV9.5C-226` 水伊布ex :: spread, lock, cooldown
 - `CSV9.5C-227` 冰伊布ex :: spread, ko, lock
 - `CSV9.5C-229` 厄诡椪 水井面具ex :: spread, bounce, lock
-- `CSV9.5C-233` 仙子伊布ex :: protection, bounce, lock
-- `CSV9.5C-234` 仙子伊布ex :: protection, bounce, lock
+- `CSV9.5C-233` 仙子伊布ex :: protection, bounce, cooldown
+- `CSV9.5C-234` 仙子伊布ex :: protection, bounce, cooldown
 - `CSV9.5C-236` 铁头壳ex :: damage_boost, spread, lock
 - `CSV9.5C-240` 轰鸣月ex :: damage_boost, removal, ko
-- `CSV9.5C-255` 铁斑叶ex :: energy_move, switch, lock
-- `CSV9.5C-257` 波荡水ex :: damage_boost, status, lock
+- `CSV9.5C-255` 铁斑叶ex :: energy_move, switch, cooldown
 - `CSV9C-014` 萨戮德 :: damage_boost, heal, bounce
 - `CSV9C-018` 古简蜗 :: mill, spread, lock
 - `CSV9C-020` 来悲粗茶ex :: spread, heal, energy_disrupt, bounce
+- `CSV9C-029` 闪焰王牌ex :: spread, lock, cooldown
 - `CSV9C-037` 拉普拉斯ex :: search, energy_accel, bounce
+- `CSV9C-057` 自爆磁怪 :: status, lock, cooldown
 - `CSV9C-085` 克雷色利亚 :: damage_boost, heal, modifier
-- `CSV9C-090` 仙子伊布ex :: protection, bounce, lock
+- `CSV9C-090` 仙子伊布ex :: protection, bounce, cooldown
 - `CSV9C-102` 沙漠蜻蜓ex :: spread, switch, lock
 - `CSV9C-114` 吞食兽 :: damage_boost, status, energy_accel
 - `CSV9C-119` 三首恶龙ex :: mill, spread, lock
 - `CSV9C-138` 铝钢桥龙ex :: protection, energy_accel, modifier, evolution
+- `CSV9C-139` 苍响ex :: search, energy_accel, cooldown
 - `CSV9C-142` 赛富豪 :: damage_boost, bounce, evolution
 - `CSV9C-147` 酋雷姆 :: spread, lock, modifier
 - `CSV9C-152` 米立龙ex :: search, bounce, lock
@@ -3246,6 +3275,7 @@
 - `CSV9C-185` 古老的背盖化石 :: protection, status, lock
 - `CSV9C-211` 克雷色利亚 :: damage_boost, heal, modifier
 - `CSV9C-216` 来悲粗茶ex :: spread, heal, energy_disrupt, bounce
+- `CSV9C-218` 闪焰王牌ex :: spread, lock, cooldown
 - `CSV9C-220` 拉普拉斯ex :: search, energy_accel, bounce
 - `CSV9C-225` 沙漠蜻蜓ex :: spread, switch, lock
 - `CSV9C-226` 三首恶龙ex :: mill, spread, lock
@@ -3255,6 +3285,7 @@
 - `CSV9C-243` 来悲粗茶ex :: spread, heal, energy_disrupt, bounce
 - `CSV9C-248` 三首恶龙ex :: mill, spread, lock
 - `CSV9C-249` 铝钢桥龙ex :: protection, energy_accel, modifier, evolution
+- `CSV9C-258` 闪焰王牌ex :: spread, lock, cooldown
 - `CSV9C-259` 拉普拉斯ex :: search, energy_accel, bounce
 - `CSVE1C-028` 白海狮 :: protection, bounce, lock
 - `CSVE1C-049` 帕奇利兹 :: protection, status, lock
@@ -3301,9 +3332,8 @@
 - `CSVH1C-037` 电气发生器 :: search, energy_accel, bounce
 - `CSVH1C-051` 裁判 :: draw, hand_disrupt, bounce
 - `CSVH1aC-001` 卡比兽 :: heal, protection, status
-- `CSVH1aC-003` 摔角鹰人 :: damage_boost, energy_accel, evolution
 - `CSVH1aC-004` 爱管侍 :: search, status, evolution
-- `CSVH1aC-006` 摩托蜥ex :: search, energy_accel, lock
+- `CSVH1aC-006` 摩托蜥ex :: search, energy_accel, cooldown
 - `CSVH1aC-007` 可中奖棒冰 :: discard_recover, heal, bounce
 - `CSVH1aC-020` 坂木的领导力 :: energy_accel, energy_disrupt, bounce
 - `CSVH1aC-022` 杜娟 :: draw, hand_disrupt, bounce
@@ -3313,19 +3343,17 @@
 - `CSVH2C-018` 阿勃梭鲁 :: damage_boost, spread, lock
 - `CSVH2C-031` 拖拖蚓 :: spread, lock, modifier
 - `CSVH2C-035` 图图犬 :: search, energy_accel, bounce
-- `CSVH2C-037` 摔角鹰人 :: damage_boost, energy_accel, evolution
 - `CSVH2C-052` 裁判 :: draw, hand_disrupt, bounce
 - `CSVH2aC-003` 晃晃斑 :: spread, status, lock
 - `CSVH2aC-006` 爱管侍 :: search, status, evolution
 - `CSVH2aC-021` 奇树 :: draw, hand_disrupt, bounce
 - `CSVH3C-015` 克雷色利亚 :: search, damage_boost, energy_accel
-- `CSVH3C-028` 摔角鹰人 :: damage_boost, energy_accel, evolution
 - `CSVH3C-034` 怒鹦哥 :: search, protection, lock
 - `CSVH3C-053` 裁判 :: draw, hand_disrupt, bounce
 - `CSVH3aC-003` 图图犬 :: search, energy_accel, bounce
 - `CSVH3aC-021` 奇树 :: draw, hand_disrupt, bounce
+- `CSVH4C-010` 铁武者 :: spread, lock, cooldown
 - `CSVH4C-017` 金属怪 :: search, energy_accel, bounce
-- `CSVH4C-028` 摔角鹰人 :: damage_boost, energy_accel, evolution
 - `CSVH4C-029` 怒鹦哥 :: search, protection, lock
 - `CSVH4C-043` 驱劲能量 古代 :: heal, protection, status, modifier
 - `CSVH4C-048` 裁判 :: draw, hand_disrupt, bounce
@@ -3334,9 +3362,9 @@
 - `CSVH4aC-018` 悟松 :: draw, hand_disrupt, bounce
 - `CSVH4aC-019` 坂木的领导力 :: energy_accel, energy_disrupt, bounce
 - `CSVH4aC-021` 奇树 :: draw, hand_disrupt, bounce
-- `CSVH4eC-009` 帕底亚 肯泰罗 :: energy_disrupt, bounce, evolution
 - `CSVH4eC-030` 七夕青鸟 :: search, protection, energy_accel
 - `CSVH4pC-001` 狙射树枭ex :: spread, switch, lock
+- `CSVH5C-003` 厄诡椪 碧草面具 :: search, energy_accel, cooldown
 - `CSVH5C-032` 怒鹦哥 :: search, protection, lock
 - `CSVH5C-049` 裁判 :: draw, hand_disrupt, bounce
 - `CSVH5C-056` 米莫莎 :: draw, discard_recover, bounce
@@ -3366,7 +3394,6 @@
 - `CSVL2C-044` 喷火龙ex :: search, energy_accel, evolution
 - `CSVL2C-066` 波普海豚 :: search, switch, evolution
 - `CSVL2C-070` 米立龙 :: search, energy_accel, bounce
-- `CSVL2C-101` 铁包袱 :: gust, lock, evolution
 - `CSVL2C-117` 佛烈托斯ex :: search, protection, energy_accel, ko
 - `CSVL2C-122` 喷火龙ex :: search, energy_accel, evolution
 - `CSVL2C-125` 甲贺忍蛙ex :: damage_boost, spread, lock
@@ -3378,11 +3405,9 @@
 - `CSVM1bC-007` 沙奈朵ex :: spread, heal, status, energy_accel
 - `CSVM1bC-025` 招式学习器 进化 :: search, evolution, special_behavior
 - `CSVM1bC-026` 奇树 :: draw, hand_disrupt, bounce
-- `CSVM1cC-001` 铁包袱 :: gust, lock, evolution
 - `CSVM1cC-010` 电气发生器 :: search, energy_accel, bounce
 - `CSVM1cC-022` 裁判 :: draw, hand_disrupt, bounce
 - `CSVM1cC-023` 奇树 :: draw, hand_disrupt, bounce
-- `CSVM2aC-002` 铁包袱 :: gust, lock, evolution
 - `CSVM2aC-006` 吉雉鸡ex :: draw, spread, lock
 - `CSVM2aC-027` 裁判 :: draw, hand_disrupt, bounce
 - `CSVM2aC-028` 奇树 :: draw, hand_disrupt, bounce
@@ -3391,11 +3416,11 @@
 - `CSVM2bC-022` 招式学习器 进化 :: search, evolution, special_behavior
 - `CSVM2bC-023` 招式学习器 退化 :: bounce, evolution, special_behavior
 - `CSVM2bC-026` 奇树 :: draw, hand_disrupt, bounce
-- `CSVM2cC-002` 铁包袱 :: gust, lock, evolution
 - `CSVM2cC-006` 吉雉鸡ex :: draw, spread, lock
 - `CSVM2cC-023` 招式学习器 进化 :: search, evolution, special_behavior
 - `CSVM2cC-026` 奇树 :: draw, hand_disrupt, bounce
 - `CSVNC-008` 来悲粗茶ex :: spread, heal, energy_disrupt, bounce
+- `CSVNC-010` 厄诡椪 碧草面具 :: search, energy_accel, cooldown
 - `CSVNC-012` 厄诡椪 火灶面具 :: search, status, energy_accel
 - `CSVNC-016` 厄诡椪 水井面具 :: search, heal, energy_accel
 - `CSVNC-017` 厄诡椪 水井面具ex :: spread, bounce, lock
@@ -3407,25 +3432,25 @@
 - `CSVSC-059` 裁判 :: draw, hand_disrupt, bounce
 - `CSXC-017` 裁判 :: draw, hand_disrupt, bounce
 - `CSZC-018` 卡比兽 :: heal, protection, status
-- `CSZC-028` 摔角鹰人 :: damage_boost, energy_accel, evolution
 - `CSZC-049` 莎莉娜 :: draw, search, gust
 - `CSZC-050` 杜娟 :: draw, hand_disrupt, bounce
 - `SMP-016` 时拉比◇ :: heal, bounce, evolution
 - `SMP-018` 谜拟丘 :: draw, damage_boost, bounce
 - `SMP-039` 阿罗拉 隆隆石 :: damage_boost, spread, lock
-- `SSP-002` 火伊布 :: status, energy_accel, energy_disrupt
 - `SSP-004` 冰砌鹅V :: spread, heal, energy_accel, lock
 - `SSP-072` 光电伞蜥 :: spread, switch, lock
 - `SSP-073` 咚咚鼠 :: spread, status, lock
 - `SSP-077` 玛俐 :: draw, hand_disrupt, bounce
 - `SSP-078` 玛俐 :: draw, hand_disrupt, bounce
-- `SSP-083` 苍响V :: search, energy_accel, lock
-- `SSP-085` 苍响V :: search, energy_accel, lock
+- `SSP-083` 苍响V :: search, energy_accel, cooldown
+- `SSP-085` 苍响V :: search, energy_accel, cooldown
 - `SSP-106` 布莉姆温V :: damage_boost, status, gust
 - `SSP-109` 皮卡丘V-UNION :: status, energy_accel, lock
 - `SSP-110` 皮卡丘V-UNION :: status, energy_accel, lock
 - `SSP-111` 皮卡丘V-UNION :: status, energy_accel, lock
 - `SSP-112` 皮卡丘V-UNION :: status, energy_accel, lock
+- `SSP-115` 冰伊布 :: spread, lock, cooldown
+- `SSP-122` 鳃鱼龙V :: damage_boost, removal, cooldown
 - `SSP-128` 仙子伊布 :: damage_boost, energy_disrupt, bounce
 - `SSP-129` 月亮伊布 :: spread, status, lock
 - `SSP-134` 卡希丽 :: draw, discard_recover, bounce
@@ -3433,6 +3458,7 @@
 - `SSP-146` 玛纳霏 :: hand_disrupt, spread, lock
 - `SSP-148` 耿鬼 :: discard_recover, spread, special_summon
 - `SSP-150` 路卡利欧 :: search, spread, energy_accel
+- `SSP-178` 盖欧卡V :: spread, lock, cooldown
 - `SSP-187` 平和公园 :: heal, protection, status
 - `SVP-013` 古老的贝壳化石 :: protection, status, lock
 - `SVP-014` 古老的甲壳化石 :: protection, status, lock
@@ -3446,12 +3472,10 @@
 - `SVP-134` 章鱼桶 :: draw, evolution, coin_manipulate
 - `SVP-154` 奇树 :: draw, hand_disrupt, bounce
 - `SVP-180` 蚊香泳士 :: damage_boost, status, bounce
-- `SVP-181` 波荡水ex :: damage_boost, status, lock
 - `SVP-205` 奇树 :: draw, hand_disrupt, bounce
 - `SVP-214` 耿鬼ex :: spread, energy_accel, energy_move
-- `SVP-223` 铁斑叶ex :: energy_move, switch, lock
+- `SVP-223` 铁斑叶ex :: energy_move, switch, cooldown
 - `SVP-224` 甜冷美后ex :: spread, heal, status
-- `SVP-232` 铁包袱 :: gust, lock, evolution
 - `SVP-251` 铁武者 :: search, damage_boost, bounce
 - `SVP-252` 甲贺忍蛙ex :: search, spread, lock
 - `SVP-256` 驱劲能量 古代 :: heal, protection, status, modifier
@@ -3460,6 +3484,7 @@
 - `SVP-282` 摩托蜥ex :: draw, spread, lock
 - `SVP-290` 酋雷姆 :: spread, lock, modifier
 - `SVP-315` 远古巨蜓ex :: search, energy_accel, energy_move
+- `SVP-319` 厄诡椪 碧草面具 :: search, energy_accel, cooldown
 - `SVP-322` 厄诡椪 火灶面具 :: search, status, energy_accel
 - `SVP-327` 厄诡椪 水井面具 :: search, heal, energy_accel
 - `SVP-331` 厄诡椪 础石面具 :: search, mill, energy_accel

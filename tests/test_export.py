@@ -153,6 +153,23 @@ def test_db_copy_and_schema_md(dist, db_path):
     assert "card_id" in md
 
 
+def test_schema_md_effect_tags_contract(dist):
+    """task 040：effect_tags 导出契约——类型可解析为 EffectTags + 结构独立成节。"""
+    md = (dist / "schema.md").read_text(encoding="utf-8")
+    assert "| `effect_tags` | EffectTags |" in md  # anyOf $ref 解析出定义名，不再是 "?"
+    assert "## EffectTags" in md
+    assert "## EffectTagDetail" in md
+    assert "| `labels` |" in md  # mik 机制标签保留键（PRD v1.23）
+
+
+def test_cards_jsonl_effect_tags_key_present(dist):
+    """task 040：cards.jsonl 每行带 effect_tags 键（FR-6.2 只加不删锚定）。"""
+    rows = [
+        json.loads(x) for x in (dist / "cards.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert rows and all("effect_tags" in r for r in rows)
+
+
 def test_export_rerun_overwrites(db_path, tmp_path):
     """重跑幂等：重复导出同目录不报错、文件数不变。"""
     out = tmp_path / "dist"

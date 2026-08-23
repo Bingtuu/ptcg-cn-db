@@ -131,7 +131,7 @@ REAL_TAGS, REAL_FLAGS = load_effect_vocab()
 
 
 def test_real_vocab_shape():
-    assert len(REAL_TAGS) == 28 and len(REAL_FLAGS) == 3
+    assert len(REAL_TAGS) == 29 and len(REAL_FLAGS) == 3
     assert [t.tag for t in REAL_TAGS] == [
         "draw", "search", "mill", "discard_recover", "hand_disrupt",
         "damage_boost", "spread", "heal", "protection", "status",
@@ -141,6 +141,8 @@ def test_real_vocab_shape():
         # task 038 GHI 实测浮出、用户拍板（2026-08-17）追加
         "coin_manipulate", "bench_attack", "win_condition", "special_summon",
         "counter_shift_self",
+        # task 040 人工抽检拍板（2026-08-22）：招式冷却自 lock 拆出
+        "cooldown",
     ]
     assert [f.flag for f in REAL_FLAGS] == ["coin_flip", "once_per_turn", "conditional"]
 
@@ -949,3 +951,360 @@ def test_scan_texts_dedupe_zero_and_flags():
     assert rep.flag_hits == {"coin_flip": 1}
     assert rep.multi_hits == ()
     assert len(rep.zero_hits) == 1 and rep.zero_hits[0].who == "C/招式"
+
+
+# ── task 040：多命中审查核销（词表收窄 + exclude 否定守卫，用户拍板 2026-08-22） ──
+
+TASK040_SEED_CASES = [
+    # lock 收窄后真命中维持：封锁行为锚定
+    (
+        "令对手的战斗宝可梦陷入【中毒】状态。"
+        "在下一个对手的回合，受到这个招式影响的宝可梦，无法撤退。",
+        "attack",
+        {"lock", "status"},
+    ),
+    ("在下一个对手的回合，受到这个招式影响的宝可梦，无法使用招式。", "attack", {"lock"}),
+    # hand_disrupt 收窄后对手向真命中维持
+    (
+        "在不看正面的前提下，将对手的1张手牌放于弃牌区。",
+        "attack",
+        {"hand_disrupt"},
+    ),
+    (
+        "对手将对手自己的手牌放于弃牌区，直到对手的手牌变为3张为止。",
+        "attack",
+        {"hand_disrupt"},
+    ),
+    # modifier 收窄后变更类真命中维持
+    (
+        "选择对手的1只宝可梦，其所持的弱点，全部消除。",
+        "attack",
+        {"modifier"},
+    ),
+    ("这只宝可梦的弱点全部变为【超】属性。", "ability", {"modifier"}),
+    # ko「使(?!用)」真命中维持
+    ("使对手的战斗宝可梦【昏厥】。", "attack", {"ko"}),
+    # spread 排除反伤后真命中维持（备战溅射）
+    ("给对手的1只备战宝可梦也造成30伤害。", "attack", {"spread"}),
+    # energy_accel exclude 后肯定形态维持
+    ("从自己的牌库中选择1张基本能量，附着于自己的宝可梦身上。", "attack", {"energy_accel"}),
+    # bounce 对手向回库不受 exclude 影响（task 039 拍板扩注）
+    (
+        "将对手的战斗宝可梦，与放于其身上的所有卡牌，放回对手的牌库并重洗牌库。",
+        "attack",
+        {"bounce"},
+    ),
+    # ── 收窄误伤核销（复跑 unknown=164 聚类驱动） ──
+    # spread：任意目标攻击（直击飞行类 146 卡大宗，目标含备战属铺伤）
+    (
+        "给对手的1只宝可梦，造成40伤害。[备战宝可梦不计算弱点、抗性。]",
+        "attack",
+        {"spread"},
+    ),
+    # lock：贯穿扩距（海星星「高速星星」不计算弱点抗性+附加效果）
+    (
+        "这个招式的伤害，不计算弱点、抗性以及对手战斗宝可梦身上所附加的效果。",
+        "attack",
+        {"lock"},
+    ),
+    # lock：回手封锁（经验分享器类）/ 回库封锁（穿山鼠「流沙藏身」）
+    (
+        "只要这只宝可梦在场上，对手场上的宝可梦，以及放于其身上的所有卡牌，"
+        "都无法被放回手牌。",
+        "ability",
+        {"lock"},
+    ),
+    (
+        "只要这只宝可梦在场上，对手弃牌区中的训练家，"
+        "就无法因为对手的物品或支援者的效果，被放回牌库。",
+        "ability",
+        {"lock"},
+    ),
+    # lock：上场封锁（恶系场限特性）+ modifier：备战容量长距
+    (
+        "能够放于自己备战区的【恶】宝可梦的数量变为8只，"
+        "且无法将其他属性的宝可梦放于自己场上。",
+        "ability",
+        {"lock", "modifier"},
+    ),
+    # lock：奖赏卡去向封锁（昏厥奖赏卡转弃牌区）
+    (
+        "因该宝可梦【昏厥】而导致对手拿取的奖赏卡，不会被加入手牌，而是被放于弃牌区。",
+        "ability",
+        {"lock"},
+    ),
+    # hand_disrupt：双方长距弃牌变体
+    (
+        "双方玩家，各将2张自己的手牌，放于弃牌区。"
+        "（由对方开始放于弃牌区。没有手牌的玩家无需将卡牌放于弃牌区。）",
+        "trainer",
+        {"hand_disrupt"},
+    ),
+    # modifier：弱点倍率改写
+    ("在计算对手战斗宝可梦的弱点时，其弱点按照「×3」计算。", "attack", {"modifier"}),
+    (
+        "如果自己场上有「艾姆利多」「亚克诺姆」的话，"
+        "则双方所有宝可梦的弱点，均以「×4」计算伤害。",
+        "ability",
+        {"modifier"},
+    ),
+    # special_summon：直放战斗场变体（时拉比类）
+    (
+        "将这张卡牌直接从手牌使出放于战斗场。在这种情况下，将战斗宝可梦放回备战区。",
+        "ability",
+        {"special_summon"},
+    ),
+    # ── 第二轮核销（unknown 56 聚类驱动） ──
+    # spread：任意目标攻击 V 限定 / 条件限定目标变体
+    (
+        "给对手的1只「宝可梦【V】」，造成60点伤害。[备战宝可梦不计算弱点、抗性。]",
+        "attack",
+        {"spread"},
+    ),
+    (
+        "给身上放置有伤害指示物的1只对手的宝可梦，造成100点伤害。",
+        "attack",
+        {"spread"},
+    ),
+    # lock：无"效果"字贯穿 / "那个招式"封锁变体
+    ("这个招式的伤害不计算弱点、抗性。", "attack", {"lock"}),
+    (
+        "选择1个对手战斗宝可梦所拥有的招式。"
+        "在下一个对手的回合，受到这个招式影响的宝可梦无法使用那个招式。",
+        "attack",
+        {"lock"},
+    ),
+    # search：错字变体「牌库的中」（源数据原样保留，逐字不改）
+    (
+        "将自己牌库的中最多4张基本能量，在给对手看过之后，加入手牌。并重洗牌库。",
+        "trainer",
+        {"search"},
+    ),
+    # ── 第三轮核销（unknown 4 聚类驱动） ──
+    # ko：放逐区变体（洛奇亚GX「放逐净化」，放逐对手战斗宝可梦及附着卡）
+    (
+        "将对手的战斗宝可梦，以及放于其身上的所有卡牌，放于放逐区。"
+        "[对战中，己方的GX招式只能使用1次。]",
+        "attack",
+        {"ko"},
+    ),
+    # hand_disrupt：强制对手重洗牌库（电灯怪「搅拌流」，牌库干扰同族）
+    ("若希望，可令对手重洗其牌库。", "attack", {"hand_disrupt"}),
+    # ── 第四轮核销（裸「对手.{0,4}手牌」误命中核销，360 卡聚类驱动） ──
+    # hand_disrupt：查看前置语序（超音蝠「全视回响」，动词在名词前）
+    (
+        "如果这只宝可梦在战斗场上的话，则在自己的回合可以使用1次。查看对手的手牌。",
+        "ability",
+        {"hand_disrupt"},
+    ),
+    # hand_disrupt：盲选弃牌（啪咚猴「拍落」家族，不看正面选弃）
+    (
+        "在不看对手手牌正面的前提下，选择其中1张放于弃牌区。",
+        "attack",
+        {"hand_disrupt"},
+    ),
+    # hand_disrupt：双方互相展示（乌贼王「同步强念」）
+    (
+        "双方互相展示手牌，如果对手手牌中有和自己手牌中同名的卡牌，则追加造成90点伤害。",
+        "attack",
+        {"hand_disrupt"},
+    ),
+    # ── 第四轮核销衍生的正当语义补漏（zero 12 卡聚类驱动） ──
+    # bounce：对手战斗宝可梦回对手手牌（凯罗斯「天井投掷」/浮潜鼬「漩涡之尾」）
+    (
+        "抛掷1次硬币如果为正面，则将对手的战斗宝可梦，"
+        "与放于其身上的所有卡牌，放回对手的手牌。",
+        "attack",
+        {"bounce"},
+    ),
+    # draw：计数目标抽牌变体（贝里菈 / 铜镜怪「镜像抽取」）
+    (
+        "从自己的牌库上方抽取卡牌，直到自己的手牌张数比对手的手牌张数多1张为止。",
+        "trainer",
+        {"draw"},
+    ),
+    (
+        "从自己牌库上方抽取卡牌，直到自己的手牌张数与对手的手牌张数相同为止。",
+        "attack",
+        {"draw"},
+    ),
+    # lock：能量附着封锁（黏美龙「粘滑屋」，硬币反面阻断附着）
+    (
+        "如果为反面，则无法将该能量附着于宝可梦身上，并将该能量放于弃牌区。",
+        "ability",
+        {"lock"},
+    ),
+    # ── 第五轮核销（人工抽检 99 张驱动，用户拍板） ──
+    # cooldown：lock 拆出招式冷却独立标签（用户拍板）
+    ("在下一个自己的回合，这只宝可梦无法使用招式。", "attack", {"cooldown"}),
+    ("在下一个自己的回合，这只宝可梦无法使用「极巨船锚」。", "attack", {"cooldown"}),
+    (
+        "在上一个自己的回合，如果自己的宝可梦使用了「天使石」的话，则无法使用这个招式。",
+        "attack",
+        {"cooldown"},
+    ),
+    ("这只宝可梦，在离开战斗场之前无法使用「烈火猛冲」。", "attack", {"cooldown"}),
+    # hand_disrupt：对手手牌放回牌库变体（沙奈朵&仙子伊布GX「奇迹魔法GX」/重置印章）
+    ("将对手的所有手牌放回牌库并重洗牌库。", "attack", {"hand_disrupt"}),
+    # status：恢复类保留（用户拍板，香氛姐姐）
+    (
+        "从自己的牌库上方抽取2张卡牌。然后，恢复自己的战斗宝可梦的所有特殊状态。",
+        "trainer",
+        {"status"},
+    ),
+    # protection：伤害减值锚定维持
+    ("在下一个对手的回合，这只宝可梦所受到的招式的伤害「-30」。", "attack", {"protection"}),
+]
+
+
+@pytest.mark.parametrize("text_,kind,expected", TASK040_SEED_CASES)
+def test_task040_seed_cases_real_vocab(text_, kind, expected):
+    assert expected <= set(match_tags(text_, REAL_TAGS, kind))
+
+
+TASK040_NEGATIVE_CASES = [
+    # ko 不撞「使用」（雷丘「引雷」条件句，桶 37）
+    (
+        "每当自己的宝可梦，受到对手宝可梦的招式的伤害而【昏厥】时，可使用1次。"
+        "选择【昏厥】了的宝可梦身上附着的1张【雷】能量，转附于这只宝可梦身上。",
+        "ability",
+        "ko",
+    ),
+    # spread 不撞反伤（雷丘「打雷」自伤，桶 41）
+    ("给这只宝可梦也造成50伤害。", "attack", "spread"),
+    # lock 不撞使用条件约束（桶 6）
+    ("（对自己最初回合以及刚放出的宝可梦无法使用。）", "trainer", "lock"),
+    ("使用了其他的「连击搜索」的话，则无法使用这个特性。", "ability", "lock"),
+    # modifier 不撞规则引用句（桶 4/5，用户拍板收窄）
+    (
+        "给对手的1只宝可梦，造成其张数×60伤害。[备战宝可梦不计算弱点、抗性。]",
+        "attack",
+        "modifier",
+    ),
+    # hand_disrupt 不撞己方滤牌/cost 与跨子句「重洗牌库」（桶 1，用户拍板收窄对手向）
+    (
+        "从牌库上方抽取卡牌，直到自己的手牌变为5张为止。"
+        "若希望，在抽取卡牌前，可将任意数量的自己的手牌放于弃牌区。",
+        "trainer",
+        "hand_disrupt",
+    ),
+    ("从自己牌库中抽出任意1张卡牌，加入手牌。并重洗牌库。", "attack", "hand_disrupt"),
+    # hand_disrupt 不撞检索展示句「给对手看过…加入手牌…放回牌库」（超级球跨句残留）
+    (
+        "查看自己牌库上方7张卡牌。选择其中1张宝可梦，在给对手看过之后，加入手牌。"
+        "将剩余的卡牌放回牌库并重洗牌库。",
+        "trainer",
+        "hand_disrupt",
+    ),
+    # hand_disrupt 不撞张数比较句（九尾ex「炽火延烧」，裸词误命中大宗）
+    (
+        "如果自己的手牌张数与对手的手牌张数相同的话，则追加造成140伤害。",
+        "attack",
+        "hand_disrupt",
+    ),
+    # hand_disrupt 不撞「放回对手的手牌」反向回手（菊石兽「触手返还」= bounce 语义）
+    (
+        "选择对手战斗宝可梦身上附着的1个能量，放回对手的手牌。",
+        "attack",
+        "hand_disrupt",
+    ),
+    # hand_disrupt 不撞手牌封锁句（摩鲁蛾「错乱粉末」= lock 语义）
+    (
+        "令对手的战斗宝可梦陷入【混乱】状态。在下一个对手的回合，对手无法从手牌使出物品。",
+        "attack",
+        "hand_disrupt",
+    ),
+    # hand_disrupt 不撞抽牌计数句（爱心鱼「相同张数」）
+    (
+        "然后，从自己的牌库上方抽取与对手的手牌相同张数的卡牌。",
+        "attack",
+        "hand_disrupt",
+    ),
+    # ── 第五轮核销（人工抽检 99 张驱动，用户拍板） ──
+    # cooldown 拆出后 lock 不撞招式冷却（比克提尼ex「胜利烈焰」/ 仙子伊布ex「天使石」）
+    ("在下一个自己的回合，这只宝可梦无法使用招式。", "attack", "lock"),
+    (
+        "在上一个自己的回合，如果自己的宝可梦使用了「天使石」的话，则无法使用这个招式。",
+        "attack",
+        "lock",
+    ),
+    # evolution 不撞类别引用（冰伊布「冰霜之墙」/ 重力山 / 进化熏香）
+    ("在下一个对手的回合，这只宝可梦不会受到进化宝可梦的招式的伤害。", "attack", "evolution"),
+    ("双方场上的所有【2阶进化】宝可梦的最大HP，各「-30」。", "trainer", "evolution"),
+    (
+        "从自己牌库中选择1张进化宝可梦，在给对手看过之后加入手牌。并重洗牌库。",
+        "trainer",
+        "evolution",
+    ),
+    # protection 不撞最大HP减值（重力山）
+    ("双方场上的所有【2阶进化】宝可梦的最大HP，各「-30」。", "trainer", "protection"),
+    # status 不撞条件引用（波荡水ex「宣泄吼啸」）与继承引用（百变怪V「V变幻」）
+    ("如果对手的战斗宝可梦处于特殊状态的话，则追加造成120伤害。", "attack", "status"),
+    (
+        "选择自己弃牌区中的1张「宝可梦【V】」，与这只宝可梦互换"
+        "（继承所有放于其身上的卡牌、伤害指示物、特殊状态、效果等等）。",
+        "ability",
+        "status",
+    ),
+    # energy_accel 不撞跨句弃能（火伊布「熊熊燃烧」，自伤代价+对手拆能同段）
+    (
+        "选择附着于这只宝可梦身上的1个能量，放于弃牌区。"
+        "然后，选择附着于对手战斗宝可梦身上的1个能量，放于弃牌区。",
+        "attack",
+        "energy_accel",
+    ),
+    # energy_accel 不撞否定语境（能量附着封锁归 lock；桶 3 exclude）
+    (
+        "在下一个对手的回合，无法从手牌将能量附着于受到这个招式影响的宝可梦身上。",
+        "attack",
+        "energy_accel",
+    ),
+    # bounce / discard_recover 不撞否定语境（穿山鼠「流沙藏身」= 封锁回收归 lock）
+    (
+        "只要这只宝可梦在场上，对手弃牌区中的训练家，"
+        "就无法因为对手的物品或支援者的效果，被放回牌库。",
+        "ability",
+        "bounce",
+    ),
+    (
+        "只要这只宝可梦在场上，对手弃牌区中的训练家，"
+        "就无法因为对手的物品或支援者的效果，被放回牌库。",
+        "ability",
+        "discard_recover",
+    ),
+]
+
+
+@pytest.mark.parametrize("text_,kind,banned", TASK040_NEGATIVE_CASES)
+def test_task040_negative_cases_real_vocab(text_, kind, banned):
+    assert banned not in match_tags(text_, REAL_TAGS, kind)
+
+
+def test_exclude_negation_guard():
+    """exclude 否定守卫（task 040 新机制）：段级排除；无 exclude 的条目行为不变。"""
+    entries = [
+        EffectTagEntry(
+            tag="x", cn="测试", patterns=(r"能量.{0,12}附着",),
+            exclude=(r"无法.{0,14}能量.{0,12}附着",),
+        ),
+        EffectTagEntry(tag="y", cn="无排除", patterns=(r"能量",)),
+    ]
+    assert match_tags("将1张能量附着于这只宝可梦身上。", entries, "attack") == ("x", "y")
+    assert match_tags("无法从手牌将能量附着于这只宝可梦身上。", entries, "attack") == ("y",)
+
+
+def test_vocab_exclude_validation(tmp_path):
+    """exclude 键校验（fail-fast）：非列表 / 坏正则一律 VocabError。"""
+    import yaml
+
+    from ptcgdb.mapping.effect_tags import VocabError, load_effect_vocab
+
+    base = {"tags": [], "flags": []}
+    for bad in ("非列表", [123], ["("]):
+        doc = {**base, "tags": [
+            {"tag": "x", "cn": "x", "patterns": ["a"], "exclude": bad}
+        ]}
+        p = tmp_path / "v.yml"
+        p.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+        with pytest.raises(VocabError):
+            load_effect_vocab(p)

@@ -5,7 +5,8 @@
 有增量 → 强制刷新该系列 cards.json → 断点续抓新卡 → ingest(draft)
 → FR-2.3 校验全过 → active；不过 → blocked，不做后处理。
 合入后处理：刷新当前快照 latest_text_overrides + data_version 递增 + CHANGELOG；
-卡库增长后自动 remap 刷新赛事卡组映射缺口（FR-9.8，task 031，摘要并入同一版本块）。
+卡库增长后自动 remap 刷新赛事卡组映射缺口（FR-9.8，task 031，摘要并入同一版本块）+
+tag-effects 打标新 active 系列（task 040，疑似新机制 unknown 随 CHANGELOG 浮出）。
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from ptcgdb.legal.versions import (
     _bump_data_version,
     _latest_text_overrides,
 )
+from ptcgdb.mapping.effect_tags import TaggingResult, run_tagging
 from ptcgdb.normalize.deck_misses import RemapResult, remap_decks
 from ptcgdb.normalize.ingest import ingest_set
 from ptcgdb.orm import Card, LegalitySnapshot, Set
@@ -56,6 +58,7 @@ class L0Result:
     blocked: dict[str, list[str]] = field(default_factory=dict)  # set_id -> 失败规则名
     data_version: str | None = None
     remap: RemapResult | None = None  # 合入后映射缺口刷新（FR-9.8，task 031）
+    tagging: TaggingResult | None = None  # 合入后效果标签打标（task 040）
     dry_run: bool = False
 
 
@@ -146,7 +149,8 @@ def run_l0(
 
     on_event(event, payload) 事件钩子（task 015 通知用）：
     "increment" 每个增量系列一次；"activated" / "blocked" 每个系列一次；
-    "remap" 合入后映射缺口刷新一次（FR-9.8，task 031）；"postprocess" 后处理完成一次。
+    "remap" 合入后映射缺口刷新一次（FR-9.8，task 031）；"tag_effects" 合入后
+    效果标签打标一次（task 040）；"postprocess" 后处理完成一次。
     """
 
     def emit(event: str, payload: dict[str, Any]) -> None:
@@ -200,13 +204,20 @@ def run_l0(
         emit("activated", {"set_id": sid})
 
     # 4. 合入后处理（有合入才做）：先 remap 刷新映射缺口（FR-9.8，task 031），
-    #    摘要并入同一 CHANGELOG 版本块，再走快照后处理
+    #    再对新 active 系列打效果标签（task 040，幂等），摘要并入同一 CHANGELOG 版本块，
+    #    再走快照后处理
     if result.activated:
         remap = remap_decks(raw_dir, db_path)
         result.remap = remap
         emit("remap", {"attempted": remap.attempted, "resolved": remap.resolved,
                        "decks_affected": remap.decks_affected,
                        "decks_upgraded": remap.decks_upgraded})
+        tagging = run_tagging(db_path, sets=result.activated)
+        result.tagging = tagging
+        unknown_ids = tagging.questions.get("unknown", [])
+        emit("tag_effects", {"changed": tagging.changed,
+                             "zero_tag": len(tagging.zero_tag_cards),
+                             "unknown": len(unknown_ids)})
         extra_items: list[str] = []
         if remap.resolved:
             extra_items.append(
@@ -214,6 +225,13 @@ def run_l0(
                 f"resolved={remap.resolved} decks_affected={remap.decks_affected} "
                 f"partial→full 升级={remap.decks_upgraded}"
             )
+        tag_item = (
+            f"效果标签打标（L0 tag-effects 钩子，task 040）：changed={tagging.changed} "
+            f"零命中归类={len(tagging.zero_tag_cards)} unknown={len(unknown_ids)}"
+        )
+        if unknown_ids:
+            tag_item += f"，疑似新机制待人工归类：{', '.join(unknown_ids)}"
+        extra_items.append(tag_item)
         result.data_version = refresh_snapshot_overrides(
             db_path, changelog_path=changelog_path,
             activated=result.activated, extra_items=extra_items,
