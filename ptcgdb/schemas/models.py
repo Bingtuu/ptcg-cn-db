@@ -300,3 +300,31 @@ class DrilldownResult(BaseModel):
 
     meta: dict[str, Any]
     data: list[CardDrilldown]
+
+
+class MatchupStat(BaseModel):
+    """stats_matchup 单行（PRD FR-9.4 ④，v1.25）：archetype × opponent 有向对阵。
+
+    winrate = (wins + 0.5·ties) / n；样本仅 pairings 覆盖赛事；
+    不按 mapping_status 过滤（消费源站归类名）；n < min_n 时 low_confidence=True。
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    archetype: str  # 视角方（行）
+    opponent: str
+    n: int  # 对局数（winner 空的平局/未报局已排除）
+    wins: int
+    losses: int
+    ties: int
+    winrate: float
+    low_confidence: bool = False
+
+
+class MatchupResult(BaseModel):
+    """stats_matchup 返回（meta + archetype × archetype 有向长表）。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    meta: dict[str, Any]
+    data: list[MatchupStat]

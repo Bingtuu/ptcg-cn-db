@@ -21,6 +21,7 @@ from ptcgdb.stats.caliber import write_caliber_hashes
 from ptcgdb.stats.engine import (
     StatsParams,
     card_drilldown,
+    matchup,
     resolve_window,
     usage,
     winrate,
@@ -29,7 +30,9 @@ from ptcgdb.stats.engine import (
 
 DEFAULT_DB_PATH = Path("data/ptcg-cn.db")
 
-stats_app = typer.Typer(help="赛事统计（FR-9.7）：usage / winrate / wws / card / overview")
+stats_app = typer.Typer(
+    help="赛事统计（FR-9.7）：usage / winrate / wws / card / matchup / overview"
+)
 
 DbPathOpt = Annotated[Path, typer.Option("--db-path", help="数据库路径")]
 FmtOpt = Annotated[str, typer.Option("--format", help="输出格式 table|json|csv")]
@@ -198,8 +201,12 @@ def winrate_cmd(
     division: DivisionOpt = "master",
     layer: Annotated[str, typer.Option("--layer", help="auto|a|b")] = "auto",
     mirror: Annotated[
-        str, typer.Option("--mirror", help="exclude|include（口径标签）")
-    ] = "exclude",
+        str,
+        typer.Option(
+            "--mirror",
+            help="include=standings 汇总（默认）| exclude=pairings 逐局镜像剔除（A 层）",
+        ),
+    ] = "include",
     basis: BasisOpt = "cn",
     min_n: MinNOpt = 5,
     include_qual: IncludeQualOpt = False,
@@ -267,6 +274,30 @@ def card_cmd(
     )
     rows, meta = card_drilldown(db_path, name, params)
     _emit(meta, [r.model_dump(mode="json") for r in rows], fmt)
+
+
+@stats_app.command("matchup")
+def matchup_cmd(
+    as_of: AsOfOpt = None,
+    date_from: FromOpt = None,
+    date_to: ToOpt = None,
+    window_days: WindowDaysOpt = None,
+    tier: TierOpt = None,
+    division: DivisionOpt = "master",
+    basis: BasisOpt = "cn",
+    min_n: MinNOpt = 5,
+    include_qual: IncludeQualOpt = False,
+    include_team: IncludeTeamOpt = False,
+    fmt: FmtOpt = "table",
+    db_path: DbPathOpt = DEFAULT_DB_PATH,
+) -> None:
+    """matchup 对阵矩阵（canonical: matchup.sql；v1.25，仅 pairings 覆盖赛事）。"""
+    params = _params(
+        as_of, date_from, date_to, window_days, "pokemon,supporter,stadium", tier,
+        division, min_n, include_qual, include_team, basis=basis,
+    )
+    stats, meta = matchup(db_path, params)
+    _emit(meta, [s.model_dump(mode="json") for s in stats], fmt)
 
 
 def _check_readonly_sql(sql: str) -> str:

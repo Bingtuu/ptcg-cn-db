@@ -16,7 +16,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
-from ptcgdb.schemas.models import CardDrilldown, CardStat
+from ptcgdb.schemas.models import CardDrilldown, CardStat, MatchupStat
 
 SQL_DIR = Path(__file__).parent / "sql"
 
@@ -38,7 +38,8 @@ class StatsParams:
     usage_basis: str = "decks"  # decks / copies
     basis: str | None = "cn"  # 口径标签（v1.14）：cn / intl_aligned / jp / all（all=不过滤）
     min_n: int = 5
-    mirror: str = "exclude"  # 无 pairings 表（task 028 后置），仅回显口径标签
+    # include=standings 汇总（默认）/ exclude=pairings 逐局镜像剔除（v1.25）
+    mirror: str = "include"
     k_a: float = 20.0
     k_b: float = 10.0
 
@@ -89,6 +90,7 @@ def _binds(params: StatsParams) -> dict[str, Any]:
         "include_team": 1 if params.include_team else 0,
         "usage_basis": params.usage_basis,
         "basis": _basis_bind(params),
+        "mirror": params.mirror,
         "k_a": params.k_a,
         "k_b": params.k_b,
     }
@@ -212,7 +214,13 @@ def _resolve_layer(conn: sqlite3.Connection, params: StatsParams, layer: str) ->
 def winrate(
     db: str | Path | sqlite3.Connection, params: StatsParams, layer: str = "auto"
 ) -> tuple[list[CardStat], dict[str, Any]]:
-    """WR 胜率（canonical: winrate_a.sql / winrate_b.sql；layer 可 auto）。"""
+    """WR 胜率（canonical: winrate_a.sql / winrate_b.sql；layer 可 auto）。
+
+    mirror（仅 A 层有实义，v1.25）：include=standings record 汇总（默认）；
+    exclude=仅 pairings 覆盖赛事逐局口径、镜像局剔除（meta 回显覆盖与剔除计数）。
+    """
+    if params.mirror not in ("include", "exclude"):
+        raise ValueError(f"mirror 必须是 include/exclude：{params.mirror!r}")
     conn, owned = _connect(db)
     try:
         resolved = _resolve_layer(conn, params, layer)
@@ -220,14 +228,110 @@ def winrate(
             _load_sql(f"winrate_{resolved}.sql"), _binds(params)
         ).fetchall()
         meta = _base_meta(conn, params, require_topcut=(resolved == "b"))
+        if resolved == "a" and params.mirror == "exclude":
+            meta.update(_pairing_coverage(conn, params))
     finally:
         if owned:
             conn.close()
     meta["layer"] = resolved
-    meta["mirror"] = params.mirror  # 无 pairings 表，参数仅回显（task 028 后置）
+    meta["mirror"] = params.mirror
     if resolved == "b" and rows:
         meta["q0"] = rows[0][4]  # q0 常数列（每行同值）
     return _to_card_stats(rows, params, layer=resolved), meta
+
+
+def _pairing_coverage(conn: sqlite3.Connection, params: StatsParams) -> dict[str, Any]:
+    """pairings 覆盖与防御剔除统计（范围 = eligible ∩ pairings 有行的赛事）。
+
+    回显四件（PRD v1.25 FR-9.6）：pairings 覆盖赛事数 / pairings 行数 /
+    多重 appearance 被整侧剔除的选手数 / winner 空（平局或未报不可区分）被排除的局数。
+    """
+    tiers = ",".join(params.tiers) if params.tiers else None
+    basis = _basis_bind(params)
+    row = conn.execute(
+        """
+        WITH eligible AS (
+            SELECT tournament_id FROM v_tournament_weights
+            WHERE date BETWEEN ? AND ?
+              AND (? IS NULL OR division = ? OR division IS NULL)
+              AND (? = 1 OR is_qual = 0) AND (? = 1 OR is_team = 0)
+              AND (? IS NULL OR INSTR(',' || ? || ',', ',' || tier || ',') > 0)
+              AND (? IS NULL OR basis = ?)
+              AND static_weight IS NOT NULL
+        ),
+        covered AS (
+            SELECT DISTINCT tournament_id FROM pairings
+            WHERE tournament_id IN (SELECT tournament_id FROM eligible)
+        )
+        SELECT
+            (SELECT COUNT(*) FROM covered),
+            (SELECT COUNT(*) FROM pairings
+             WHERE tournament_id IN (SELECT tournament_id FROM covered)),
+            (SELECT COUNT(*) FROM (
+                SELECT a.tournament_id, a.player_ref
+                FROM deck_appearances a
+                WHERE a.player_ref IS NOT NULL
+                  AND a.tournament_id IN (SELECT tournament_id FROM covered)
+                  AND EXISTS (SELECT 1 FROM pairings p
+                              WHERE p.tournament_id = a.tournament_id
+                                AND (p.player1 = a.player_ref
+                                     OR p.player2 = a.player_ref))
+                GROUP BY a.tournament_id, a.player_ref
+                HAVING COUNT(*) > 1)),
+            (SELECT COUNT(*) FROM v_pairing_players pp
+             WHERE pp.tournament_id IN (SELECT tournament_id FROM covered)
+               AND pp.winner_side = 0)
+        """,
+        (
+            params.date_from,
+            params.date_to,
+            params.division,
+            params.division,
+            1 if params.include_qual else 0,
+            1 if params.include_team else 0,
+            tiers,
+            tiers,
+            basis,
+            basis,
+        ),
+    ).fetchone()
+    return {
+        "n_pairing_tournaments": row[0],
+        "n_pairings": row[1],
+        "excluded_ambiguous_players": row[2],
+        "excluded_unreported_games": row[3],
+    }
+
+
+def matchup(
+    db: str | Path | sqlite3.Connection, params: StatsParams
+) -> tuple[list[MatchupStat], dict[str, Any]]:
+    """matchup 对阵矩阵（canonical: matchup.sql；PRD FR-9.4 ④，v1.25）。
+
+    archetype × archetype 有向长表；不按 mapping_status 过滤；镜像对阵不进矩阵。
+    """
+    conn, owned = _connect(db)
+    try:
+        rows = conn.execute(_load_sql("matchup.sql"), _binds(params)).fetchall()
+        meta = _base_meta(conn, params)
+        meta.update(_pairing_coverage(conn, params))
+    finally:
+        if owned:
+            conn.close()
+    meta["n_games_used"] = sum(r[2] for r in rows) // 2  # 每局双向各一行
+    return [
+        MatchupStat(
+            archetype=r[0],
+            opponent=r[1],
+            n=r[2],
+            wins=r[3],
+            losses=r[4],
+            ties=r[5],
+            winrate=r[6],
+            low_confidence=r[2] < params.min_n,
+        )
+        for r in rows
+    ], meta
 
 
 def wws(

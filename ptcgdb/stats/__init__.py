@@ -8,6 +8,7 @@
 from ptcgdb.stats.engine import (
     StatsParams,
     card_drilldown,
+    matchup,
     resolve_window,
     usage,
     winrate,
@@ -17,6 +18,7 @@ from ptcgdb.stats.engine import (
 __all__ = [
     "StatsParams",
     "card_drilldown",
+    "matchup",
     "resolve_window",
     "usage",
     "winrate",

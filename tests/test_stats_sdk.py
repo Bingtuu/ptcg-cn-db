@@ -133,3 +133,39 @@ def test_sdk_jsonl_without_tournament_files(tmp_path):
     with open_jsonl(dist) as d:
         with pytest.raises(LookupError, match="tournaments.jsonl"):
             d.stats_usage(**WIN)
+
+
+def test_sdk_matchup_dual_backend_contract(tmp_path):
+    """stats_matchup / stats_winrate(mirror=exclude) 双后端契约一致（v1.25，task 041）。"""
+    from ptcgdb.export.exporter import export_all
+    from tests import test_stats_pairings as tp
+
+    pdb = tp.build_pairings_db(tmp_path / "p.db")
+    dist = tmp_path / "pdist"
+    export_all(pdb, dist)
+    win = {"date_from": tp.DATE_FROM, "date_to": tp.DATE_TO, "basis": "intl_aligned"}
+    with open_db(pdb) as d_db, open_jsonl(dist) as d_jsonl:
+        for call in (
+            lambda d: d.stats_matchup(**win),
+            lambda d: d.stats_winrate(layer="a", mirror="exclude", **win),
+            lambda d: d.stats_winrate(layer="a", mirror="include", **win),
+        ):
+            r_db, r_jsonl = call(d_db), call(d_jsonl)
+            assert r_db.data == r_jsonl.data
+            assert r_db.meta == r_jsonl.meta
+        mu = d_db.stats_matchup(**win)
+        got = {(s.archetype, s.opponent): s for s in mu.data}
+        assert got[(tp.ARCH_A, tp.ARCH_B)].winrate == pytest.approx(2 / 3, abs=TOL)
+        assert mu.meta["n_games_used"] == 3
+
+
+def test_sdk_matchup_empty_without_pairings(env):
+    """黄金集导出（无 pairings 数据）：matchup / mirror=exclude 返回空集不报错。"""
+    _, dist, _, _ = env
+    with open_jsonl(dist) as d:
+        mu = d.stats_matchup(**WIN)
+        assert mu.data == []
+        assert mu.meta["n_pairings"] == 0
+        wr = d.stats_winrate(layer="a", mirror="exclude", **WIN)
+        assert wr.data == []
+        assert wr.meta["n_pairing_tournaments"] == 0

@@ -162,3 +162,40 @@ def test_init_db_writes_caliber_hashes(tmp_path):
     assert meta["name_group_rules_hash"]
     assert meta["tournament_tiers_hash"]
     assert conn
+
+
+def test_stats_matchup_json(tmp_path):
+    """stats matchup（v1.25，task 041）：pairings fixture 上的 CLI 输出与 meta 回显。"""
+    from tests import test_stats_pairings as tp
+
+    pdb = tp.build_pairings_db(tmp_path / "p.db")
+    result = runner.invoke(
+        cli.app,
+        ["stats", "matchup", "--from", tp.DATE_FROM, "--to", tp.DATE_TO,
+         "--basis", "all", "--min-n", "1", "--format", "json", "--db-path", str(pdb)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["meta"]["n_pairings"] == 6
+    assert payload["meta"]["n_games_used"] == 3
+    got = {(r["archetype"], r["opponent"]): r for r in payload["data"]}
+    assert got[(tp.ARCH_A, tp.ARCH_B)]["winrate"] == pytest.approx(2 / 3, abs=1e-9)
+    assert got[(tp.ARCH_A, tp.ARCH_B)]["n"] == 3
+
+
+def test_stats_winrate_mirror_exclude_cli(tmp_path):
+    """CLI --mirror exclude（v1.25）：逐局口径 meta 回显覆盖与剔除计数。"""
+    from tests import test_stats_pairings as tp
+
+    pdb = tp.build_pairings_db(tmp_path / "p.db")
+    result = runner.invoke(
+        cli.app,
+        ["stats", "winrate", "--layer", "a", "--mirror", "exclude",
+         "--from", tp.DATE_FROM, "--to", tp.DATE_TO, "--basis", "all",
+         "--format", "json", "--db-path", str(pdb)],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["meta"]["mirror"] == "exclude"
+    assert payload["meta"]["n_pairing_tournaments"] == 1
+    assert payload["meta"]["excluded_ambiguous_players"] == 1

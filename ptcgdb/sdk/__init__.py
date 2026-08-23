@@ -36,6 +36,7 @@ from ptcgdb.schemas.models import (
     EffectiveText,
     ErrataRecord,
     LegalityPool,
+    MatchupResult,
     StatsResult,
 )
 from ptcgdb.schemas.models import (
@@ -151,6 +152,12 @@ class CardDatabase(ABC):
         ...
 
     @abstractmethod
+    def stats_matchup(self, **kwargs: Any) -> MatchupResult:
+        """matchup 对阵矩阵（v1.25，task 041）：archetype × archetype 有向长表，
+        样本仅 pairings 覆盖赛事。参数见 StatsParams。"""
+        ...
+
+    @abstractmethod
     def close(self) -> None: ...
 
     def __enter__(self) -> CardDatabase:
@@ -198,6 +205,11 @@ def _do_wws(db: Any, kwargs: dict) -> StatsResult:
 def _do_card(db: Any, name: str, kwargs: dict) -> DrilldownResult:
     data, meta = stats_engine.card_drilldown(db, name, _stats_params(kwargs))
     return DrilldownResult(meta=meta, data=data)
+
+
+def _do_matchup(db: Any, kwargs: dict) -> MatchupResult:
+    data, meta = stats_engine.matchup(db, _stats_params(kwargs))
+    return MatchupResult(meta=meta, data=data)
 
 
 def _do_validate_deck(
@@ -338,6 +350,9 @@ class DbBackend(CardDatabase):
     def stats_card(self, name: str, **kwargs: Any) -> DrilldownResult:
         return _do_card(self._db_path, name, kwargs)
 
+    def stats_matchup(self, **kwargs: Any) -> MatchupResult:
+        return _do_matchup(self._db_path, kwargs)
+
     def close(self) -> None:
         self._engine.dispose()
 
@@ -451,6 +466,9 @@ class JsonlBackend(CardDatabase):
 
     def stats_card(self, name: str, **kwargs: Any) -> DrilldownResult:
         return _do_card(self._stats_db(), name, kwargs)
+
+    def stats_matchup(self, **kwargs: Any) -> MatchupResult:
+        return _do_matchup(self._stats_db(), kwargs)
 
     def close(self) -> None:
         if self._stats_conn is not None:

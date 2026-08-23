@@ -6,9 +6,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Phase3·效果标签层（038_词表定稿✅）-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.22-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-841%20passed-success.svg?style=flat-square)](STATUS.md)
+[![Status](https://img.shields.io/badge/Status-Phase4·统计深化（041_pairings消费层✅）-brightgreen.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.25-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-997%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -24,7 +24,7 @@
 
 - **📸 快照化合法性引擎** —— 赛制标记 + 白名单 + 禁卡表 + 视作覆盖 + 能量种类全部按生效日版本化；旧快照永不删除，可回放任意历史环境（`legal_at('2026-08-01', 'standard')`）
 - **🏆 真实赛事卡组管线（三赛区）** —— 186 场赛事（CN mik 26 + EN Limitless 双通道 54 + JP 聚合站通道 106）/ 2,720 套卡组内容（full 2,100）/ 3,125 条出战记录入库，pairings 逐桌对阵 479 桌；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用），`mapping_status` 分档、只统计可映射简中环境的卡组；**三赛区旋转日历种子**（`config/tournament_envs.yml`）+ 赛事日期推导环境落库，CN/EN/JP 环境标号对齐（FR-9.1b）；EN 侧 Limitless **API + 主站 HTML 双通道**（官方大赛 Top Cut，含 Worlds 2025 补录与亚洲联赛 MBL/PBL/KL 9 场，tier 系数词表化）；JP 侧 **PokecaBook 壳 + 官方 deck confirm 卡表定向解析**（红线定向放宽 + 成本守卫：估算超闸门自动降级最高等级场次），`basis` 口径标签互不混同；无简中对应卡落 `deck_card_misses` 缺口标识（简中进 Mega 环境后可 `remap-decks` 整体刷新，partial→full 单调升级已实战验证）；mik topcut_slots 反推物化 9 场，CN 样本 B 层胜率/WWS 非空
-- **📊 可复算的统计三指标** —— 加权出场率 WUR / 胜率 WR（逐局战绩与 top-cut 转化率两层口径）/ 加权胜率 WWS（贝叶斯收缩）；**公式只在 canonical SQL 文件里**（单一事实源），权重输入全量落库，任何人都能用 SQL 原样重放官方数字
+- **📊 可复算的统计三指标 + 对阵矩阵** —— 加权出场率 WUR / 胜率 WR（逐局战绩与 top-cut 转化率两层口径，**镜像剔除已实装**：`--mirror exclude` 仅消费 pairings 覆盖赛事逐局判定）/ 加权胜率 WWS（贝叶斯收缩）/ **matchup 对阵矩阵**（archetype×archetype 逐局胜率长表，`stats matchup`）；**公式只在 canonical SQL 文件里**（单一事实源），权重输入全量落库，任何人都能用 SQL 原样重放官方数字
 - **🔍 像写 SQL 一样查库** —— `ptcgdb query` 只读 ad-hoc SQL（mode=ro，拒写操作）；导出 DB 自带统计物化视图，口径词表 hash 版本化进 meta
 - **🌏 三语卡名映射** —— 简中卡 99.3% 挂英文桥（12,337 张），经 TCGdex + pokemon-tcg-data + PokéAPI 链路 + 人工词表种子填充日文名 11,046 张；映射来源经 `external_ids` 体系逐条可溯，pokemon-card.com 官方抽样 31 张核对一致率 100%
 - **🔌 规则语义一等公民的 SDK** —— 合法性：`legal_at` / `effective_text`；卡组校验：`validate_deck`（结构化违规列表，banned/not_legal 互斥）；统计：`stats_usage` / `stats_winrate` / `stats_wws`；`open_db` / `open_jsonl` 双后端同一接口、契约测试保一致
@@ -59,6 +59,8 @@ ptcgdb deck-check --file deck.yml              # FR-8 卡组校验（ok 退 0 / 
 
 # ── 统计与查询 ──
 ptcgdb stats usage --window-days 90            # 加权出场率 WUR（--basis cn/intl_aligned/jp | winrate / wws / card <名>）
+ptcgdb stats winrate --layer a --mirror exclude --from 2025-04-01   # A 层逐局胜率（镜像局剔除，pairings 覆盖赛事）
+ptcgdb stats matchup --basis intl_aligned --from 2025-04-01         # matchup 对阵矩阵（archetype×archetype）
 ptcgdb query "SELECT * FROM v_stat_deck_cards LIMIT 5"   # 只读 ad-hoc SQL
 ptcgdb export --out dist/                      # 导出十三件套
 
@@ -83,10 +85,22 @@ db = open_db("data/ptcg-cn.db")               # 或 open_jsonl("dist/")，同一
 pool = db.legal_at(date="2026-08-01", format="standard")   # -> LegalityPool
 text = db.effective_text("CSM2DC-339", date="2026-08-01")  # 勘误 > 最新印刷 > 原文
 usage = db.stats_usage(window_days=90)        # -> StatsResult[CardStat]，meta 回显口径+词表 hash
+matchup = db.stats_matchup(basis="intl_aligned", date_from="2025-04-01")   # matchup 对阵矩阵
 boss = db.stats_card("老大的指令")             # 单卡 drilldown（按赛事/按系列）
 cards = db.search_cards(name="喵喵", marks=("G", "H", "I"))
 report = db.validate_deck(my_deck, date="2026-08-01", format="standard")   # -> DeckReport（结构化违规列表）
 ```
+
+## 📏 统计口径速览
+
+> 完整定义见 PRD FR-9.4 / FR-9.6；所有口径以 `ptcgdb/stats/sql/*.sql` canonical SQL 为单一事实源，CLI/SDK/导出三处共用。
+
+- **统计范围**：仅宝可梦/支援者/竞技场进统计（能量/物品/道具不进）；卡级粒度 = name_group（跨印刷同名合并）；只消费 `mapping_status='full'` 的卡组。
+- **WR 两层口径**：A 层（Limitless，逐局/战绩）与 B 层（mik 无逐局，代理 = top-cut 转化率）互不混算，`basis` 标签（cn / intl_aligned / jp）隔离赛区样本。
+- **镜像剔除（`--mirror`）**：`include`（默认）= standings record 汇总口径；`exclude` = **仅消费 pairings 覆盖赛事**，逐局剔除双方同含该卡的镜像局，镜像判定要求双侧卡组 full。两口径数据源不同（逐局 vs 汇总），数值不相等属预期，meta 各自标注。
+- **matchup 矩阵**：archetype×archetype 有向逐局胜率（平局计 0.5），消费源站卡组归类名、**不按 mapping_status 过滤**；同 archetype 内战不进矩阵；winner 空局（平局/未报不可区分，不猜）排除出 n 并在 meta 回显。
+- **低样本**：n 低于阈值打 `low_confidence`；一切输出的 meta 回显 as_of / 窗口 / 口径 / 词表 hash，可原样重放。
+- **窗口注意**：pairings 覆盖赛事集中在 2025-06 前后，exclude / matchup 口径需显式 `--from 2025-04-01` 级别的窗口，默认 90 天滚动窗内可能为空集（诚实结果，非 bug）。
 
 ## 🏗️ 架构
 
@@ -106,7 +120,7 @@ flowchart TB
         RAW[/"raw/ · append-only 原始层"/]
         NORM["normalize<br/>Pydantic 校验 + 字段归一 + 派生计算"]
         MAP["mapping<br/>EN 桥 → TCGdex ID → JP 名（置信度分档）"]
-        DB[("SQLite (WAL)<br/>draft → 校验 → active<br/>user_version=12")]
+        DB[("SQLite (WAL)<br/>draft → 校验 → active<br/>user_version=13")]
         STATS["stats<br/>canonical SQL 单一事实源<br/>物化视图 v_stat_deck_cards / v_tournament_weights"]
     end
 
@@ -160,11 +174,14 @@ flowchart TB
   - ✅ **M9** 赛事卡组管线与统计基建：CN mik + 统计可复算与查询层 + EN Limitless 对齐窗口 API/主站双通道（官方系列赛归类 + 名次截断 `config/site_tournament_rules.yml` 配置化 + decklist→简中映射链含 paren_strip 回退 + pairings 落库）；`basis` 口径标签不与 CN 混同（FR-9.1a/b）；**范围收口：以当前简中环境为起点收集维护，历史不回填**
   - ✅ **刷新与缺口治理**（task 031/032/033/034）：赛事刷新管线（ingest 窗口守卫 / L0 remap 钩子 / recaliber / monitor tourneys）+ `deck_card_misses` 缺口标识可刷新 + Worlds 2025 补录（tier 6.0）+ 亚洲联赛 9 场收录（MBL/KL=1.5、PBL=1.0）+ mik topcut_slots 反推物化
   - ✅ **M10 JP 对齐二期**（task 036/037）：trainer 日文名表补强（词表 290 条，name_ja +1,566）+ JP 卡级管线（PokecaBook 壳 → deck confirm 卡表定向采集：成本守卫降级 champions-only 229 码 → name_ja 名字链映射入库 106 赛 / 229 卡组，卡级映射 96.3%、Mega 前月段 full 率 99.2%）→ `basis=jp` WUR 统计解锁
-- 🚧 **Phase 3** 效果粗粒度标签层（规则引擎/AI 模拟的数据接缝，效果 DSL 归下游项目）
+- ✅ **Phase 3** 效果粗粒度标签层（规则引擎/AI 模拟的数据接缝，效果 DSL 归下游项目）
   - ✅ **task 038 词表定稿**：28 意图标签 + 3 机制 flag（`config/vocabularies/effect_tags.yml`，开放追加零代码）+ `tag-effects-scan` 命中率评测；GHI 环境实测覆盖 88.7%、零命中 171 条全归类
-  - ⬜ task 039 标注器与全库首标（`cards.effect_tags` 落库）
-  - ⬜ task 040 抽检核销与管线收官（L0 钩子 + 导出/SDK 补字段）
-- ⬜ **Phase 4** 对战模拟与胜率统计（独立库，主库只读）
+  - ✅ **task 039 标注器与全库首标**：`cards.effect_tags` 落库（12,420 张首标，unknown=0，幂等零漂移）
+  - ✅ **task 040 抽检核销与管线收官**：99 张人工抽检 91 正确/7 误标/1 漏标全修 → 第 29 意图标签 cooldown；exclude 段级守卫 + L0 自动打标钩子 + 导出契约同步
+- 🚧 **Phase 4** 统计深化与模拟基建（设计 `docs/superpowers/specs/2026-08-23-phase4-统计深化-design.md`；模拟结果永远落独立库，主库只读）
+  - ✅ **M12-1 pairings 消费层（task 041）**：WR A 层镜像剔除实装 + matchup 对阵矩阵（`stats matchup` / `stats_matchup()`）+ `v_pairing_players` 视图（user_version=13）
+  - ⬜ M12-2 archetype 级统计（task 042）
+  - ⬜ M12-3 cards.parquet 导出 + sim 骨架契约（task 043）
 
 > ⚠️ 临近事件：**2026-09-16「30周年庆典」全球同步发售**（简中首次同步，新罕贵度 FUR），更新管线将迎来首次实战。
 
@@ -172,7 +189,7 @@ flowchart TB
 
 | 文档 | 内容 |
 |---|---|
-| [PRD v1.22](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.5 deck confirm 定向放宽与成本守卫 / FR-9.8 刷新管线）、效果标签策略（§6.4 词表 28+3 开放追加） |
+| [PRD v1.25](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.4 统计口径含镜像剔除与 matchup / FR-9.5 deck confirm 定向放宽与成本守卫 / FR-9.8 刷新管线）、效果标签策略（§6.4 词表 29+3 开放追加） |
 | [数据源与接口文档](docs/data-sources.md) | 全部数据源获取方式：mik.moe 主源 API（卡牌 + 赛事）、官网赛制页、TCGdex / pokemon-tcg-data / PokéAPI、Limitless / TopDeck / RK9 与 JP 卡组聚合站（task 028 调研）、pokemon-card.com 抽样核对 |
 | [STATUS.md](STATUS.md) | 当前阶段、里程碑进度、决策日志、技术债 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更（四段式，数据日历版本 + schema SemVer 双轨） |
