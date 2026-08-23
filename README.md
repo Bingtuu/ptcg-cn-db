@@ -6,9 +6,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Phase4·统计深化（041_pairings消费层✅）-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.25-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-997%20passed-success.svg?style=flat-square)](STATUS.md)
+[![Status](https://img.shields.io/badge/Status-Phase4·统计深化（042_archetype级统计✅）-brightgreen.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.26-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-1010%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -99,6 +99,7 @@ report = db.validate_deck(my_deck, date="2026-08-01", format="standard")   # -> 
 - **WR 两层口径**：A 层（Limitless，逐局/战绩）与 B 层（mik 无逐局，代理 = top-cut 转化率）互不混算，`basis` 标签（cn / intl_aligned / jp）隔离赛区样本。
 - **镜像剔除（`--mirror`）**：`include`（默认）= standings record 汇总口径；`exclude` = **仅消费 pairings 覆盖赛事**，逐局剔除双方同含该卡的镜像局，镜像判定要求双侧卡组 full。两口径数据源不同（逐局 vs 汇总），数值不相等属预期，meta 各自标注。
 - **matchup 矩阵**：archetype×archetype 有向逐局胜率（平局计 0.5），消费源站卡组归类名、**不按 mapping_status 过滤**；同 archetype 内战不进矩阵；winner 空局（平局/未报不可区分，不猜）排除出 n 并在 meta 回显。
+- **archetype 粒度（`--granularity archetype`）**：三指标统计单元从卡级 name_group 切到卡组归类名（源站事实，不归并同名不同写）；**卡组级去重**（一套卡组一权重），卡级 scope 过滤不适用并回显；archetype 缺失的出战条目排除并计数回显；跨语言命名分裂不治理——basis=cn/intl_aligned 各自同源一致，`--basis all` 混合时如实呈现并附警告。
 - **低样本**：n 低于阈值打 `low_confidence`；一切输出的 meta 回显 as_of / 窗口 / 口径 / 词表 hash，可原样重放。
 - **窗口注意**：pairings 覆盖赛事集中在 2025-06 前后，exclude / matchup 口径需显式 `--from 2025-04-01` 级别的窗口，默认 90 天滚动窗内可能为空集（诚实结果，非 bug）。
 
@@ -180,7 +181,7 @@ flowchart TB
   - ✅ **task 040 抽检核销与管线收官**：99 张人工抽检 91 正确/7 误标/1 漏标全修 → 第 29 意图标签 cooldown；exclude 段级守卫 + L0 自动打标钩子 + 导出契约同步
 - 🚧 **Phase 4** 统计深化与模拟基建（设计 `docs/superpowers/specs/2026-08-23-phase4-统计深化-design.md`；模拟结果永远落独立库，主库只读）
   - ✅ **M12-1 pairings 消费层（task 041）**：WR A 层镜像剔除实装 + matchup 对阵矩阵（`stats matchup` / `stats_matchup()`）+ `v_pairing_players` 视图（user_version=13）
-  - ⬜ M12-2 archetype 级统计（task 042）
+  - ✅ **M12-2 archetype 级统计（task 042）**：三指标 `:granularity` 参数（card 默认零回归 / archetype 卡组级去重），CLI `--granularity` + SDK 透传
   - ⬜ M12-3 cards.parquet 导出 + sim 骨架契约（task 043）
 
 > ⚠️ 临近事件：**2026-09-16「30周年庆典」全球同步发售**（简中首次同步，新罕贵度 FUR），更新管线将迎来首次实战。
@@ -189,7 +190,7 @@ flowchart TB
 
 | 文档 | 内容 |
 |---|---|
-| [PRD v1.25](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.4 统计口径含镜像剔除与 matchup / FR-9.5 deck confirm 定向放宽与成本守卫 / FR-9.8 刷新管线）、效果标签策略（§6.4 词表 29+3 开放追加） |
+| [PRD v1.26](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.4 统计口径含镜像剔除、matchup 与 archetype 粒度 / FR-9.5 deck confirm 定向放宽与成本守卫 / FR-9.8 刷新管线）、效果标签策略（§6.4 词表 29+3 开放追加） |
 | [数据源与接口文档](docs/data-sources.md) | 全部数据源获取方式：mik.moe 主源 API（卡牌 + 赛事）、官网赛制页、TCGdex / pokemon-tcg-data / PokéAPI、Limitless / TopDeck / RK9 与 JP 卡组聚合站（task 028 调研）、pokemon-card.com 抽样核对 |
 | [STATUS.md](STATUS.md) | 当前阶段、里程碑进度、决策日志、技术债 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更（四段式，数据日历版本 + schema SemVer 双轨） |

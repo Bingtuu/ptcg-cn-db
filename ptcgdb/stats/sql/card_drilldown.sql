@@ -1,7 +1,10 @@
--- card_drilldown.sql — 单卡逐赛事钻取（PRD FR-9.7 stats card）
+-- card_drilldown.sql — 单卡/单 archetype 逐赛事钻取（PRD FR-9.7 stats card）
 -- 每场赛事一行：携带出战条目数、名次权重携带份额、top-cut 携带数、最佳名次。
+-- 粒度（:granularity，v1.26 task 042）：card（默认）:group_key = name_group 归组 key；
+--   archetype 时 :group_key 传 decks.archetype_name（stat_scope 过滤不适用，忽略）。
 -- 参数：:group_key + 标准窗口/过滤参数（:as_of :date_from :date_to :scope :division
---       :tiers :include_qual :include_team :basis('cn'|'intl_aligned'|'jp'|NULL=全部，v1.14)）
+--       :tiers :include_qual :include_team :basis('cn'|'intl_aligned'|'jp'|NULL=全部，v1.14)
+--       :granularity('card'|'archetype'，v1.26)）
 --       division 过滤语义（v1.14 续）：division IS NULL 的赛事不因 :division 被排除
 WITH eligible AS (
 	SELECT tournament_id, name, tier, date, topcut_slots,
@@ -29,13 +32,23 @@ norm AS (
 	FROM app
 ),
 per_app AS (
-	SELECT v.tournament_id, v.deck_id, v.rank, MAX(n.w_share) AS carry
-	FROM v_stat_deck_cards v
-	JOIN norm n ON n.tournament_id = v.tournament_id
-	           AND n.deck_id = v.deck_id AND n.rank = v.rank
-	WHERE v.group_key = :group_key
-	  AND INSTR(',' || :scope || ',', ',' || v.stat_scope || ',') > 0
-	GROUP BY v.tournament_id, v.deck_id, v.rank
+	SELECT tournament_id, deck_id, rank, MAX(carry) AS carry
+	FROM (
+		SELECT v.tournament_id, v.deck_id, v.rank, n.w_share AS carry
+		FROM v_stat_deck_cards v
+		JOIN norm n ON n.tournament_id = v.tournament_id
+		           AND n.deck_id = v.deck_id AND n.rank = v.rank
+		WHERE :granularity = 'card'
+		  AND v.group_key = :group_key
+		  AND INSTR(',' || :scope || ',', ',' || v.stat_scope || ',') > 0
+		UNION ALL
+		SELECT n.tournament_id, n.deck_id, n.rank, n.w_share
+		FROM norm n
+		JOIN decks d ON d.deck_id = n.deck_id
+		WHERE :granularity = 'archetype'
+		  AND d.archetype_name = :group_key
+	)
+	GROUP BY tournament_id, deck_id, rank
 )
 SELECT e.tournament_id, e.name AS tournament_name, e.date, e.tier,
        COUNT(*) AS n_decks,

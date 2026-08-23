@@ -133,22 +133,24 @@ class CardDatabase(ABC):
     @abstractmethod
     def stats_usage(self, **kwargs: Any) -> StatsResult:
         """WUR 加权出场率。参数见 StatsParams（as_of/date_from/date_to/window_days/
-        scope/division/tiers/include_qual/include_team/usage_basis/basis/min_n）。"""
+        scope/division/tiers/include_qual/include_team/usage_basis/basis/min_n/
+        granularity=card|archetype（v1.26））。"""
         ...
 
     @abstractmethod
     def stats_winrate(self, **kwargs: Any) -> StatsResult:
-        """WR 胜率（layer=auto|a|b，mirror 口径标签）。"""
+        """WR 胜率（layer=auto|a|b，mirror=include|exclude，granularity=card|archetype）。"""
         ...
 
     @abstractmethod
     def stats_wws(self, **kwargs: Any) -> StatsResult:
-        """WWS 加权胜率（layer=auto|a|b，k_a/k_b 贝叶斯收缩强度）。"""
+        """WWS 加权胜率（layer=auto|a|b，k_a/k_b 贝叶斯收缩强度，granularity 同上）。"""
         ...
 
     @abstractmethod
     def stats_card(self, name: str, **kwargs: Any) -> DrilldownResult:
-        """单卡逐赛事钻取（name = name_group 归组 key）。"""
+        """单卡逐赛事钻取（name = name_group 归组 key；
+        granularity='archetype' 时 name 传 decks.archetype_name，v1.26）。"""
         ...
 
     @abstractmethod

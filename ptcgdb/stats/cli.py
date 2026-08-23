@@ -55,6 +55,10 @@ BasisOpt = Annotated[
     str,
     typer.Option("--basis", help="口径标签 cn|intl_aligned|jp|all（v1.14，默认 cn）"),
 ]
+GranularityOpt = Annotated[
+    str,
+    typer.Option("--granularity", help="统计粒度 card|archetype（v1.26，默认 card）"),
+]
 
 
 def _params(
@@ -178,6 +182,7 @@ def usage_cmd(
     min_n: MinNOpt = 5,
     include_qual: IncludeQualOpt = False,
     include_team: IncludeTeamOpt = False,
+    granularity: GranularityOpt = "card",
     fmt: FmtOpt = "table",
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
@@ -185,6 +190,7 @@ def usage_cmd(
     params = _params(
         as_of, date_from, date_to, window_days, scope, tier, division, min_n,
         include_qual, include_team, usage_basis=usage_basis, basis=basis,
+        granularity=granularity,
     )
     stats, meta = usage(db_path, params)
     _emit_stats(meta, stats, fmt)
@@ -211,6 +217,7 @@ def winrate_cmd(
     min_n: MinNOpt = 5,
     include_qual: IncludeQualOpt = False,
     include_team: IncludeTeamOpt = False,
+    granularity: GranularityOpt = "card",
     fmt: FmtOpt = "table",
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
@@ -218,6 +225,7 @@ def winrate_cmd(
     params = _params(
         as_of, date_from, date_to, window_days, scope, tier, division, min_n,
         include_qual, include_team, mirror=mirror, basis=basis,
+        granularity=granularity,
     )
     stats, meta = winrate(db_path, params, layer=layer)
     _emit_stats(meta, stats, fmt)
@@ -239,6 +247,7 @@ def wws_cmd(
     min_n: MinNOpt = 5,
     include_qual: IncludeQualOpt = False,
     include_team: IncludeTeamOpt = False,
+    granularity: GranularityOpt = "card",
     fmt: FmtOpt = "table",
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
@@ -246,6 +255,7 @@ def wws_cmd(
     params = _params(
         as_of, date_from, date_to, window_days, scope, tier, division, min_n,
         include_qual, include_team, k_a=k_a, k_b=k_b, basis=basis,
+        granularity=granularity,
     )
     stats, meta = wws(db_path, params, layer=layer)
     _emit_stats(meta, stats, fmt)
@@ -264,13 +274,17 @@ def card_cmd(
     basis: BasisOpt = "cn",
     include_qual: IncludeQualOpt = False,
     include_team: IncludeTeamOpt = False,
+    granularity: GranularityOpt = "card",
     fmt: FmtOpt = "table",
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
-    """单卡逐赛事钻取（canonical: card_drilldown.sql）。"""
+    """单卡/单 archetype 逐赛事钻取（canonical: card_drilldown.sql）。
+
+    --granularity archetype 时 name 传 decks.archetype_name（v1.26）。
+    """
     params = _params(
         as_of, date_from, date_to, window_days, scope, tier, division, 5,
-        include_qual, include_team, basis=basis,
+        include_qual, include_team, basis=basis, granularity=granularity,
     )
     rows, meta = card_drilldown(db_path, name, params)
     _emit(meta, [r.model_dump(mode="json") for r in rows], fmt)

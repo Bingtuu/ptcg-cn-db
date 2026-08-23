@@ -40,6 +40,8 @@ class StatsParams:
     min_n: int = 5
     # include=standings 汇总（默认）/ exclude=pairings 逐局镜像剔除（v1.25）
     mirror: str = "include"
+    # card=name_group 卡级（默认）/ archetype=卡组级（v1.26，FR-9.4 ⑤）
+    granularity: str = "card"
     k_a: float = 20.0
     k_b: float = 10.0
 
@@ -91,9 +93,15 @@ def _binds(params: StatsParams) -> dict[str, Any]:
         "usage_basis": params.usage_basis,
         "basis": _basis_bind(params),
         "mirror": params.mirror,
+        "granularity": params.granularity,
         "k_a": params.k_a,
         "k_b": params.k_b,
     }
+
+
+def _check_granularity(params: StatsParams) -> None:
+    if params.granularity not in ("card", "archetype"):
+        raise ValueError(f"granularity 必须是 card/archetype：{params.granularity!r}")
 
 
 def _load_sql(name: str) -> str:
@@ -146,6 +154,58 @@ def _base_meta(
     }
 
 
+def _granularity_meta(
+    conn: sqlite3.Connection, params: StatsParams
+) -> dict[str, Any]:
+    """granularity 口径回显（v1.26，FR-9.4 ⑤）。
+
+    card：仅回显 granularity。archetype：stat_scope 卡级过滤不适用（scope_ignored）、
+    eligible 范围内 full 卡组中 archetype_name NULL/空的出战条目计数
+    （excluded_no_archetype，不设「未命名」桶）；basis=all/None 混合赛区时
+    附跨语言命名分裂警告（如实呈现不治理，跨语言归一后置）。
+    """
+    if params.granularity == "card":
+        return {"granularity": "card"}
+    tiers = ",".join(params.tiers) if params.tiers else None
+    excluded = conn.execute(
+        """
+        SELECT COUNT(*) FROM deck_appearances a
+        JOIN decks d ON d.deck_id = a.deck_id AND d.mapping_status = 'full'
+        WHERE (d.archetype_name IS NULL OR d.archetype_name = '')
+          AND a.tournament_id IN (
+              SELECT tournament_id FROM v_tournament_weights
+              WHERE date BETWEEN ? AND ?
+                AND (? IS NULL OR division = ? OR division IS NULL)
+                AND (? = 1 OR is_qual = 0) AND (? = 1 OR is_team = 0)
+                AND (? IS NULL OR INSTR(',' || ? || ',', ',' || tier || ',') > 0)
+                AND (? IS NULL OR basis = ?)
+                AND static_weight IS NOT NULL)
+        """,
+        (
+            params.date_from,
+            params.date_to,
+            params.division,
+            params.division,
+            1 if params.include_qual else 0,
+            1 if params.include_team else 0,
+            tiers,
+            tiers,
+            _basis_bind(params),
+            _basis_bind(params),
+        ),
+    ).fetchone()[0]
+    out: dict[str, Any] = {
+        "granularity": "archetype",
+        "scope_ignored": True,
+        "excluded_no_archetype": excluded,
+    }
+    if params.basis in (None, "all"):
+        out["warning"] = (
+            "basis=all：跨语言 archetype 命名分裂如实呈现（不治理，跨语言归一后置）"
+        )
+    return out
+
+
 def _to_card_stats(
     rows: list[tuple], params: StatsParams, *, basis: str = "", layer: str = ""
 ) -> list[CardStat]:
@@ -167,10 +227,12 @@ def usage(
     db: str | Path | sqlite3.Connection, params: StatsParams
 ) -> tuple[list[CardStat], dict[str, Any]]:
     """WUR 加权出场率（canonical: wur.sql）。"""
+    _check_granularity(params)
     conn, owned = _connect(db)
     try:
         rows = conn.execute(_load_sql("wur.sql"), _binds(params)).fetchall()
         meta = _base_meta(conn, params)
+        meta.update(_granularity_meta(conn, params))
     finally:
         if owned:
             conn.close()
@@ -221,6 +283,7 @@ def winrate(
     """
     if params.mirror not in ("include", "exclude"):
         raise ValueError(f"mirror 必须是 include/exclude：{params.mirror!r}")
+    _check_granularity(params)
     conn, owned = _connect(db)
     try:
         resolved = _resolve_layer(conn, params, layer)
@@ -228,6 +291,7 @@ def winrate(
             _load_sql(f"winrate_{resolved}.sql"), _binds(params)
         ).fetchall()
         meta = _base_meta(conn, params, require_topcut=(resolved == "b"))
+        meta.update(_granularity_meta(conn, params))
         if resolved == "a" and params.mirror == "exclude":
             meta.update(_pairing_coverage(conn, params))
     finally:
@@ -338,6 +402,7 @@ def wws(
     db: str | Path | sqlite3.Connection, params: StatsParams, layer: str = "auto"
 ) -> tuple[list[CardStat], dict[str, Any]]:
     """WWS 加权胜率（canonical: wws.sql；贝叶斯收缩 :k_a/:k_b）。"""
+    _check_granularity(params)
     conn, owned = _connect(db)
     try:
         resolved = _resolve_layer(conn, params, layer)
@@ -345,6 +410,7 @@ def wws(
             _load_sql("wws.sql"), {**_binds(params), "layer": resolved}
         ).fetchall()
         meta = _base_meta(conn, params, require_topcut=(resolved == "b"))
+        meta.update(_granularity_meta(conn, params))
     finally:
         if owned:
             conn.close()
@@ -357,13 +423,18 @@ def wws(
 def card_drilldown(
     db: str | Path | sqlite3.Connection, group_key: str, params: StatsParams
 ) -> tuple[list[CardDrilldown], dict[str, Any]]:
-    """单卡逐赛事钻取（canonical: card_drilldown.sql）。"""
+    """单卡/单 archetype 逐赛事钻取（canonical: card_drilldown.sql）。
+
+    granularity='archetype'（v1.26）时 group_key 传 decks.archetype_name。
+    """
+    _check_granularity(params)
     conn, owned = _connect(db)
     try:
         rows = conn.execute(
             _load_sql("card_drilldown.sql"), {**_binds(params), "group_key": group_key}
         ).fetchall()
         meta = _base_meta(conn, params)
+        meta.update(_granularity_meta(conn, params))
     finally:
         if owned:
             conn.close()
