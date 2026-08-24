@@ -178,6 +178,89 @@ def test_export_rerun_overwrites(db_path, tmp_path):
     assert len(list(out.iterdir())) == len(EXPORT_FILES)
 
 
+# ---- cards.parquet（v1.27，task 043，第十四件）----
+
+
+@pytest.fixture()
+def dist_with_tags(db_path, tmp_path):
+    """带 effect_tags 的卡：parquet JSON 文本列原样为字符串（下游自解析）。"""
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as s:
+        s.get(Card, "T1-001").effect_tags = {
+            "tags": ["draw"],
+            "detail": {"attacks": {}, "ability": [], "text": ["draw"], "flags": []},
+            "labels": ["抽牌"],
+        }
+        # 与真库形态一致（task 039 全库首标）：空对象 = 已标注无命中
+        s.get(Card, "T1-002").effect_tags = {
+            "tags": [],
+            "detail": {"attacks": {}, "ability": [], "text": [], "flags": []},
+            "labels": [],
+        }
+        s.commit()
+    engine.dispose()
+    out = tmp_path / "dist_tags"
+    export_all(db_path, out)
+    return out
+
+
+def test_cards_parquet_content(dist_with_tags):
+    """parquet 行数 = cards 表行数；字段集与值和 cards.jsonl 对齐（抽样）。"""
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(dist_with_tags / "cards.parquet")
+    jsonl = [
+        json.loads(x)
+        for x in (dist_with_tags / "cards.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert table.num_rows == len(jsonl) == 2
+    # 字段集 = cards 表全列 = cards.jsonl 键集
+    assert set(table.column_names) == set(jsonl[0])
+    by_id = {r["card_id"]: r for r in table.to_pylist()}
+    for row in jsonl:
+        got = by_id[row["card_id"]]
+        assert got["text_raw"] == row["text_raw"]  # 中文逐字
+        assert got["name_full"] == row["name_full"]
+        # JSON 文本列原样为字符串：parquet 侧是 str，json.loads 后与 jsonl 结构相等
+        assert isinstance(got["attacks"], str)
+        assert json.loads(got["attacks"]) == row["attacks"]
+    tagged = by_id["T1-001"]
+    assert isinstance(tagged["effect_tags"], str)
+    assert json.loads(tagged["effect_tags"])["labels"] == ["抽牌"]
+    # 空对象（已标注无命中）原样保留为 JSON 字符串
+    assert json.loads(by_id["T1-002"]["effect_tags"])["tags"] == []
+
+
+def test_cards_parquet_registered(dist):
+    """checksums.sha256 登记 cards.parquet 且校验通过；manifest counts 只加不删。"""
+    lines = (dist / "checksums.sha256").read_text(encoding="utf-8").strip().split("\n")
+    entries = dict(reversed(line.split("  ")) for line in lines)
+    assert "cards.parquet" in entries
+    actual = hashlib.sha256((dist / "cards.parquet").read_bytes()).hexdigest()
+    assert entries["cards.parquet"] == actual
+    m = json.loads((dist / "manifest.json").read_text(encoding="utf-8"))
+    assert m["counts"]["cards_parquet"] == 2
+
+
+def test_export_no_parquet(db_path, tmp_path):
+    """--no-parquet：不产出、不登记、不 import pyarrow（精简环境豁免）。"""
+    import sys
+    from unittest.mock import patch as _patch
+
+    out = tmp_path / "dist_np"
+    # sys.modules 置 None → 任何 import pyarrow 尝试都会 ImportError
+    with _patch.dict(sys.modules, {"pyarrow": None, "pyarrow.parquet": None}):
+        manifest = export_all(db_path, out, parquet=False)
+    assert not (out / "cards.parquet").exists()
+    checksums = (out / "checksums.sha256").read_text(encoding="utf-8")
+    assert "cards.parquet" not in checksums
+    assert manifest["counts"]["cards_parquet"] is None
+    # 其余文件照旧
+    for name in EXPORT_FILES:
+        if name != "cards.parquet":
+            assert (out / name).is_file(), f"缺 {name}"
+
+
 # ---- WAL checkpoint + integrity_check ----
 
 

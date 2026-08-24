@@ -634,10 +634,13 @@ def deck_check(
 @app.command()
 def export(
     out: Annotated[Path, typer.Option("--out", help="导出目录")] = Path("dist"),
+    no_parquet: Annotated[
+        bool, typer.Option("--no-parquet", help="跳过 cards.parquet（精简环境无 pyarrow）")
+    ] = False,
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
-    """导出七件套（FR-7）：manifest/cards/sets/relations/legality/db/checksums/schema.md。"""
-    manifest = export_all(db_path, out)
+    """导出十四件套（FR-7）：十三件 + cards.parquet（v1.27；--no-parquet 跳过）。"""
+    manifest = export_all(db_path, out, parquet=not no_parquet)
     typer.echo(
         f"OK: {out}/ version={manifest['version']} "
         f"schema_version={manifest['schema_version']} counts={manifest['counts']}"

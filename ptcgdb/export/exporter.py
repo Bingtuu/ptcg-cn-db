@@ -1,10 +1,12 @@
-"""导出十三件套（task 010 起，PRD FR-7，只加不删）。
+"""导出十四件套（task 010 起，PRD FR-7，只加不删）。
 
 dist/ 布局：manifest.json / cards.jsonl / sets.jsonl / relations.jsonl /
 legality.json / tournaments.jsonl / decks.jsonl / deck_appearances.jsonl /
-deck_cards.jsonl / pairings.jsonl（v1.14 追加）/ ptcg-cn.db / checksums.sha256 / schema.md。
+deck_cards.jsonl / pairings.jsonl（v1.14 追加）/ cards.parquet（v1.27 追加，
+task 043）/ ptcg-cn.db / checksums.sha256 / schema.md。
 序列化一律经 Pydantic 导出模型（schemas/models.py + schemas/tournaments.py），
-与 SDK 返回形状同源。
+与 SDK 返回形状同源；cards.parquet 例外——SQLite 直读直写（pyarrow），
+JSON 文本列原样为字符串（下游自解析，不做结构化展开）。
 """
 
 from __future__ import annotations
@@ -60,6 +62,7 @@ EXPORT_FILES = [
     "deck_appearances.jsonl",
     "deck_cards.jsonl",
     "pairings.jsonl",
+    "cards.parquet",
     "ptcg-cn.db",
     "checksums.sha256",
     "schema.md",
@@ -84,6 +87,28 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _write_cards_parquet(db_path: Path, out_path: Path) -> int:
+    """cards 表全列 → cards.parquet（v1.27，task 043），返回行数。
+
+    SQLite 直读直写：JSON 文本列（attacks/abilities/effect_tags 等）原样为字符串，
+    下游自解析、不做结构化展开；pyarrow 延迟导入——--no-parquet / 精简环境
+    无 pyarrow 时本函数根本不被调用，import 不发生。
+    """
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        cur = conn.execute("SELECT * FROM cards")
+        columns = [d[0] for d in cur.description]
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    table = pa.table({c: [r[i] for r in rows] for i, c in enumerate(columns)})
+    pq.write_table(table, out_path)
+    return len(rows)
+
+
 def _prop_type(prop: dict) -> str:
     """字段类型列：直型直取；anyOf 解析 $ref 定义名 / 非 null 子型（task 040）。"""
     if prop.get("type"):
@@ -102,7 +127,8 @@ def _schema_md() -> str:
         "# schema.md — 导出契约字段字典",
         "",
         "> 由 Pydantic 模型半自动生成（model_json_schema），请勿手改字段表。",
-        "> 消费指引：JSONL 适合全量灌库/流式分析；规则语义（legal_at / effective_text）请走 SDK。",
+        "> 消费指引：JSONL 适合全量灌库/流式分析；规则语义（legal_at / effective_text）请走 SDK；",
+        "> cards.parquet = cards 表全列（JSON 列原样字符串），供 DuckDB/pyarrow 直读（v1.27）。",
         "",
     ]
     for model in (CardSchema, SetSchema, SnapshotSchema, EffectTags, EffectTagDetail):
@@ -169,8 +195,12 @@ def _checkpoint_and_copy(db_path: Path, out_dir: Path) -> None:
         conn2.close()
 
 
-def export_all(db_path: Path, out_dir: Path) -> dict:
-    """导出全部文件，返回 manifest dict。重跑幂等（覆盖写）。"""
+def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
+    """导出全部文件，返回 manifest dict。重跑幂等（覆盖写）。
+
+    parquet=False（CLI --no-parquet）：跳过 cards.parquet（不 import pyarrow，
+    精简环境豁免），checksums 不登记、manifest counts.cards_parquet 记 NULL。
+    """
     db_path, out_dir = Path(db_path), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -220,6 +250,11 @@ def export_all(db_path: Path, out_dir: Path) -> dict:
     _write_jsonl(out_dir / "deck_cards.jsonl", deck_cards)
     _write_jsonl(out_dir / "pairings.jsonl", pairings)
 
+    # cards.parquet（v1.27，第十四件）：cards 表全列 SQLite 直读直写
+    parquet_rows = (
+        _write_cards_parquet(db_path, out_dir / "cards.parquet") if parquet else None
+    )
+
     built_at = datetime.now(UTC).isoformat()
     schema_version = meta.get("schema_version", "1.0.0")
     legality = {
@@ -254,6 +289,7 @@ def export_all(db_path: Path, out_dir: Path) -> dict:
             "deck_appearances": len(appearances),
             "deck_cards": len(deck_cards),
             "pairings": len(pairings),
+            "cards_parquet": parquet_rows,  # --no-parquet 时 NULL（v1.27）
         },
     }
     (out_dir / "manifest.json").write_text(
@@ -264,6 +300,8 @@ def export_all(db_path: Path, out_dir: Path) -> dict:
     for name in sorted(EXPORT_FILES):
         if name == "checksums.sha256":
             continue  # 不自签
+        if not (out_dir / name).exists():
+            continue  # --no-parquet 跳过的文件不登记
         lines.append(f"{_sha256(out_dir / name)}  {name}")
     (out_dir / "checksums.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return manifest
