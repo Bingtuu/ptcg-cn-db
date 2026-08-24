@@ -33,7 +33,27 @@
 - **🛡️ 原文保真** —— `text_raw` 逐字保留绝不规范化，原文与派生字段严格分层；DB vs raw 同源自验 + 三清单日志保证数据质量
 - **📐 卡面口径保真** —— 卡号分母逐系列种子口径（`sets.card_face_total`，实测数据点驱动），种子未覆盖系列只显分子不伪装；字母编号能量卡的 mik 双重列示以 `alias_of` 归并到数字正本
 - **🔮 机制全覆盖且前瞻** —— ex / 太晶（ptcd subtypes 印刷级识别，is_tera 166 张）/ ACE SPEC / 训练家宝可梦 / V-UNION（四部件方位结构化，24 张齐全）/ GX，词表开放，超级进化ex 等新机制直接进库
-- **🏷️ 效果粗粒度标签层** —— 28 意图标签 + 3 机制 flag 词表（`config/vocabularies/effect_tags.yml` 唯一事实源，开放追加零代码）；规则打底（确定性正则匹配、幂等可重跑）+ 人工兜底（零命中入清单核销，不猜）；GHI 环境 1,507 条效果文本实测覆盖 88.7%、零命中 171 条全归类为口径内无需打标；这是下游规则引擎/AI 模拟的数据接缝（效果 DSL 归下游项目）
+- **🏷️ 效果粗粒度标签层** —— 29 意图标签 + 3 机制 flag 词表（`config/vocabularies/effect_tags.yml` 唯一事实源，开放追加零代码）；规则打底（确定性正则匹配 + 段级 exclude 否定守卫、幂等可重跑）+ 人工兜底（零命中入清单核销，不猜）；GHI 环境 1,507 条效果文本实测覆盖 88.7%、全库 unknown=0；这是下游规则引擎/AI 模拟的数据接缝（效果 DSL 归下游项目）
+
+## 🔧 安装与初始化
+
+```bash
+git clone https://github.com/Bingtuu/ptcg-cn-db.git && cd ptcg-cn-db
+python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash；类 Unix 用 .venv/bin/activate
+pip install -e .         # 依赖含 pyarrow（parquet 导出）；装出 CLI 入口 ptcgdb
+ptcgdb init-db           # 建库 + 全部迁移（默认 data/ptcg-cn.db）
+```
+
+> **数据库本体不随仓库分发**（见合规声明）。拿到数据的两条路：
+> ① **自行跑管线**：`ptcgdb scrape sets && ptcgdb scrape cards`（限速 2s/请求，全量约数小时）→ `ingest` → `validate` → `activate`；
+> ② **消费导出件**：已有 `dist/` 时直接 `open_jsonl("dist/")` 或 `duckdb` 直读 `cards.parquet`，无需建库。
+
+开发自检：
+
+```bash
+python -m pytest -q      # 1013 测试（全量约 4 分钟）
+ruff check .
+```
 
 ## 🚀 快速预览
 
@@ -58,9 +78,10 @@ ptcgdb legal --date 2026-08-01 --format standard   # 某日期的合法卡池（
 ptcgdb deck-check --file deck.yml              # FR-8 卡组校验（ok 退 0 / 违规 1 / 错误 2）
 
 # ── 统计与查询 ──
-ptcgdb stats usage --window-days 90            # 加权出场率 WUR（--basis cn/intl_aligned/jp | winrate / wws / card <名>）
+ptcgdb stats usage --window-days 90            # 加权出场率 WUR（--basis cn/intl_aligned/jp；--granularity card|archetype 卡级/卡组级）
 ptcgdb stats winrate --layer a --mirror exclude --from 2025-04-01   # A 层逐局胜率（镜像局剔除，pairings 覆盖赛事）
 ptcgdb stats matchup --basis intl_aligned --from 2025-04-01         # matchup 对阵矩阵（archetype×archetype）
+ptcgdb stats wws --layer b                     # 加权胜率 WWS（贝叶斯收缩）；stats card <名> 单卡/单 archetype 钻取
 ptcgdb query "SELECT * FROM v_stat_deck_cards LIMIT 5"   # 只读 ad-hoc SQL
 ptcgdb export --out dist/                      # 导出十四件套（--no-parquet 跳过 parquet）
 
@@ -73,7 +94,7 @@ ptcgdb accept && ptcgdb sample                 # 一键验收 A1~A8；A2/A3 抽�
 # ── 跨语言与机制映射 ──
 ptcgdb map-en && ptcgdb map-tcgdex && ptcgdb map-ja   # EN 桥 → TCGdex ID → JP 名（map-ja-trainer 补 trainer/特殊能量）
 ptcgdb map-tera                                # 太晶识别：ptcd EN subtypes → is_tera
-ptcgdb tag-effects-scan                        # 效果标签词表命中率评测（28 标签 + 3 flag，只读出报告）
+ptcgdb tag-effects                             # 效果标签标注落库（29 标签 + 3 flag，幂等；tag-effects-scan 评测 / tag-effects-audit 桶审查）
 ```
 
 **SDK**
@@ -85,10 +106,19 @@ db = open_db("data/ptcg-cn.db")               # 或 open_jsonl("dist/")，同一
 pool = db.legal_at(date="2026-08-01", format="standard")   # -> LegalityPool
 text = db.effective_text("CSM2DC-339", date="2026-08-01")  # 勘误 > 最新印刷 > 原文
 usage = db.stats_usage(window_days=90)        # -> StatsResult[CardStat]，meta 回显口径+词表 hash
+arch = db.stats_usage(granularity="archetype", date_from="2025-01-01")   # 卡组级：什么卡组强
+wr = db.stats_winrate(layer="a", mirror="exclude", basis="intl_aligned", date_from="2025-04-01")  # 逐局 + 镜像剔除
 matchup = db.stats_matchup(basis="intl_aligned", date_from="2025-04-01")   # matchup 对阵矩阵
 boss = db.stats_card("老大的指令")             # 单卡 drilldown（按赛事/按系列）
 cards = db.search_cards(name="喵喵", marks=("G", "H", "I"))
 report = db.validate_deck(my_deck, date="2026-08-01", format="standard")   # -> DeckReport（结构化违规列表）
+```
+
+**DuckDB 直读 parquet（OLAP 分析）**
+
+```python
+import duckdb   # 下游自选：dist/cards.parquet 免灌库直查
+duckdb.sql("SELECT name_full, effect_tags FROM 'dist/cards.parquet' LIMIT 5")
 ```
 
 ## 📏 统计口径速览
