@@ -370,6 +370,27 @@ def map_tera(
     typer.echo(f"报告: {path}")
 
 
+@app.command("reconcile-en")
+def reconcile_en(
+    db_path: Path = DEFAULT_DB_PATH,
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    out_dir: Path = Path("reports"),
+) -> None:
+    """跨源 EN 结构化字段对账：CN vs ptcd 卡级五字段（task 046，只读零写入）。"""
+    from ptcgdb.mapping.en_reconcile import reconcile_en_fields
+    from ptcgdb.mapping.report import write_en_reconcile_report
+
+    result = reconcile_en_fields(db_path, raw_dir)
+    path = write_en_reconcile_report(result, out_dir)
+    typer.echo(
+        f"total={result.total_active} compared={result.compared} "
+        f"clean={result.clean_cards} diff_cards={result.diff_cards} "
+        f"exempt={sum(len(v) for v in result.exemptions.values())} "
+        f"cost_modifier_skips={result.cost_modifier_skips}"
+    )
+    typer.echo(f"报告: {path}")
+
+
 @app.command("tag-effects-scan")
 def tag_effects_scan(
     day: str | None = None,

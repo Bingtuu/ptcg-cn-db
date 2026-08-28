@@ -1,17 +1,18 @@
 # 属性词表（开放词表，可追加）
-# mik_code 为 tcg.mik.moe 单字母属性码（docs/data-sources.md §1）。
+# mik_code 为 tcg.mik.moe 单字母属性码（docs/data-sources.md §1）；
+# en 为 ptcd/TCGdex EN 属性名（task 046 跨源对账用）。
 # N=龙、C=无 已经 task 004 字段形态调查核证：
 #   energyType=N 全部为龙系宝可梦（宝贝龙/暴飞龙/黏美龙/杖尾鳞甲龙/究极奈克洛兹玛）；
 #   energyType=C 全部为无色宝可梦（吉利蛋/伊布/多边兽/智挥猩），且招式 cost 中 C=无。
 types:
-  - { name: 草, mik_code: G }
-  - { name: 火, mik_code: R }
-  - { name: 水, mik_code: W }
-  - { name: 雷, mik_code: L }
-  - { name: 超, mik_code: P }
-  - { name: 斗, mik_code: F }
-  - { name: 恶, mik_code: D }
-  - { name: 钢, mik_code: M }
-  - { name: 妖, mik_code: Y }
-  - { name: 龙, mik_code: N }
-  - { name: 无, mik_code: C }
+  - { name: 草, mik_code: G, en: Grass }
+  - { name: 火, mik_code: R, en: Fire }
+  - { name: 水, mik_code: W, en: Water }
+  - { name: 雷, mik_code: L, en: Lightning }
+  - { name: 超, mik_code: P, en: Psychic }
+  - { name: 斗, mik_code: F, en: Fighting }
+  - { name: 恶, mik_code: D, en: Darkness }
+  - { name: 钢, mik_code: M, en: Metal }
+  - { name: 妖, mik_code: Y, en: Fairy }
+  - { name: 龙, mik_code: N, en: Dragon }
+  - { name: 无, mik_code: C, en: Colorless }

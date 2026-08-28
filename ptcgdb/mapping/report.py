@@ -1,4 +1,4 @@
-"""映射覆盖率报告（task 022/023/024 共用）。"""
+"""映射覆盖率报告（task 022/023/024/046 共用）。"""
 
 import re
 from datetime import UTC, datetime
@@ -6,6 +6,13 @@ from pathlib import Path
 
 from ptcgdb.mapping.effect_tags import MultiHitAudit, ScanReport, TaggingResult
 from ptcgdb.mapping.en import EnFillResult
+from ptcgdb.mapping.en_reconcile import (
+    DIFF_CATEGORIES,
+    DIFF_KINDS,
+    EXEMPTION_KINDS,
+    EnReconcileReport,
+    FieldDiff,
+)
 from ptcgdb.mapping.ja import JaFillResult
 from ptcgdb.mapping.ja_trainer import JaTrainerFillResult
 from ptcgdb.mapping.tcgdex import ResolveResult, SetReconcileReport
@@ -424,6 +431,114 @@ def write_audit_report(audit: MultiHitAudit, out_dir: Path) -> Path:
             lines.append(f"> {t}")
         lines.append("")
         lines.append(f"示例卡：{', '.join(f'`{c}`' for c in b.sample_cards)}")
+        lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+def write_en_reconcile_report(result: EnReconcileReport, out_dir: Path) -> Path:
+    """跨源 EN 结构化字段对账报告（task 046）：覆盖闭环 + 豁免分档 + 差异聚类全量清单。"""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%d")
+    path = out_dir / f"reconcile-en-{stamp}.md"
+    by_kind: dict[str, list[FieldDiff]] = {}
+    for d in result.diffs:
+        by_kind.setdefault(d.kind, []).append(d)
+    lines = [
+        f"# 跨源 EN 结构化字段对账报告（{stamp}，task 046）",
+        "",
+        "第二源 = pokemon-tcg-data（ptcd）EN 卡级 JSON（raw 静态源）；链路：CN card → "
+        "external_ids(tcgdex) → TCGdex EN id →（套桥 + 编号归一）→ ptcd 卡。",
+        "比对字段白名单：hp / weakness / resistance / retreat_cost / attacks（cost 多重集合"
+        " + damage 数值与修饰）；效果文本、罕贵度、赛制标记跨语言不可比不在口径内。",
+        "",
+        "## 覆盖闭环",
+        "",
+        f"- active 卡总数：{result.total_active}",
+        f"- 完成比对：{result.compared}"
+        f"（零差异 {result.clean_cards} / 有差异 {result.diff_cards}）",
+        f"- cost_modifier 跳过（TAG TEAM 追加费用，ptcd 无对应结构）："
+        f"{result.cost_modifier_skips} 招式",
+        "",
+        "### 豁免分档（如实记录，不算失败）",
+        "",
+        "| 档位 | 卡数 |",
+        "|---|---|",
+    ]
+    for kind in EXEMPTION_KINDS:
+        ids = result.exemptions.get(kind, [])
+        lines.append(f"| {kind} | {len(ids)} |")
+    exempt_total = sum(len(v) for v in result.exemptions.values())
+    lines += [
+        "",
+        f"闭环校验：{result.compared} + {exempt_total} = "
+        f"{result.compared + exempt_total}（应等于 active 总数 {result.total_active}）",
+        "",
+        "## 差异聚类（按 kind）",
+        "",
+        "| kind | 差异条数 | 涉及卡数 |",
+        "|---|---|---|",
+    ]
+    for kind in DIFF_KINDS:
+        ds = by_kind.get(kind, [])
+        lines.append(f"| {kind} | {len(ds)} | {len({d.card_id for d in ds})} |")
+    lines += ["", "## 差异归类（终态四分类，零未知）", ""]
+    cat_notes = {
+        "modeling_ptcd_playable_item": "ptcd 把化石/玩偶/卷轴/Z 水晶等「可上场道具」"
+        "建模为带 hp/retreat/attacks，CN 为纯 trainer 文本——口径差异（预期）",
+        "shared_bridge_clean_print_exists": "同 EN 桥存在零差异 CN 印刷 → 桥正确，"
+        "该卡为简中印刷级修订（对账发现，如实记录）",
+        "shared_bridge_no_clean_print": "同桥无干净印刷 → 桥疑似错配同名异卡"
+        "（人工核销待办）",
+        "single_bridge_mismatch": "单桥名字级成立但印刷级数值不符（人工核销待办）",
+    }
+    lines += ["| 类别 | 卡数 | 含义 |", "|---|---|---|"]
+    for cat in DIFF_CATEGORIES:
+        ids = result.classified.get(cat, [])
+        lines.append(f"| {cat} | {len(ids)} | {cat_notes[cat]} |")
+    classified_total = sum(len(v) for v in result.classified.values())
+    lines += [
+        "",
+        f"归类闭环：{classified_total}（应等于有差异卡数 {result.diff_cards}）",
+        "",
+        "### 归类明细",
+        "",
+    ]
+    for cat in DIFF_CATEGORIES:
+        ids = result.classified.get(cat, [])
+        if not ids:
+            continue
+        lines.append(f"#### {cat}（{len(ids)} 张）")
+        lines.append("")
+        for cid in ids:
+            name_full, name_en, tcgdex_id = result.card_names.get(
+                cid, ("?", None, None)
+            )
+            kinds = sorted({d.kind for d in result.diffs if d.card_id == cid})
+            lines.append(
+                f"- `{cid}` {name_full}（en={name_en}，tcgdex `{tcgdex_id}`）：{','.join(kinds)}"
+            )
+        lines.append("")
+    lines += ["## 差异明细（全量）", ""]
+    for kind in DIFF_KINDS:
+        ds = by_kind.get(kind, [])
+        if not ds:
+            continue
+        lines.append(f"### {kind}（{len(ds)} 条）")
+        lines.append("")
+        for d in ds:
+            lines.append(
+                f"- `{d.card_id}`（tcgdex `{d.tcgdex_id}`）{d.field}：CN=`{d.cn}` vs EN=`{d.en}`"
+            )
+        lines.append("")
+    lines += ["## 豁免清单", ""]
+    for kind in EXEMPTION_KINDS:
+        ids = result.exemptions.get(kind, [])
+        if not ids:
+            continue
+        lines.append(f"### {kind}（{len(ids)} 张）")
+        lines.append("")
+        lines.append("、".join(f"`{c}`" for c in ids))
         lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
