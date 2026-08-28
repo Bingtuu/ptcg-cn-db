@@ -87,6 +87,7 @@
 - 获取方式：L1 监控（`ptcgdb monitor l1`）每日 GET 三页 → 正文提取 + hash 比对 → 变更自动生成提案（SnapshotSeed 超集，被 `legal-apply` 直接消费）；不确定项 needs_manual 不猜测。
 - 快照种子：`config/legality/`（官方赛制页 2026-07-16 版人工逐名核定，`ptcgdb legal-seed` 入库）。
 - **赛事信息核实（2026-08-04，task 028 调研）**：pokemon.cn 赛事页只有公告/报名/规则说明，**无可机读的赛果与卡组数据**——简中结构化赛事源维持 mik.moe 唯一（§1 赛事 API）。
+- **Q&A 供给核实（2026-08-28，task 048 调研）**：官网**无卡级 Q&A 页**（/tcg-rules 枢纽仅 howtoplay+regulation，候选 URL 全 404，WP REST API 登录门控），卡级 Q&A 仅在「宝可梦卡牌会员」小程序（D1 已否决）；事实上的卡级裁决载体 = 「补充说明」类公告文章（如 /tcg/other/20058.html 铁荆棘、/tcg/other/17182.html 气球+球果匠人），由 L1 公告监控 + 勘误草稿闭环（task 047）覆盖增量，历史回扫待拍板（task 048 搁置）。
 
 ## 3. TCGdex（跨语言映射 + 系列对账）
 
