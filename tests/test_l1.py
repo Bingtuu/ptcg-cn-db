@@ -307,3 +307,60 @@ def test_run_l1_news_new_entry(tmp_path):
     assert len(result.proposals) == 1
     doc = yaml.safe_load(result.proposals[0].read_text(encoding="utf-8"))
     assert doc["status"] == "needs_manual"
+
+
+def _run_l1_with_new_news(tmp_path, title: str, href: str):
+    """task 047 辅助：基线后注入一条新公告，返回提案 doc。"""
+    urls = _pages_by_id()
+    mapping = {
+        urls["regulation"].url: REGULATION_HTML,
+        urls["extra"].url: EXTRA_HTML,
+        urls["news"].url: NEWS_HTML,
+    }
+    db_path = _seeded_db(tmp_path)
+    store_dir = tmp_path / "l1"
+    proposals_dir = tmp_path / "proposals"
+    run_l1(_fetcher(mapping), db_path, store_dir, proposals_dir, baseline=True)
+
+    new_item = (
+        '<li class="card__element  card__category--card card__category--card">'
+        f'<a href="{href}"><div class="card__container">'
+        '<div class="card__content">'
+        f'<div class="card__products-title">{title}</div>'
+        '<footer class="card__footer">'
+        '<time class="card__footer--category">Card</time>'
+        '<time class="card__footer--date">2026-08-28</time>'
+        "</footer></div></div></a></li>"
+    )
+    mapping[urls["news"].url] = NEWS_HTML.replace(
+        '<ul class="card-list__body">', '<ul class="card-list__body">' + new_item
+    )
+    result = run_l1(_fetcher(mapping), db_path, store_dir, proposals_dir)
+    assert len(result.proposals) == 1
+    return yaml.safe_load(result.proposals[0].read_text(encoding="utf-8"))
+
+
+def test_run_l1_news_errata_draft(tmp_path):
+    """task 047：勘误类公告 → 提案含 errata_drafts 骨架；人工字段留空不猜。"""
+    href = "https://www.pokemon.cn/tcg/card/88888.html"
+    doc = _run_l1_with_new_news(tmp_path, "关于卡牌文字勘误的公告", href)
+    assert doc["status"] == "needs_manual"
+    drafts = doc["errata_drafts"]
+    assert len(drafts) == 1
+    d = drafts[0]
+    assert d["notice_url"] == href
+    assert d["source_title"] == "关于卡牌文字勘误的公告"
+    # 人工字段一律留空不猜
+    assert d["errata_id"] == ""
+    assert d["card_id"] == ""
+    assert d["effective_from"] is None
+    assert d["corrected_text"] == ""
+
+
+def test_run_l1_news_non_errata_no_draft(tmp_path):
+    """task 047：赛制类公告（未命中勘误关键词）→ 提案不含 errata_drafts。"""
+    doc = _run_l1_with_new_news(
+        tmp_path, "关于标准赛制调整的通知", "https://www.pokemon.cn/tcg/card/99999.html"
+    )
+    assert doc["status"] == "needs_manual"
+    assert not doc.get("errata_drafts")

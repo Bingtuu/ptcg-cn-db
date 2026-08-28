@@ -2,12 +2,13 @@
 
 简中 PTCG 标准环境卡牌数据库。本地 SQLite 卡牌库 + 数据管线 + 更新机制，为下游（规则引擎 / AI 对战模拟 / 胜率统计）提供数据基建。
 
-**权威文档**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.30）——一切设计以它为准。
+**权威文档**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.31）——一切设计以它为准。
 **进展记录**：`STATUS.md`——当前阶段、里程碑、决策日志，开始工作前先读。
 **数据源**：`docs/data-sources.md`——全部数据源的获取方式与端点约定（mik.moe 主源 / 官网赛制页 / TCGdex / ptcd / PokéAPI / pokemon-card.com 抽样核对）。
 
 ## 当前状态
 
+**task 047 ✅（2026-08-28，PRD v1.31，user_version=13 无迁移）——勘误公告监控闭环**：FR-5.3 供给侧——L1 二级关键词 `ERRATA_KEYWORDS` 命中 → needs_manual 提案附 `errata_drafts` 草稿骨架（config/errata yml 同形、人工字段留空不猜）+ `monitor proposals` 草稿条数回显 + `ErrataSeed` 拒空串守卫 + 流程落 `config/errata/README.md`；errata 表 0 行如实保持；1065 测试全绿（1061+4）；支撑批队列：045 ✅ / 046 ✅ / 047 ✅ / 048 官方 Q&A / 049 句级打标待下游 M5，详见 STATUS.md。
 **task 046 ✅（2026-08-28，PRD v1.30，user_version=13 无迁移）——跨源 EN 结构化字段对账**：FR-2.3 规则 6 卡级跨源实装（tcgdex 列表端点无卡级字段实测证伪 → 第二源 = ptcd EN 卡级 JSON raw 144 套零新采集；链路 external_ids(tcgdex) → 套桥+编号归一复用 ja.py；五字段白名单 hp/weakness/resistance/retreat_cost/attacks；ptcd 口径两条：缺 retreatCost=0 费、"Free"=零费跳过；豁免五档 + 差异四分类零未知）；实测 12,304 比对 12,201 一致（99.2%）/ 103 差异全归类（建模差异 43 + 简中印刷修订 22 + 人工核销待办 38）/ 豁免 116；交付 `mapping/en_reconcile.py` + CLI `reconcile-en` + energy_types.yml en 键；1061 测试全绿（1031+30）；报告 `reports/reconcile-en-20260828.md`；支撑批队列：045 ✅ / 046 ✅ / 047 勘误闭环 / 048 官方 Q&A / 049 句级打标待下游 M5，详见 STATUS.md。
 **task 045 ✅（2026-08-28，PRD v1.29，user_version=13 无迁移）——SDK 卡组查询接口 + legal_at 缓存**：ABC 追加 `get_deck(deck_id)` / `list_decks(*, archetype, date_from, date_to, mapping_status="full", limit, offset)` + frozen 模型 `Deck`/`DeckAppearance`（cards 复用 `DeckCardRecord`；player_ref 不出 SDK；默认只回 full 封装统计口径、None 放开；窗口=出战赛事日期闭区间、NULL 不进窗口；deck_id 升序稳定分页；未映射 raw_name 保真不猜）；DbBackend SQL 直查 + JsonlBackend 懒加载既有四件 JSONL（导出契约零变更）；legal_at/effective_text/validate_deck 实例级缓存（接口零变化，实例=只读快照，L0 增量后重开）；实库冒烟 SDK vs 裸 SQL 全对平（沙奈朵 full 158、窗口 7 月 681、decks 2,720）、legal_at 1.216s→缓存命中 0.0000s；1031 测试全绿（1019+12）；支撑批队列：045 ✅ / 046 跨源 EN 对账 / 047 勘误闭环 / 048 官方 Q&A / 049 句级打标待下游 M5，详见 STATUS.md。
 **task 044 ✅（2026-08-28，PRD v1.28，user_version=13 无迁移）——下游 battlefrontier 支撑批开工**：FR-2.3 新增扩展规则「text_raw 逐字保真」（全库逐字比对非抽样、ingest 变换链零变换核实、双空豁免同规则 1、raw_dir 缺失跳过）；实测 12,420 张 failures=0（豁免 235）、validate ~21s；1019 测试全绿（1013+6）；支撑批队列 tasks/045~049 已立项（045 SDK 卡组接口+缓存 / 046 跨源 EN 对账 / 047 勘误闭环 / 048 官方 Q&A / 049 句级打标待下游 M5），详见 STATUS.md。

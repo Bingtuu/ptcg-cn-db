@@ -196,3 +196,56 @@ def test_apply_then_mark_applied(tmp_path):
     # list_proposals 反映新状态
     rows = list_proposals(proposals_dir)
     assert rows[0]["status"] == "applied"
+
+
+# ---- task 047：勘误提案草稿闭环 ----
+
+
+def test_list_proposals_errata_drafts_count(tmp_path):
+    """task 047：list_proposals 回显勘误草稿条数（无草稿回 0）。"""
+    proposals_dir = tmp_path / "proposals"
+    _write_proposal(proposals_dir, "20260801_standard-2026-09-16.yaml", _proposal_doc())
+    _write_proposal(proposals_dir, "20260802_manual.yaml", {
+        **_proposal_doc("needs_manual"),
+        "snapshot_id": "manual-2026-08-02",
+        "errata_drafts": [{
+            "errata_id": "", "card_id": "", "effective_from": None,
+            "corrected_text": "", "notice_url": "https://www.pokemon.cn/tcg/card/88888.html",
+            "source_title": "关于卡牌文字勘误的公告",
+        }],
+    })
+    rows = list_proposals(proposals_dir)
+    by_id = {r["snapshot_id"]: r for r in rows}
+    assert by_id["manual-2026-08-02"]["errata_drafts"] == 1
+    assert by_id["standard-2026-09-16"]["errata_drafts"] == 0
+
+
+def test_errata_draft_skeleton_roundtrip(tmp_path):
+    """task 047 全链路：草稿骨架未填不可导入（ErrataSeed 拒空），人工填写后 legal-errata 消费。"""
+    import pytest
+
+    from ptcgdb.legal.errata import ErrataSeed
+
+    db_path = _db_with_card(tmp_path)
+    skeleton = {  # 与 l1 提案 errata_drafts 骨架同形
+        "errata_id": "", "card_id": "", "effective_from": None,
+        "corrected_text": "", "notice_url": "https://www.pokemon.cn/tcg/card/88888.html",
+    }
+    with pytest.raises(ValueError):
+        ErrataSeed.model_validate(skeleton)
+    # 只填日期、corrected_text 仍空 → 同样拒（留空不猜，守卫人工字段）
+    with pytest.raises(ValueError):
+        ErrataSeed.model_validate({**skeleton, "errata_id": "e1", "card_id": "c",
+                                   "effective_from": "2026-08-28"})
+    filled = {
+        **skeleton,
+        "errata_id": "2026-08-28-csm1ac-001",
+        "card_id": f"{SET_ID}-001",
+        "effective_from": "2026-08-28",
+        "corrected_text": "【勘误】正确文本",
+    }
+    config_dir = tmp_path / "errata"
+    _write_errata(config_dir, [filled])
+    result = import_errata(db_path, config_dir)
+    assert result.imported == ["2026-08-28-csm1ac-001"]
+    assert result.warnings == []

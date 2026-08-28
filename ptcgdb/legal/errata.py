@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -23,14 +23,18 @@ DEFAULT_ERRATA_DIR = Path("config/errata")
 
 
 class ErrataSeed(BaseModel):
-    """一条勘误的种子数据（对应 errata 一行）。"""
+    """一条勘误的种子数据（对应 errata 一行）。
+
+    errata_id/card_id/corrected_text 拒空串（task 047）：L1 提案的 errata_drafts
+    草稿骨架人工字段留空，守卫「留空不猜」——未填写的草稿无法被误导入。
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    errata_id: str
-    card_id: str
+    errata_id: str = Field(min_length=1)
+    card_id: str = Field(min_length=1)
     effective_from: date
-    corrected_text: str
+    corrected_text: str = Field(min_length=1)
     notice_url: str | None = None
 
 

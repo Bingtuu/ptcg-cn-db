@@ -35,6 +35,7 @@ def list_proposals(proposals_dir: Path) -> list[dict[str, Any]]:
             "status": doc.get("status", "unknown"),
             "detected_at": doc.get("detected_at"),
             "parse_errors": doc.get("parse_errors") or [],
+            "errata_drafts": len(doc.get("errata_drafts") or []),  # task 047 勘误草稿条数
         })
     return rows
 

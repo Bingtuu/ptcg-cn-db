@@ -1427,6 +1427,11 @@ def monitor_proposals(
         )
         for err in r["parse_errors"]:
             typer.echo(f"    ! {err}")
+        if r.get("errata_drafts"):
+            typer.echo(
+                f"    勘误草稿 ×{r['errata_drafts']}"
+                "（提案内 errata_drafts 骨架，人工填写后移入 config/errata/ → legal-errata）"
+            )
 
 
 @monitor_app.command("tourneys")

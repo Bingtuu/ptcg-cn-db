@@ -5,6 +5,8 @@
 
 提案 = SnapshotSeed 超集：顶层即 SnapshotSeed 字段，另加 proposal_id/detected_at/
 status/diff/parse_errors/raw_excerpt（Pydantic extra=ignore，apply_snapshot 直接消费）。
+公告命中勘误类关键词（ERRATA_KEYWORDS）时另附 errata_drafts 草稿骨架（task 047，
+config/errata/*.yml 同形，人工字段留空，ErrataSeed 拒空守卫未填草稿不可导入）。
 解析不确定的变更 status=needs_manual、快照字段沿用当前值——绝不猜测性自动 apply。
 
 实测页面结构（2026-08-01 recon，fixture 见 tests/fixtures/l1/）：
@@ -36,6 +38,9 @@ OFFICIAL_BASE = "https://www.pokemon.cn"
 
 # 公告标题命中这些关键词时生成 needs_manual 提案（否则仅事件通知）
 NEWS_KEYWORDS = re.compile(r"赛制|禁卡|禁用|勘误|规则|调整")
+# 其中命中勘误类关键词时，提案追加 errata_drafts 草稿骨架（task 047，FR-5.3 供给侧闭环；
+# errata_id/card_id/effective_from/corrected_text 一律留空，人工核对公告后填写）
+ERRATA_KEYWORDS = re.compile(r"勘误|补充说明|订正|更正")
 
 BLOCK_TAGS = {"h3", "h4", "p", "li", "dt", "dd"}
 SKIP_TAGS = {"script", "style", "noscript"}
@@ -419,9 +424,25 @@ def _diff_fields(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
     return diff
 
 
+def _errata_drafts(entries: list[NewsEntry]) -> list[dict[str, Any]]:
+    """勘误类公告 → errata 种子草稿骨架（人工字段留空不猜，格式同 config/errata/*.yml）。"""
+    return [
+        {
+            "errata_id": "",
+            "card_id": "",
+            "effective_from": None,
+            "corrected_text": "",
+            "notice_url": e.href,
+            "source_title": e.title,
+        }
+        for e in entries
+    ]
+
+
 def _write_proposal(
     proposals_dir: Path, seed_fields: dict[str, Any], *, source_url: str,
     status: str, diff: dict[str, Any], parse_errors: list[str], raw_excerpt: str,
+    errata_drafts: list[dict[str, Any]] | None = None,
 ) -> Path:
     today = date.today()
     doc = {
@@ -434,6 +455,8 @@ def _write_proposal(
         "parse_errors": parse_errors,
         "raw_excerpt": raw_excerpt[:1000],
     }
+    if errata_drafts:
+        doc["errata_drafts"] = errata_drafts
     proposals_dir = Path(proposals_dir)
     proposals_dir.mkdir(parents=True, exist_ok=True)
     path = proposals_dir / f"{today:%Y%m%d}_{seed_fields['snapshot_id']}.yaml"
@@ -513,6 +536,7 @@ def _handle_regulation_change(
 def _handle_stub_change(
     db_path: Path, proposals_dir: Path, target: PageTarget, note: str,
     serialized: str, emit: Callable[[str, dict[str, Any]], None], result: L1Result,
+    errata_drafts: list[dict[str, Any]] | None = None,
 ) -> None:
     """extra/news 变更：无法自动结构化 → needs_manual 提案（字段沿用当前快照）。"""
     engine = create_engine(f"sqlite:///{db_path}")
@@ -526,6 +550,7 @@ def _handle_stub_change(
     path = _write_proposal(
         proposals_dir, fields, source_url=target.url, status="needs_manual",
         diff={}, parse_errors=[note], raw_excerpt=serialized,
+        errata_drafts=errata_drafts,
     )
     result.proposals.append(path)
     emit("proposal", {"page_id": target.page_id, "status": "needs_manual", "path": str(path)})
@@ -598,10 +623,12 @@ def run_l1(
             flagged = [e for e in new_entries if NEWS_KEYWORDS.search(e.title)]
             if flagged:
                 titles = "；".join(f"{e.title}（{e.href}）" for e in flagged)
+                errata_flagged = [e for e in flagged if ERRATA_KEYWORDS.search(e.title)]
                 _handle_stub_change(
                     db_path, proposals_dir, target,
                     f"公告命中赛制关键词，需人工核对：{titles}",
                     serialized, emit, result,
+                    errata_drafts=_errata_drafts(errata_flagged) or None,
                 )
         _write_store(store_dir, target.page_id, target.url, digest, serialized, entries)
     return result
