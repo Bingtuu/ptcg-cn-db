@@ -1,4 +1,4 @@
-"""task 006 测试：FR-2.3 六条规则正负例 + CLI 冒烟（合成数据，零网络）。
+"""task 006 测试：FR-2.3 校验规则正负例 + CLI 冒烟（合成数据，零网络）。
 
 全部用 tmp_path 建独立小 DB + 合成 raw JSON（write_raw 保持 _meta hash 有效）；
 绝不允许联网，绝不碰 data/ptcg-cn.db 与 data/raw/。
@@ -101,7 +101,7 @@ def make_raw_dir(tmp_path: Path, count: int = CARD_COUNT, cards_num: int | None 
 
 @pytest.fixture()
 def db_env(tmp_path):
-    """干净环境：5 张卡入库为 draft，六条规则应全过。"""
+    """干净环境：5 张卡入库为 draft，全部规则应全过。"""
     raw_dir = make_raw_dir(tmp_path)
     db_path = tmp_path / "test.db"
     result = ingest_set(raw_dir, SET_ID, db_path)
@@ -123,7 +123,7 @@ def mutate_card(db_path: Path, card_id: str, **changes) -> None:
     engine.dispose()
 
 
-# ---- 干净环境：六条规则全过 ----
+# ---- 干净环境：全部规则全过 ----
 
 
 def test_all_rules_pass_on_clean_ingest(db_env):
@@ -132,6 +132,7 @@ def test_all_rules_pass_on_clean_ingest(db_env):
     assert [r.rule for r in results] == [
         "必填非空", "枚举合法", "赛制标记格式", "HP 数值范围", "evolves_from 外键",
         "能量成本合法且保序", "系列对账", "V-UNION 完整性", "抽样比对",
+        "text_raw 逐字保真",
     ]
     assert all(r.passed for r in results)
     # 对账表：5 == 5 + 0
@@ -378,6 +379,90 @@ def test_sampling_mismatch_fails(db_env):
     assert any(
         f["card_id"] == f"{SET_ID}-001" and f["field"] == "name_full" for f in res.failures
     )
+
+
+# ---- text_raw 逐字保真（task 044，FR-2.3 扩展规则）----
+
+
+def _rule_or_none(results: list[RuleResult], name: str) -> RuleResult | None:
+    return next((r for r in results if r.rule == name), None)
+
+
+def test_text_raw_verbatim_passes_on_clean_ingest(db_env):
+    raw_dir, db_path = db_env
+    res = _rule_or_none(
+        run_validations(db_path, set_id=SET_ID, raw_dir=raw_dir), "text_raw 逐字保真"
+    )
+    assert res is not None, "规则未接入 run_validations"
+    assert res.passed and res.checked == CARD_COUNT and not res.failures
+
+
+def test_text_raw_verbatim_detects_db_mutation(db_env):
+    """DB 侧丢字（神奇糖果缺右括号类缺陷）必须被检出。"""
+    raw_dir, db_path = db_env
+    mutate_card(db_path, f"{SET_ID}-001", text_raw="卡面原文00")
+    res = _rule_or_none(
+        run_validations(db_path, set_id=SET_ID, raw_dir=raw_dir), "text_raw 逐字保真"
+    )
+    assert res is not None and not res.passed
+    assert any(
+        f["card_id"] == f"{SET_ID}-001" and f["field"] == "text_raw" for f in res.failures
+    )
+
+
+def test_text_raw_verbatim_detects_raw_change(db_env):
+    """raw description 与库内不一致同样检出（双向逐字）。"""
+    raw_dir, db_path = db_env
+    payload = card_payload("002")
+    payload["data"]["description"] = "被篡改的卡面原文"
+    write_raw(
+        raw_dir / "mikmoe" / SET_ID / "002.json", payload, source="mik_moe", force=True
+    )
+    res = _rule_or_none(
+        run_validations(db_path, set_id=SET_ID, raw_dir=raw_dir), "text_raw 逐字保真"
+    )
+    assert res is not None and not res.passed
+    assert any(f["card_id"] == f"{SET_ID}-002" for f in res.failures)
+
+
+def test_text_raw_verbatim_empty_both_exempt(tmp_path):
+    """text_raw 与 raw description 双空 = 源数据缺失豁免（同规则 1 口径），不算失败。"""
+    raw_dir = make_raw_dir(tmp_path)
+    payload = card_payload("001")
+    payload["data"]["description"] = ""
+    write_raw(
+        raw_dir / "mikmoe" / SET_ID / "001.json", payload, source="mik_moe", force=True
+    )
+    db_path = tmp_path / "test.db"
+    result = ingest_set(raw_dir, SET_ID, db_path)
+    assert not result.skipped
+    res = _rule_or_none(
+        run_validations(db_path, set_id=SET_ID, raw_dir=raw_dir), "text_raw 逐字保真"
+    )
+    assert res is not None and res.passed
+    assert res.note and "豁免" in res.note
+
+
+def test_text_raw_verbatim_raw_missing_fails(db_env):
+    raw_dir, db_path = db_env
+    (raw_dir / "mikmoe" / SET_ID / "003.json").unlink()
+    res = _rule_or_none(
+        run_validations(db_path, set_id=SET_ID, raw_dir=raw_dir), "text_raw 逐字保真"
+    )
+    assert res is not None and not res.passed
+    assert any(
+        f["card_id"] == f"{SET_ID}-003" and f["field"] == "raw" for f in res.failures
+    )
+
+
+def test_text_raw_verbatim_skipped_without_raw_dir(db_env):
+    """raw_dir 缺失时跳过（与规则 3/6 一致），不算失败。"""
+    raw_dir, db_path = db_env
+    res = _rule_or_none(
+        run_validations(db_path, set_id=SET_ID, raw_dir=None), "text_raw 逐字保真"
+    )
+    assert res is not None and res.passed and res.checked == 0
+    assert res.note and "跳过" in res.note
 
 
 # ---- 报告渲染 ----

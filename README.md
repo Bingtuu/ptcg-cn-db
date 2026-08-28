@@ -7,8 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Status](https://img.shields.io/badge/Status-Phase4·统计深化✅(043_parquet+sim契约)-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.27-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-1013%20passed-success.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.28-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-1019%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -71,7 +71,7 @@ ptcgdb scrape jp-shells && ptcgdb scrape jp-decks    # JP 通道：聚合站壳 
 ptcgdb ingest-jp                                     # JP 赛事入库（name_ja 名字链映射 + 同组裁决）
 ptcgdb ingest --set CSV10C                     # 卡牌入库（raw → draft）
 ptcgdb ingest-tourneys                         # 赛事入库（60 张质量门）
-ptcgdb validate && ptcgdb activate             # FR-2.3 六规则校验 → active
+ptcgdb validate && ptcgdb activate             # FR-2.3 校验（含 text_raw 逐字保真）→ active
 
 # ── 合法性与卡组校验 ──
 ptcgdb legal --date 2026-08-01 --format standard   # 某日期的合法卡池（standard 5,320 / open 12,413）

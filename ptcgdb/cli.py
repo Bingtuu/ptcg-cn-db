@@ -95,7 +95,7 @@ def validate(
     raw_dir: Path = DEFAULT_RAW_DIR,
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
-    """校验：跑 FR-2.3 六条规则并落 Markdown 报告；任一规则失败退出码非零。"""
+    """校验：跑 FR-2.3 全部规则并落 Markdown 报告；任一规则失败退出码非零。"""
     try:
         results = run_validations(db_path, set_id=set_id, raw_dir=raw_dir)
     except ValueError as exc:

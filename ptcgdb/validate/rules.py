@@ -1,7 +1,9 @@
-"""FR-2.3 六条校验规则（draft→active 的阻断门槛）。
+"""FR-2.3 校验规则集（draft→active 的阻断门槛）。
 
 任一规则失败即阻断并出报告（PRD FR-2.3）。规则 1/2/4/5 纯库内复核；
-规则 3/6 需要 raw 目录做 DB vs raw 复核（raw 层只读，经 read_raw 校验 hash）。
+能量保序/抽样比对/text_raw 逐字保真需要 raw 目录做 DB vs raw 复核
+（raw 层只读，经 read_raw 校验 hash）。text_raw 逐字保真（task 044，
+v1.28）为全库逐字比对，非抽样。
 
 与 PRD 的偏差（task 006）：PRD 规则 6 原文为"与降级源抽样比对"，D1 后 M1
 仅有 mik.moe 单源，本期以 DB vs raw 同源自验替代，报告（report.py）如实注明；
@@ -459,6 +461,49 @@ _HP_MIN = 10
 _HP_MAX = 340
 
 
+def check_text_raw_verbatim(
+    cards: list[Card], raw_index: dict[tuple[str, str], Path] | None
+) -> RuleResult:
+    """text_raw vs raw description 全库逐字比对（task 044，FR-2.3 扩展）。
+
+    ingest 变换链已固化为零变换（ingest.py：`text_raw = data.get("description")
+    or ""`），故任何不一致 = 管线丢失或源变更缺陷。规则 6 只抽样且不比
+    text_raw，本规则全库逐字兜底。raw_dir 缺失（raw_index=None）时跳过，
+    与规则 3/6 一致。
+
+    源数据缺失豁免（同规则 1 口径）：text_raw 与 raw description 双空不算
+    失败，记 note。
+    """
+    res = RuleResult(rule="text_raw 逐字保真")
+    if raw_index is None:
+        res.note = "未提供 raw_dir，规则跳过"
+        return res
+    source_missing = 0
+    for c in cards:
+        res.checked += 1
+        raw_path = raw_index.get((c.set_id, c.number))
+        raw = read_raw(raw_path) if raw_path else None
+        if raw is None:
+            res.fail(card_id=c.card_id, field="raw", note="raw 缺失或 hash 无效，无法比对")
+            continue
+        desc = (raw.get("data") or {}).get("description") or ""
+        if not c.text_raw.strip() and not desc.strip():
+            source_missing += 1
+            continue
+        if c.text_raw == desc:
+            continue
+        res.fail(
+            card_id=c.card_id,
+            field="text_raw",
+            db=c.text_raw,
+            raw=desc,
+            note="text_raw 与 raw description 不逐字一致",
+        )
+    if source_missing:
+        res.note = f"源数据缺失豁免 {source_missing} 张（text_raw 与 raw description 双空）"
+    return res
+
+
 def check_regulation_mark_format(cards: list[Card]) -> RuleResult:
     """规则 2 扩展：赛制标记格式校验（单个大写字母）。"""
     res = RuleResult(rule="赛制标记格式", checked=len(cards))
@@ -506,7 +551,7 @@ def run_validations(
     raw_dir: Path | None = None,
     config_dir: Path | None = None,
 ) -> list[RuleResult]:
-    """对指定系列（缺省全部）按 FR-2.3 顺序跑六条规则。"""
+    """对指定系列（缺省全部）按 FR-2.3 跑全部校验规则。"""
     vocab_dir = (Path(config_dir) / "vocabularies") if config_dir else fields.VOCAB_DIR
     vocabs = _load_vocabs(vocab_dir)
     engine = create_engine(f"sqlite:///{db_path}")
@@ -542,6 +587,7 @@ def run_validations(
             check_reconciliation(sets, cards, raw_dir),
             check_vunion(cards, relations),
             check_sampling(cards, raw_dir, raw_index),
+            check_text_raw_verbatim(cards, raw_index),
         ]
     engine.dispose()
     return results

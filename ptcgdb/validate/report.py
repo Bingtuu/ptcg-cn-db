@@ -43,7 +43,7 @@ def render_report(
         f"- 生成时间：{ts.isoformat()}",
         f"- 数据库：`{db_path}`",
         f"- raw 目录：`{raw_dir}`",
-        f"- 总结论：{'六条规则全部通过' if all_passed else '存在失败规则，阻断 activate'}",
+        f"- 总结论：{'全部规则通过' if all_passed else '存在失败规则，阻断 activate'}",
         "",
         "> 偏差说明：PRD FR-2.3 规则 6 原文为「与降级源抽样比对」；D1 后 M1 仅有",
         "> mik.moe 单源，本报告规则 6 为 DB vs raw 同源自验，降级源比对待 Phase 2 补齐。",
