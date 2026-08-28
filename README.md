@@ -7,8 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Status](https://img.shields.io/badge/Status-Phase4·统计深化✅(043_parquet+sim契约)-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.28-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-1019%20passed-success.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.29-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-1031%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -27,7 +27,7 @@
 - **📊 可复算的统计三指标 + 对阵矩阵** —— 加权出场率 WUR / 胜率 WR（逐局战绩与 top-cut 转化率两层口径，**镜像剔除已实装**：`--mirror exclude` 仅消费 pairings 覆盖赛事逐局判定）/ 加权胜率 WWS（贝叶斯收缩）/ **matchup 对阵矩阵**（archetype×archetype 逐局胜率长表，`stats matchup`）；**公式只在 canonical SQL 文件里**（单一事实源），权重输入全量落库，任何人都能用 SQL 原样重放官方数字
 - **🔍 像写 SQL 一样查库** —— `ptcgdb query` 只读 ad-hoc SQL（mode=ro，拒写操作）；导出 DB 自带统计物化视图，口径词表 hash 版本化进 meta
 - **🌏 三语卡名映射** —— 简中卡 99.3% 挂英文桥（12,337 张），经 TCGdex + pokemon-tcg-data + PokéAPI 链路 + 人工词表种子填充日文名 11,046 张；映射来源经 `external_ids` 体系逐条可溯，pokemon-card.com 官方抽样 31 张核对一致率 100%
-- **🔌 规则语义一等公民的 SDK** —— 合法性：`legal_at` / `effective_text`；卡组校验：`validate_deck`（结构化违规列表，banned/not_legal 互斥）；统计：`stats_usage` / `stats_winrate` / `stats_wws`；`open_db` / `open_jsonl` 双后端同一接口、契约测试保一致
+- **🔌 规则语义一等公民的 SDK** —— 合法性：`legal_at` / `effective_text`；卡组校验：`validate_deck`（结构化违规列表，banned/not_legal 互斥）；统计：`stats_usage` / `stats_winrate` / `stats_wws`；**卡组查询：`get_deck` / `list_decks`**（对局池批量拉取，默认只回 full 卡组）；`open_db` / `open_jsonl` 双后端同一接口、契约测试保一致，合法性判定实例级缓存（legal_at 重复调用近零耗时）
 - **📦 十四件套导出契约** —— `manifest.json` + 八份 JSONL（cards / sets / relations + 赛事五表含 pairings）+ `cards.parquet`（DuckDB 直读免灌库）+ `legality.json` + 只读 SQLite + `schema.md` + `checksums.sha256`，字段只加不删；双轨版本化（日历版本管数据，SemVer 管 schema），对齐 MTGJSON/Scryfall 惯例
 - **🔄 分级自动更新** —— L0 新卡每日增量入库、L1 赛制页变更自动生成提案、L2 勘误人工维护；目标新包发售 30 分钟内完成更新
 - **🛡️ 原文保真** —— `text_raw` 逐字保留绝不规范化，原文与派生字段严格分层；DB vs raw 同源自验 + 三清单日志保证数据质量
@@ -51,7 +51,7 @@ ptcgdb init-db           # 建库 + 全部迁移（默认 data/ptcg-cn.db）
 开发自检：
 
 ```bash
-python -m pytest -q      # 1013 测试（全量约 4 分钟）
+python -m pytest -q      # 1031 测试（全量约 4 分钟）
 ruff check .
 ```
 
@@ -109,6 +109,8 @@ usage = db.stats_usage(window_days=90)        # -> StatsResult[CardStat]，meta 
 arch = db.stats_usage(granularity="archetype", date_from="2025-01-01")   # 卡组级：什么卡组强
 wr = db.stats_winrate(layer="a", mirror="exclude", basis="intl_aligned", date_from="2025-04-01")  # 逐局 + 镜像剔除
 matchup = db.stats_matchup(basis="intl_aligned", date_from="2025-04-01")   # matchup 对阵矩阵
+decks = db.list_decks(archetype="沙奈朵", date_from="2026-07-01")   # 对局池批量拉取（默认只回 full 卡组）
+deck = db.get_deck("mik_moe:607870")                # 单卡组：内容 + 60 张卡表 + 出战史（DeckAppearance）
 boss = db.stats_card("老大的指令")             # 单卡 drilldown（按赛事/按系列）
 cards = db.search_cards(name="喵喵", marks=("G", "H", "I"))
 report = db.validate_deck(my_deck, date="2026-08-01", format="standard")   # -> DeckReport（结构化违规列表）

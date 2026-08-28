@@ -18,6 +18,18 @@ from ptcgdb.orm import (
     NameGroup,
     Set,
 )
+from ptcgdb.orm import (
+    Deck as DeckORM,
+)
+from ptcgdb.orm import (
+    DeckAppearance as DeckAppearanceORM,
+)
+from ptcgdb.orm import (
+    DeckCard as DeckCardORM,
+)
+from ptcgdb.orm import (
+    Tournament as TournamentORM,
+)
 from ptcgdb.sdk import open_db, open_jsonl
 
 
@@ -89,6 +101,50 @@ def db_path(tmp_path):
             source_url="test", created_at=datetime.now(UTC),
         ))
         s.add(Meta(key="data_version", value="v20260801.1"))
+        # —— 赛事卡组 fixture（task 045）：两赛事三卡组 ——
+        for tid, name, d in (
+            ("mik_moe:100", "测试赛事A", date(2026, 7, 20)),
+            ("mik_moe:101", "测试赛事B", date(2026, 8, 10)),
+        ):
+            s.add(TournamentORM(
+                tournament_id=tid, source="mik_moe", series_id=None, name=name,
+                tier=None, tier_coef=None, division="master", date=d, location=None,
+                participant_count=100, topcut_slots=8, format="standard",
+                regulation_mark=None, format_end=None, env=None, is_qual=False,
+                is_team=False, official_url=None, fetched_at=datetime.now(UTC),
+            ))
+        for did, arch, status, ratio in (
+            ("mik_moe:1", "沙奈朵", "full", 1.0),
+            ("mik_moe:2", "沙奈朵", "partial", 0.9),
+            ("mik_moe:3", "密勒顿", "full", 1.0),
+        ):
+            s.add(DeckORM(
+                deck_id=did, archetype_id=None, archetype_name=arch, deck_code=None,
+                mapping_status=status, mapped_ratio=ratio, source="mik_moe",
+                fetched_at=datetime.now(UTC),
+            ))
+        for did, cid, count, raw_name, scope in (
+            ("mik_moe:1", "T1-001", 4, "新叶喵", "pokemon"),
+            ("mik_moe:1", "T1-003", 2, "高级球", "other"),
+            ("mik_moe:2", "T1-002", 2, "魔幻假面喵ex", "pokemon"),
+            ("mik_moe:2", None, 4, "未知卡X", "other"),
+            ("mik_moe:3", "T1-001", 4, "新叶喵", "pokemon"),
+        ):
+            s.add(DeckCardORM(
+                deck_id=did, card_id=cid, count=count, raw_name=raw_name,
+                stat_scope=scope,
+            ))
+        for did, tid, rank, points in (
+            ("mik_moe:1", "mik_moe:100", 1, 10.0),
+            ("mik_moe:1", "mik_moe:101", 3, 4.0),
+            ("mik_moe:2", "mik_moe:100", 2, 6.0),
+            ("mik_moe:3", "mik_moe:101", 1, 10.0),
+        ):
+            s.add(DeckAppearanceORM(
+                deck_id=did, tournament_id=tid, rank=rank, points=points,
+                player_ref=None, record_wins=None, record_losses=None,
+                record_ties=None, source="mik_moe", fetched_at=datetime.now(UTC),
+            ))
         s.commit()
     engine.dispose()
     return path
@@ -219,3 +275,102 @@ class TestDualBackendContract:
         db, jl = backends
         for cid, d in [("T0-001", D), ("T0-001", date(2026, 2, 1)), ("T1-001", D)]:
             assert db.effective_text(cid, d) == jl.effective_text(cid, d)
+
+
+# ---- 赛事卡组查询（task 045，v1.29，双后端同一契约）----
+
+
+class TestDeckQuery:
+    def test_get_deck(self, backends):
+        db, _ = backends
+        deck = db.get_deck("mik_moe:1")
+        assert deck is not None
+        assert deck.archetype_name == "沙奈朵" and deck.mapping_status == "full"
+        assert deck.model_config.get("frozen") is True
+        assert sum(c.count for c in deck.cards) == 6
+        assert {c.card_id for c in deck.cards} == {"T1-001", "T1-003"}
+        assert {a.tournament_id for a in deck.appearances} == {"mik_moe:100", "mik_moe:101"}
+        dates = {a.tournament_id: a.tournament_date for a in deck.appearances}
+        assert dates["mik_moe:100"] == date(2026, 7, 20)
+        assert dates["mik_moe:101"] == date(2026, 8, 10)
+
+    def test_get_deck_missing(self, backends):
+        db, _ = backends
+        assert db.get_deck("mik_moe:999") is None
+
+    def test_get_deck_unmapped_card_preserved(self, backends):
+        """card_id NULL 未映射条目不丢不猜，raw_name 保真（FR-9.2）。"""
+        db, _ = backends
+        deck = db.get_deck("mik_moe:2")
+        miss = [c for c in deck.cards if c.card_id is None]
+        assert len(miss) == 1 and miss[0].raw_name == "未知卡X" and miss[0].count == 4
+
+    def test_list_decks_default_full_only(self, backends):
+        """默认 mapping_status='full' 封装统计口径（FR-9.1）。"""
+        db, _ = backends
+        assert {d.deck_id for d in db.list_decks()} == {"mik_moe:1", "mik_moe:3"}
+
+    def test_list_decks_archetype_filter(self, backends):
+        db, _ = backends
+        assert [d.deck_id for d in db.list_decks(archetype="沙奈朵")] == ["mik_moe:1"]
+
+    def test_list_decks_window(self, backends):
+        """窗口 = 存在出战条目其赛事日期 ∈ 闭区间。"""
+        db, _ = backends
+        assert {d.deck_id for d in db.list_decks(date_from="2026-08-01")} == {
+            "mik_moe:1", "mik_moe:3",
+        }
+        assert {d.deck_id for d in db.list_decks(date_to="2026-07-31")} == {"mik_moe:1"}
+        assert db.list_decks(date_from="2026-08-11") == []
+
+    def test_list_decks_mapping_status_none_disables_filter(self, backends):
+        db, _ = backends
+        assert {d.deck_id for d in db.list_decks(mapping_status=None)} == {
+            "mik_moe:1", "mik_moe:2", "mik_moe:3",
+        }
+
+    def test_list_decks_pagination_stable(self, backends):
+        db, _ = backends
+        all_ids = [d.deck_id for d in db.list_decks(mapping_status=None)]
+        assert all_ids == sorted(all_ids)
+        page = db.list_decks(mapping_status=None, limit=1, offset=1)
+        assert [d.deck_id for d in page] == [all_ids[1]]
+
+    def test_dual_backend_contract(self, backends):
+        """A8 扩展：get_deck / list_decks 双后端返回逐字段一致。"""
+        db, jl = backends
+        for did in ("mik_moe:1", "mik_moe:2", "mik_moe:3", "mik_moe:999"):
+            assert db.get_deck(did) == jl.get_deck(did)
+        for kw in (
+            {},
+            {"archetype": "沙奈朵"},
+            {"date_from": "2026-08-01"},
+            {"date_to": "2026-07-31"},
+            {"mapping_status": None},
+            {"mapping_status": "partial"},
+            {"mapping_status": None, "limit": 2},
+        ):
+            assert db.list_decks(**kw) == jl.list_decks(**kw), kw
+
+
+class TestLegalityCache:
+    """task 045：实例级缓存——重复调用命中同一对象，缓存不改变语义。"""
+
+    def test_legal_at_cached_per_format_date(self, backends):
+        for be in backends:
+            assert be.legal_at(D, "standard") is be.legal_at(D, "standard")
+            assert be.legal_at(D, "standard") is not be.legal_at(D, "open")
+            assert be.legal_at(D, "standard") is not be.legal_at(date(2026, 2, 1), "standard")
+
+    def test_effective_text_consistent_after_pool_cached(self, backends):
+        db, _ = backends
+        db.legal_at(D, "standard")  # 先触发缓存
+        assert db.effective_text("T0-001", D).text == "高级球勘误文本"
+        assert db.effective_text("T0-001", D).text == "高级球勘误文本"
+
+    def test_validate_deck_consistent_after_pool_cached(self, backends):
+        db, _ = backends
+        db.legal_at(D, "standard")
+        report = db.validate_deck(["T1-001"] * 60, D, "standard")
+        assert not report.ok  # 60 张同名超 deck_limit=4，缓存不改变判定
+        assert any(v.kind == "name_limit" for v in report.violations)

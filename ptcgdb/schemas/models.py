@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ptcgdb.schemas.tournaments import DeckCardRecord
+
 
 class AttackCost(BaseModel):
     """招式能量费用单元，保序组成 cost 数组。"""
@@ -328,3 +330,40 @@ class MatchupResult(BaseModel):
 
     meta: dict[str, Any]
     data: list[MatchupStat]
+
+
+class DeckAppearance(BaseModel):
+    """出战条目视图（SDK get_deck/list_decks 返回，v1.29，task 045）。
+
+    不含 player_ref（隐私最小化延续 FR-9.5）；tournament_date 联 tournaments 冗余。
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tournament_id: str
+    rank: int
+    points: float | None
+    record_wins: int | None
+    record_losses: int | None
+    record_ties: int | None
+    tournament_date: date | None
+
+
+class Deck(BaseModel):
+    """卡组内容 + 卡表 + 出战史（SDK get_deck/list_decks 返回，v1.29，task 045）。
+
+    card_id NULL 未映射条目不丢不猜，raw_name 保真（FR-9.2）；
+    list_decks 默认 mapping_status='full'（封装统计口径，FR-9.1）。
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    deck_id: str
+    archetype_id: str | None
+    archetype_name: str | None
+    deck_code: str | None
+    mapping_status: str
+    mapped_ratio: float | None
+    source: str
+    cards: list[DeckCardRecord]
+    appearances: list[DeckAppearance]

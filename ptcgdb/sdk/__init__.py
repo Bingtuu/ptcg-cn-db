@@ -26,11 +26,32 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.legal.deck import validate_deck as _deck_validate
 from ptcgdb.legal.engine import build_pool, resolve_text, select_snapshot
-from ptcgdb.orm import Card, CardNameGroup, Errata, LegalitySnapshot, Meta, Set
+from ptcgdb.orm import (
+    Card,
+    CardNameGroup,
+    Errata,
+    LegalitySnapshot,
+    Meta,
+    Set,
+)
+from ptcgdb.orm import (
+    Deck as DeckORM,
+)
+from ptcgdb.orm import (
+    DeckAppearance as DeckAppearanceORM,
+)
+from ptcgdb.orm import (
+    DeckCard as DeckCardORM,
+)
+from ptcgdb.orm import (
+    Tournament as TournamentORM,
+)
 from ptcgdb.schemas.models import (
     Card as CardSchema,
 )
 from ptcgdb.schemas.models import (
+    Deck,
+    DeckAppearance,
     DeckReport,
     DrilldownResult,
     EffectiveText,
@@ -45,6 +66,7 @@ from ptcgdb.schemas.models import (
 from ptcgdb.schemas.models import (
     Set as SetSchema,
 )
+from ptcgdb.schemas.tournaments import AppearanceRecord, DeckCardRecord
 from ptcgdb.stats import engine as stats_engine
 from ptcgdb.stats.jsonldb import build_stats_conn
 
@@ -159,6 +181,30 @@ class CardDatabase(ABC):
         样本仅 pairings 覆盖赛事。参数见 StatsParams。"""
         ...
 
+    # —— 赛事卡组查询（v1.29，task 045）：批量拉对局池入口 ——
+
+    @abstractmethod
+    def get_deck(self, deck_id: str) -> Deck | None:
+        """单卡组视图：decks 内容实体 + 卡表（含未映射 card_id=None 条目，raw_name
+        保真不猜）+ 出战史（联 tournaments 冗余日期）。不存在返回 None。"""
+        ...
+
+    @abstractmethod
+    def list_decks(
+        self,
+        *,
+        archetype: str | None = None,
+        date_from: str | date | None = None,
+        date_to: str | date | None = None,
+        mapping_status: str | None = "full",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Deck]:
+        """对局池批量查询。mapping_status 默认 'full'（封装统计口径，FR-9.1），
+        传 None 不过滤。窗口 = 存在出战条目其赛事日期 ∈ [date_from, date_to]
+        闭区间（日期 NULL 的赛事不进窗口）。deck_id 升序 + limit/offset 分页。"""
+        ...
+
     @abstractmethod
     def close(self) -> None: ...
 
@@ -238,6 +284,9 @@ class DbBackend(CardDatabase):
     def __init__(self, db_path: str | Path):
         self._db_path = db_path
         self._engine = create_engine(f"sqlite:///{db_path}")
+        # 实例级缓存（v1.29，task 045）：后端实例 = 库只读快照，L0 增量后需重开；
+        # legal_at 按 (format, date) 缓存 LegalityPool（frozen，可安全共享）。
+        self._cache: dict = {}
 
     @property
     def schema_version(self) -> str:
@@ -283,53 +332,47 @@ class DbBackend(CardDatabase):
             rows = [_row_schema(SetSchema, r) for r in s.scalars(select(Set))]
         return sorted((r for r in rows if era is None or r.era == era), key=lambda r: r.set_id)
 
+    def _legality_inputs(self) -> tuple[
+        list[CardSchema], dict[str, set[str]], list[SnapshotSchema], list[ErrataRecord]
+    ]:
+        """全量卡/groups/snapshots/errata 一次性加载（实例级缓存，task 045）。"""
+        if "legality" not in self._cache:
+            with Session(self._engine) as s:
+                cards = [_row_schema(CardSchema, r) for r in s.scalars(select(Card))]
+                snapshots = [
+                    _row_schema(SnapshotSchema, r) for r in s.scalars(select(LegalitySnapshot))
+                ]
+                errata = [_row_schema(ErrataRecord, e) for e in s.scalars(select(Errata))]
+                groups: dict[str, set[str]] = {}
+                for cid, gk in s.execute(
+                    select(CardNameGroup.card_id, CardNameGroup.group_key)
+                ):
+                    groups.setdefault(cid, set()).add(gk)
+            self._cache["legality"] = (cards, groups, snapshots, errata)
+        return self._cache["legality"]
+
     def legal_at(self, date: str | date, format: str) -> LegalityPool:
         d = _as_date(date)
-        with Session(self._engine) as s:
-            snapshots = [
-                _row_schema(SnapshotSchema, r) for r in s.scalars(select(LegalitySnapshot))
-            ]
+        key = ("legal_at", format, d)
+        if key not in self._cache:
+            cards, groups, snapshots, _ = self._legality_inputs()
             snapshot = select_snapshot(snapshots, format, d)
-            cards = [
-                _row_schema(CardSchema, c)
-                for c in s.scalars(select(Card).where(Card.status == "active"))
-            ]
-            groups: dict[str, set[str]] = {}
-            for cid, gk in s.execute(
-                select(CardNameGroup.card_id, CardNameGroup.group_key)
-            ):
-                groups.setdefault(cid, set()).add(gk)
-        return build_pool(cards, groups, snapshot, format, d)
+            active = [c for c in cards if c.status == "active"]
+            self._cache[key] = build_pool(active, groups, snapshot, format, d)
+        return self._cache[key]
 
     def effective_text(self, card_id: str, date: str | date) -> EffectiveText:
         d = _as_date(date)
-        with Session(self._engine) as s:
-            cards = {
-                c.card_id: c
-                for c in (_row_schema(CardSchema, r) for r in s.scalars(select(Card)))
-            }
-            snapshots = [
-                _row_schema(SnapshotSchema, r) for r in s.scalars(select(LegalitySnapshot))
-            ]
-            errata = [_row_schema(ErrataRecord, e) for e in s.scalars(select(Errata))]
-        return resolve_text(card_id, cards, snapshots, errata, d)
+        cards, _, snapshots, errata = self._legality_inputs()
+        if "cards_by_id" not in self._cache:
+            self._cache["cards_by_id"] = {c.card_id: c for c in cards}
+        return resolve_text(card_id, self._cache["cards_by_id"], snapshots, errata, d)
 
     def validate_deck(
         self, deck: list[str], date: str | date, format: str
     ) -> DeckReport:
         d = _as_date(date)
-        with Session(self._engine) as s:
-            cards = [
-                _row_schema(CardSchema, r) for r in s.scalars(select(Card))
-            ]
-            snapshots = [
-                _row_schema(SnapshotSchema, r) for r in s.scalars(select(LegalitySnapshot))
-            ]
-            groups: dict[str, set[str]] = {}
-            for cid, gk in s.execute(
-                select(CardNameGroup.card_id, CardNameGroup.group_key)
-            ):
-                groups.setdefault(cid, set()).add(gk)
+        cards, groups, snapshots, _ = self._legality_inputs()
         return _do_validate_deck(cards, groups, snapshots, deck, d, format)
 
     def snapshots(self, format: str | None = None) -> list[SnapshotSchema]:
@@ -339,6 +382,91 @@ class DbBackend(CardDatabase):
             (r for r in rows if format is None or r.format == format),
             key=lambda r: (r.format, r.effective_from),
         )
+
+    # —— 赛事卡组查询（v1.29，task 045）——
+
+    @staticmethod
+    def _deck_view(s: Session, row: DeckORM, group_key_map: dict[str, str]) -> Deck:
+        cards = [
+            DeckCardRecord.model_validate({
+                **{c.name: getattr(r, c.name) for c in r.__table__.columns},
+                "group_key": group_key_map.get(r.card_id),
+            })
+            for r in s.scalars(
+                select(DeckCardORM).where(DeckCardORM.deck_id == row.deck_id)
+            )
+        ]
+        cards.sort(key=lambda c: (c.raw_name, c.card_id or ""))
+        appearances = [
+            DeckAppearance(
+                tournament_id=a.tournament_id, rank=a.rank, points=a.points,
+                record_wins=a.record_wins, record_losses=a.record_losses,
+                record_ties=a.record_ties,
+                tournament_date=t.date if t else None,
+            )
+            for a, t in s.execute(
+                select(DeckAppearanceORM, TournamentORM)
+                .join(
+                    TournamentORM,
+                    DeckAppearanceORM.tournament_id == TournamentORM.tournament_id,
+                )
+                .where(DeckAppearanceORM.deck_id == row.deck_id)
+            )
+        ]
+        appearances.sort(key=lambda a: (a.tournament_id, a.rank))
+        return Deck(
+            deck_id=row.deck_id, archetype_id=row.archetype_id,
+            archetype_name=row.archetype_name, deck_code=row.deck_code,
+            mapping_status=row.mapping_status, mapped_ratio=row.mapped_ratio,
+            source=row.source, cards=cards, appearances=appearances,
+        )
+
+    def get_deck(self, deck_id: str) -> Deck | None:
+        with Session(self._engine) as s:
+            row = s.get(DeckORM, deck_id)
+            if row is None:
+                return None
+            group_key_map = dict(
+                s.execute(select(CardNameGroup.card_id, CardNameGroup.group_key)).all()
+            )
+            return self._deck_view(s, row, group_key_map)
+
+    def list_decks(
+        self,
+        *,
+        archetype: str | None = None,
+        date_from: str | date | None = None,
+        date_to: str | date | None = None,
+        mapping_status: str | None = "full",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Deck]:
+        df = _as_date(date_from) if date_from is not None else None
+        dt = _as_date(date_to) if date_to is not None else None
+        with Session(self._engine) as s:
+            stmt = select(DeckORM)
+            if archetype is not None:
+                stmt = stmt.where(DeckORM.archetype_name == archetype)
+            if mapping_status is not None:
+                stmt = stmt.where(DeckORM.mapping_status == mapping_status)
+            if df is not None or dt is not None:
+                # 窗口 = 存在出战条目其赛事日期 ∈ 闭区间；日期 NULL 被比较自动排除
+                sub = select(DeckAppearanceORM.deck_id).join(
+                    TournamentORM,
+                    DeckAppearanceORM.tournament_id == TournamentORM.tournament_id,
+                )
+                if df is not None:
+                    sub = sub.where(TournamentORM.date >= df)
+                if dt is not None:
+                    sub = sub.where(TournamentORM.date <= dt)
+                stmt = stmt.where(DeckORM.deck_id.in_(sub.distinct()))
+            rows = s.scalars(
+                stmt.order_by(DeckORM.deck_id).offset(offset).limit(limit)
+            ).all()
+            group_key_map = dict(
+                s.execute(select(CardNameGroup.card_id, CardNameGroup.group_key)).all()
+            )
+            return [self._deck_view(s, r, group_key_map) for r in rows]
 
     def stats_usage(self, **kwargs: Any) -> StatsResult:
         return _do_usage(self._db_path, kwargs)
@@ -360,12 +488,15 @@ class DbBackend(CardDatabase):
 
 
 class JsonlBackend(CardDatabase):
-    """JSONL 后端：读 dist/ 导出件（cards/sets/relations/legality + manifest）。"""
+    """JSONL 后端：读 dist/ 导出件（cards/sets/relations/legality + manifest；
+    赛事卡组四件懒加载，task 045）。"""
 
     def __init__(self, dist_dir: str | Path):
         dist_dir = Path(dist_dir)
         self._dist_dir = dist_dir
         self._stats_conn = None
+        self._deck_store: dict | None = None  # 懒加载赛事卡组四件（task 045）
+        self._pool_cache: dict = {}  # legal_at 按 (format, date) 缓存（task 045）
         manifest = json.loads((dist_dir / "manifest.json").read_text(encoding="utf-8"))
         self._schema_version = manifest["schema_version"]
         self._cards = [
@@ -429,9 +560,12 @@ class JsonlBackend(CardDatabase):
 
     def legal_at(self, date: str | date, format: str) -> LegalityPool:
         d = _as_date(date)
-        snapshot = select_snapshot(self._snapshots, format, d)
-        active = [c for c in self._cards if c.status == "active"]
-        return build_pool(active, self._groups, snapshot, format, d)
+        key = (format, d)
+        if key not in self._pool_cache:
+            snapshot = select_snapshot(self._snapshots, format, d)
+            active = [c for c in self._cards if c.status == "active"]
+            self._pool_cache[key] = build_pool(active, self._groups, snapshot, format, d)
+        return self._pool_cache[key]
 
     def effective_text(self, card_id: str, date: str | date) -> EffectiveText:
         return resolve_text(
@@ -450,6 +584,101 @@ class JsonlBackend(CardDatabase):
             (s for s in self._snapshots if format is None or s.format == format),
             key=lambda s: (s.format, s.effective_from),
         )
+
+    # —— 赛事卡组查询（v1.29，task 045）：懒加载 decks/deck_cards/deck_appearances/
+    # tournaments 四件，过滤排序与 DbBackend 同一语义（双后端逐字段一致）——
+
+    def _decks(self) -> dict:
+        if self._deck_store is None:
+            decks_by_id = {
+                d["deck_id"]: d for d in self._read_jsonl(self._dist_dir / "decks.jsonl")
+            }
+            cards_by_deck: dict[str, list[DeckCardRecord]] = {}
+            for r in self._read_jsonl(self._dist_dir / "deck_cards.jsonl"):
+                cards_by_deck.setdefault(r["deck_id"], []).append(
+                    DeckCardRecord.model_validate(r)
+                )
+            apps_by_deck: dict[str, list[AppearanceRecord]] = {}
+            for r in self._read_jsonl(self._dist_dir / "deck_appearances.jsonl"):
+                apps_by_deck.setdefault(r["deck_id"], []).append(
+                    AppearanceRecord.model_validate(r)
+                )
+            tournament_dates = {
+                t["tournament_id"]: date.fromisoformat(t["date"]) if t["date"] else None
+                for t in self._read_jsonl(self._dist_dir / "tournaments.jsonl")
+            }
+            self._deck_store = {
+                "decks": decks_by_id, "cards": cards_by_deck,
+                "appearances": apps_by_deck, "tournament_dates": tournament_dates,
+            }
+        return self._deck_store
+
+    def _deck_view(self, deck_id: str) -> Deck | None:
+        store = self._decks()
+        d = store["decks"].get(deck_id)
+        if d is None:
+            return None
+        cards = sorted(
+            store["cards"].get(deck_id, []), key=lambda c: (c.raw_name, c.card_id or "")
+        )
+        appearances = sorted(
+            (
+                DeckAppearance(
+                    tournament_id=a.tournament_id, rank=a.rank, points=a.points,
+                    record_wins=a.record_wins, record_losses=a.record_losses,
+                    record_ties=a.record_ties,
+                    tournament_date=store["tournament_dates"].get(a.tournament_id),
+                )
+                for a in store["appearances"].get(deck_id, [])
+            ),
+            key=lambda a: (a.tournament_id, a.rank),
+        )
+        return Deck(
+            deck_id=deck_id, archetype_id=d["archetype_id"],
+            archetype_name=d["archetype_name"], deck_code=d["deck_code"],
+            mapping_status=d["mapping_status"], mapped_ratio=d["mapped_ratio"],
+            source=d["source"], cards=cards, appearances=appearances,
+        )
+
+    def get_deck(self, deck_id: str) -> Deck | None:
+        return self._deck_view(deck_id)
+
+    def list_decks(
+        self,
+        *,
+        archetype: str | None = None,
+        date_from: str | date | None = None,
+        date_to: str | date | None = None,
+        mapping_status: str | None = "full",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Deck]:
+        store = self._decks()
+        df = _as_date(date_from) if date_from is not None else None
+        dt = _as_date(date_to) if date_to is not None else None
+
+        def keep(d: dict) -> bool:
+            if archetype is not None and d["archetype_name"] != archetype:
+                return False
+            if mapping_status is not None and d["mapping_status"] != mapping_status:
+                return False
+            if df is not None or dt is not None:
+                dates = [
+                    store["tournament_dates"].get(a.tournament_id)
+                    for a in store["appearances"].get(d["deck_id"], [])
+                ]
+                # 日期 NULL 的赛事不进窗口
+                if not any(
+                    x is not None
+                    and (df is None or x >= df)
+                    and (dt is None or x <= dt)
+                    for x in dates
+                ):
+                    return False
+            return True
+
+        ids = sorted(d["deck_id"] for d in store["decks"].values() if keep(d))
+        return [self._deck_view(did) for did in ids[offset:offset + limit]]
 
     def _stats_db(self):
         """懒构建统计内存库（FR-9.7：导出四件套 → 同名视图 → 同一 canonical SQL）。"""
