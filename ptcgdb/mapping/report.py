@@ -315,6 +315,38 @@ _ZERO_CATEGORY_NOTES = {
         "孤立机制，task 040 归类不打标）"
     ),
     "data_artifact": "源数据噪音（如实记录）",
+    # ── task 049 句级零命中归类桶（段级复用同表说明） ──
+    "shuffle": "牌库洗切流程句（无意图标签对应）",
+    "coin_setup": "硬币判定流程句（随机性由 coin_flip flag 承载）",
+    "attach_restriction": "附着限制说明句（只能附着于…）",
+    "modal_choice": "多选一/多牌并用结构说明句",
+    "stadium_rule": "竞技场放置/顶掉规则说明句",
+    "as_pokemon_hint": "训练家卡当宝可梦上场提示句（化石/玩偶类）",
+    "effect_duration": "效果持续/叠加说明句",
+    "prize_card": "奖赏卡操作句",
+    "variable_quantity": "数量缩放说明句（张数/只数/指示物数量变为…）",
+    "reveal_setup": "展示/翻看流程句",
+    "guess_game": "猜谜互动句（魔尼尼类孤立机制）",
+    "copy_setup": "复制招式的选择/使用句",
+    "self_discard": "己方手牌/能量舍弃句（cost 或效果前段）",
+    "bench_trim": "强制削减对手备战区句",
+    "field_placement": "上场/位置安排句",
+    "direct_damage": "普通直接伤害句（伤害为默认语义）",
+    "residual_action": "检索/选择的收尾处理句",
+    "tool_lifecycle": "道具/能量自身生命周期句（脱着/附着回）",
+    "energy_provision": "能量视作/提供句",
+    "lose_condition": "败北条件句",
+    "opponent_restriction": "对手向限制句（lock 词表未覆盖措辞）",
+    "opponent_procedure": "对手操作流程句",
+    "ko_outcome": "昏厥结果/条件句",
+    "usage_timing": "使用时机/次数/条件句（含同名特性一回合一次限制）",
+    "selection_setup": "裸选择句（选择对象，后续句承载动作）",
+    "header_artifact": "招式/特性头残留（mik 数据形态，如实记录）",
+    "self_removal": "这只宝可梦自身离场句（及附着卡/备战区遣送，task 049 第二轮）",
+    "attribute_rule": "属性/弱点计算规则说明句（task 049 第二轮）",
+    "activation_condition": "特性/效果生效条件句（task 049 第二轮）",
+    "damage_redirect": "伤害重定向句（给予备战宝可梦而不是战斗宝可梦，task 049 第二轮）",
+    "banish_mill": "放逐对手牌库顶句（task 049 第二轮）",
 }
 
 
@@ -387,6 +419,26 @@ def write_tagging_report(result: TaggingResult, out_dir: Path) -> Path:
         lines += ["", "## 多重命中卡清单（≥3 意图标签，人工审视是否误标）", ""]
         for card_id, name, tags in result.multi_hits:
             lines.append(f"- `{card_id}` {name} :: {', '.join(tags)}")
+    # ── task 049 句级节：切分统计 + 句级零命中归类桶 + unknown 句清单 ──
+    lines += [
+        "",
+        "## 句级切分与句级归类（task 049）",
+        "",
+        f"- 句子总数：{result.sentences_total}",
+        f"- 规则引用句（rule_reference 只标句类不打标）：{result.sent_rule_reference}",
+        f"- 零命中句全归类；未知句（不猜）：{len(result.unknown_sentences)}",
+        "",
+        "### 句级零命中归类",
+        "",
+        "| 归类 | 句数 | 说明 |",
+        "|---|---|---|",
+    ]
+    for cat, n in sorted(result.sent_zero_categories.items(), key=lambda kv: -kv[1]):
+        lines.append(f"| {cat} | {n} | {_ZERO_CATEGORY_NOTES.get(cat, cat)} |")
+    if result.unknown_sentences:
+        lines += ["", "### 未知句清单（疑似新机制，不猜——人工归类）", ""]
+        for card_id, sent in result.unknown_sentences:
+            lines.append(f"- `{card_id}` :: {sent}")
     lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8")
     return path

@@ -6,9 +6,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-Phase4·统计深化✅(043_parquet+sim契约)-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.31-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-1065%20passed-success.svg?style=flat-square)](STATUS.md)
+[![Status](https://img.shields.io/badge/Status-支撑批✅(049_句级打标)-brightgreen.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.32-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-1095%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -33,7 +33,7 @@
 - **🛡️ 原文保真** —— `text_raw` 逐字保留绝不规范化，原文与派生字段严格分层；DB vs raw 同源自验 + 三清单日志保证数据质量
 - **📐 卡面口径保真** —— 卡号分母逐系列种子口径（`sets.card_face_total`，实测数据点驱动），种子未覆盖系列只显分子不伪装；字母编号能量卡的 mik 双重列示以 `alias_of` 归并到数字正本
 - **🔮 机制全覆盖且前瞻** —— ex / 太晶（ptcd subtypes 印刷级识别，is_tera 166 张）/ ACE SPEC / 训练家宝可梦 / V-UNION（四部件方位结构化，24 张齐全）/ GX，词表开放，超级进化ex 等新机制直接进库
-- **🏷️ 效果粗粒度标签层** —— 29 意图标签 + 3 机制 flag 词表（`config/vocabularies/effect_tags.yml` 唯一事实源，开放追加零代码）；规则打底（确定性正则匹配 + 段级 exclude 否定守卫、幂等可重跑）+ 人工兜底（零命中入清单核销，不猜）；GHI 环境 1,507 条效果文本实测覆盖 88.7%、全库 unknown=0；这是下游规则引擎/AI 模拟的数据接缝（效果 DSL 归下游项目）
+- **🏷️ 效果粗粒度标签层** —— 29 意图标签 + 3 机制 flag 词表（`config/vocabularies/effect_tags.yml` 唯一事实源，开放追加零代码）；规则打底（确定性正则匹配 + 段级 exclude 否定守卫、幂等可重跑）+ 人工兜底（零命中入清单核销，不猜）；GHI 环境 1,507 条效果文本实测覆盖 88.7%、全库 unknown=0；**句级打标（task 049）**：效果文本确定性切分到句（括号深度感知），`detail.sentences` 逐句挂标签并分类 effect/rule_reference（括号整句只标句类不打标），全库 23,082 句 unknown=0；这是下游规则引擎/AI 模拟的数据接缝（效果 DSL 归下游项目）
 
 ## 🔧 安装与初始化
 
@@ -51,7 +51,7 @@ ptcgdb init-db           # 建库 + 全部迁移（默认 data/ptcg-cn.db）
 开发自检：
 
 ```bash
-python -m pytest -q      # 1061 测试（全量约 4 分钟）
+python -m pytest -q      # 1095 测试（全量约 6 分钟）
 ruff check .
 ```
 
@@ -94,7 +94,7 @@ ptcgdb accept && ptcgdb sample                 # 一键验收 A1~A8；A2/A3 抽�
 # ── 跨语言与机制映射 ──
 ptcgdb map-en && ptcgdb map-tcgdex && ptcgdb map-ja   # EN 桥 → TCGdex ID → JP 名（map-ja-trainer 补 trainer/特殊能量）
 ptcgdb map-tera                                # 太晶识别：ptcd EN subtypes → is_tera
-ptcgdb tag-effects                             # 效果标签标注落库（29 标签 + 3 flag，幂等；tag-effects-scan 评测 / tag-effects-audit 桶审查）
+ptcgdb tag-effects                             # 效果标签标注落库（29 标签 + 3 flag + 句级 sentences，幂等；tag-effects-scan 评测 / tag-effects-audit 桶审查）
 ```
 
 **SDK**
@@ -215,6 +215,7 @@ flowchart TB
   - ✅ **M12-1 pairings 消费层（task 041）**：WR A 层镜像剔除实装 + matchup 对阵矩阵（`stats matchup` / `stats_matchup()`）+ `v_pairing_players` 视图（user_version=13）
   - ✅ **M12-2 archetype 级统计（task 042）**：三指标 `:granularity` 参数（card 默认零回归 / archetype 卡组级去重），CLI `--granularity` + SDK 透传
   - ✅ **M12-3 cards.parquet + sim 骨架契约（task 043）**：导出第十四件 `cards.parquet`（DuckDB 直读，`--no-parquet` 可跳过）+ PRD FR-10 sim 库骨架（独立库 / card_id·name_group·快照 id 关联 / 三层表意向，细结构归下游规则引擎项目）
+- ✅ **下游 battlefrontier 支撑批（task 044~049，对战模拟引擎数据支撑）**：text_raw 全库逐字对账（044）→ SDK 卡组查询 `get_deck`/`list_decks` + legal_at 实例级缓存（045）→ 跨源 EN 结构化字段对账（046，12,304 比对 99.2% 一致）→ 勘误公告监控闭环（047）→ 官方 Q&A 搁置（048，官网供给端不存在）→ **效果文本句级切分与句级打标（049）**：`detail.sentences` 逐句标签 + rule_reference 句类，全库 23,082 句 unknown=0、GHI 卡级覆盖 90.0%
 - ⬜ **Phase 4 后续** 对战模拟引擎与 AI 策略（下游项目，本 repo 提供数据契约与关联键）
 
 > ⚠️ 临近事件：**2026-09-16「30周年庆典」全球同步发售**（简中首次同步，新罕贵度 FUR），更新管线将迎来首次实战。
@@ -223,7 +224,7 @@ flowchart TB
 
 | 文档 | 内容 |
 |---|---|
-| [PRD v1.27](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约（十四件套含 cards.parquet）、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.4 统计口径含镜像剔除、matchup 与 archetype 粒度 / FR-9.5 deck confirm 定向放宽与成本守卫 / FR-9.8 刷新管线）、效果标签策略（§6.4 词表 29+3 开放追加）、对战模拟数据契约（FR-10 骨架） |
+| [PRD v1.32](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约（十四件套含 cards.parquet）、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.4 统计口径含镜像剔除、matchup 与 archetype 粒度 / FR-9.5 deck confirm 定向放宽与成本守卫 / FR-9.8 刷新管线）、效果标签策略（§6.4 词表 29+3 开放追加 + 句级 sentences）、对战模拟数据契约（FR-10 骨架） |
 | [数据源与接口文档](docs/data-sources.md) | 全部数据源获取方式：mik.moe 主源 API（卡牌 + 赛事）、官网赛制页、TCGdex / pokemon-tcg-data / PokéAPI、Limitless / TopDeck / RK9 与 JP 卡组聚合站（task 028 调研）、pokemon-card.com 抽样核对 |
 | [STATUS.md](STATUS.md) | 当前阶段、里程碑进度、决策日志、技术债 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更（四段式，数据日历版本 + schema SemVer 双轨） |

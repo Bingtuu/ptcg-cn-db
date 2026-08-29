@@ -38,7 +38,7 @@ from ptcgdb.orm import (
     Tournament,
 )
 from ptcgdb.schemas.models import Card as CardSchema
-from ptcgdb.schemas.models import EffectTagDetail, EffectTags
+from ptcgdb.schemas.models import EffectTagDetail, EffectTags, SentenceTag
 from ptcgdb.schemas.models import ErrataRecord as ErrataSchema
 from ptcgdb.schemas.models import LegalitySnapshot as SnapshotSchema
 from ptcgdb.schemas.models import Set as SetSchema
@@ -131,7 +131,9 @@ def _schema_md() -> str:
         "> cards.parquet = cards 表全列（JSON 列原样字符串），供 DuckDB/pyarrow 直读（v1.27）。",
         "",
     ]
-    for model in (CardSchema, SetSchema, SnapshotSchema, EffectTags, EffectTagDetail):
+    for model in (
+        CardSchema, SetSchema, SnapshotSchema, EffectTags, EffectTagDetail, SentenceTag,
+    ):
         schema = model.model_json_schema()
         lines.append(f"## {schema['title']}")
         lines.append("")

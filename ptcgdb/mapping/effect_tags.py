@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -22,7 +22,12 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from ptcgdb.legal.engine import legal_at
-from ptcgdb.schemas.models import EffectTagDetail, EffectTags
+from ptcgdb.mapping.sentences import (
+    bracket_balanced,
+    classify_sentence,
+    split_sentences,
+)
+from ptcgdb.schemas.models import EffectTagDetail, EffectTags, SentenceTag
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
 DEFAULT_VOCAB_PATH = CONFIG_DIR / "vocabularies" / "effect_tags.yml"
@@ -336,6 +341,9 @@ def tag_card(
 
     确定性 + 幂等：同输入同输出。宝可梦的 text_raw 不打标（与 038 抽取口径一致，
     规则框/卡面数值由结构化字段承载）；trainer/energy 打 text 段。
+    句级层（v1.32，task 049）：每段经 split_sentences 切句 → 句类判定
+    （rule_reference 只标句类不打意图标签）→ 效果句跑句级 match_tags。
+    段级既有字段口径不变，两层并存。
     """
     tag_order = [e.tag for e in tag_entries]
     flag_order = [f.flag for f in flag_entries]
@@ -344,12 +352,23 @@ def tag_card(
     text_hits: set[str] = set()
     flag_hits: set[str] = set()
     segment_texts: list[tuple[str, str]] = []  # (kind, text) 供 flag 聚合
+    sentences: list[SentenceTag] = []  # 句级层（task 049）
+
+    def _tag_sentences(kind: str, text: str, attack_index: int | None) -> None:
+        for sent in split_sentences(text):
+            sc = classify_sentence(sent)
+            hits = match_tags(sent, tag_entries, kind) if sc == "effect" else ()
+            sentences.append(SentenceTag(
+                kind=kind, attack_index=attack_index, text=sent,
+                tags=list(hits), sentence_class=sc,
+            ))
 
     if card_type in ("trainer", "energy"):
         t = (text_raw or "").strip()
         if t:
             text_hits.update(match_tags(t, tag_entries, card_type))
             segment_texts.append((card_type, t))
+            _tag_sentences(card_type, t, None)
     for i, a in enumerate(attacks or []):
         t = ((a or {}).get("effect_text") or "").strip()
         if t:
@@ -357,11 +376,13 @@ def tag_card(
             if hits:
                 attack_hits[str(i)] = list(hits)
             segment_texts.append(("attack", t))
+            _tag_sentences("attack", t, i)
     for ab in abilities or []:
         t = ((ab or {}).get("effect_text") or (ab or {}).get("text") or "").strip()
         if t:
             ability_hits.update(match_tags(t, tag_entries, "ability"))
             segment_texts.append(("ability", t))
+            _tag_sentences("ability", t, None)
     for _, t in segment_texts:
         flag_hits.update(match_flags(t, flag_entries))
 
@@ -373,6 +394,7 @@ def tag_card(
             ability=_ordered(ability_hits, tag_order),
             text=_ordered(text_hits, tag_order),
             flags=_ordered(flag_hits, flag_order),
+            sentences=sentences,
         ),
         labels=list(labels or []),
     )
@@ -426,14 +448,158 @@ def classify_zero_text(text: str) -> str | None:
     # 孤立机制归类不打标，task 040 第五轮）
     if "互换（继承" in t or "放于这只宝可梦原先的位置" in t:
         return "transform_swap"
+    # 牌库洗切（句级零命中大宗，task 049：「并重洗牌库。」等流程性语句无对应意图标签；
+    # 第二轮放宽：「可重洗对手的牌库」CS5bC-108）
+    if re.search(r"(重洗|洗切|切洗)[^。]{0,6}牌库|牌库.{0,4}(重洗|洗切|切洗)", t):
+        return "shuffle"
     # GX/VSTAR 规则文独占条目（规则语义由 rule_box_type 承载）
     if re.fullmatch(r"(\[对战中，己方的(GX|VSTAR)[^\]]*\]\s*)+", t):
         return "legacy_rule_text"
     # 退场旧机制特殊效果（额外回合等 GX/VSTAR 力量，整理性打标从简口径）
     if "再开始1次" in t:
         return "legacy_mechanic"
-    # 源数据噪音（如 CSNC-005 effect_text="clear"），如实记录
-    if re.fullmatch(r"[a-zA-Z\s]+", t):
+    # ── task 049 句级零命中归类（段级口径之上追加，只影响零命中句/段的归类桶） ──
+    # 硬币判定流程句（抛掷/条件触发掷币，效果在后续句）
+    if re.search(r"抛掷[^。]{0,16}硬币|掷\d*次?硬币", t):
+        return "coin_setup"
+    # 附着限制句（「只能附着于「一击」宝可梦身上…」）
+    if "只能附着于" in t or re.search(r"附着于[^。]{0,12}之外", t):
+        return "attach_restriction"
+    # 多选一/多牌并用结构说明句（「从2个效果中选择1个使用」「根据使用的张数…」）
+    if re.search(r"从\d+个效果中选择|根据使用的张数|必须同时使用|可以使用\d+张或", t):
+        return "modal_choice"
+    # 竞技场规则说明句（放置/顶掉规则）
+    if "竞技场" in t and re.search(r"战斗区旁|放入弃牌区|放于弃牌区|使出|放到于", t):
+        return "stadium_rule"
+    # 训练家卡当宝可梦上场的提示句（化石/玩偶类）
+    if re.search(
+        r"作为HP为|作为[^。]{0,16}【基础】宝可梦[^。]{0,8}放于|反面朝上放于(战斗场|场上)", t
+    ):
+        return "as_pokemon_hint"
+    # 效果持续/叠加说明句（「一直持续到…」「不会叠加」「效果消除」）
+    if re.search(r"一直持续|效果消除|不会叠加|无法叠加|不会重复|只会生效", t):
+        return "effect_duration"
+    # 奖赏卡操作句（拿取/查看/互换/作为奖赏卡放置/张数比较）
+    if "奖赏卡" in t:
+        return "prize_card"
+    # 数量缩放说明句（「抽取的张数变为8张」「相当于N个能量的数值」「直到手牌数量变为…」；
+    # 第二轮放宽：单位「只」CSM2bC-112「数量变为2只」）
+    if re.search(
+        r"变为\d+张|变为最多\d+张|数量变为\d+个|变为\d+只|张数变为|相当于|相同的张数|"
+        r"直到手牌数量变为|多拿取|抽取的张数|放置的伤害指示物数量变为",
+        t,
+    ):
+        return "variable_quantity"
+    # 属性/弱点规则说明句（task 049 第二轮：弱点计算倍率、属性变更、属性选择，
+    # 规则语义由规则引擎读 text_raw，词表无对应意图标签）
+    if re.search(r"进行伤害计算|计算弱点|种属性", t):
+        return "attribute_rule"
+    # 特性/效果生效条件句（「则能生效」「场合才生效」——条件在前段，本句只述生效性）
+    if re.search(r"则能生效|才生效", t):
+        return "activation_condition"
+    # 伤害重定向句（「给予对手的1只备战宝可梦而不是战斗宝可梦」CSM2aC-012）
+    if "而不是战斗宝可梦" in t:
+        return "damage_redirect"
+    # 展示/翻看流程句（翻牌库顶/展示手牌/查看）
+    if re.search(r"翻到正面|翻成正面|互相展示|查看[^。]{0,12}(牌库|奖赏卡)|放回原处", t):
+        return "reveal_setup"
+    # 猜谜互动句（告知名字/由对手回答/反面（朝上）放置——魔尼尼类孤立机制；
+    # 第二轮放宽：CSM2aC-128「翻成反面放置」）
+    if re.search(r"由对手回答|告知对手|告诉对手|反面(朝上)?放置", t):
+        return "guess_game"
+    # 复制招式的选择/使用句（「选择对手战斗宝可梦所拥有的1个招式」）
+    if re.search(r"所拥有的招式|所拥有的\d+个招式|作为这张卡牌的效果", t):
+        return "copy_setup"
+    # 这只宝可梦自身离场句（task 049 第二轮：「将这只宝可梦（及附着卡）放于弃牌区/放逐区」
+    # 大件 25 条 + 备战区遣送 CS6bC-058；self_cost 管附着能量，本条管宝可梦本体）
+    if re.search(r"将(这只宝可梦|自己备战区中)[^。]{0,40}放于(弃牌区|放逐区)", t):
+        return "self_removal"
+    # 己方手牌/能量舍弃句（cost 或效果前段；hand_disrupt 为对手向不在此列；
+    # 第二轮放宽：「任意数量的自己的手牌」「将N张自己的手牌」CBB3C-0801/CSM2DC-301 类）
+    if re.search(
+        r"将自己的?[^。]{0,16}放于(弃牌区|放逐区)|选择自己的[^。]{0,12}放于弃牌区|"
+        r"将自己的手牌全部放于弃牌区|自己的手牌[^。]{0,6}放于(弃牌区|放逐区)",
+        t,
+    ):
+        return "self_discard"
+    # 强制削减对手备战区句（「对手将备战宝可梦放于弃牌区直到变为N只」）
+    if re.search(
+        r"对手[^。]{0,10}备战宝可梦[^。]{0,10}放于弃牌区|备战宝可梦变为\d+只|"
+        r"直到其数量变为\d+只",
+        t,
+    ):
+        return "bench_trim"
+    # 上场/位置安排句（放于备战区/战斗场、换位安排——switch/gust 词表未覆盖的措辞）
+    if re.search(r"放于自己的备战区|放于战斗场|放回备战区|放于对手的备战区|互换", t):
+        return "field_placement"
+    # 己方自伤句（recoil 扩展：给自己的宝可梦/新出场之外的己方伤害）
+    if re.search(r"给(这只宝可梦|自己的[^。]{0,10}宝可梦)[^。]{0,6}造成", t):
+        return "recoil"
+    # 普通直接伤害句（伤害为默认语义，无意图标签）
+    if re.search(r"造成\d+点?伤害|造成\d+点?的伤害", t):
+        return "direct_damage"
+    # 检索/选择的收尾处理句（「将剩余的卡牌加入手牌」「将那张卡牌加入手牌」等；
+    # 第二轮放宽：将其中/将其/给对手看过/各N张加入手牌/可再选择/对手允许/
+    # 则放于弃牌区/将放于双方/将放于这只宝可梦身上的卡牌/将双方/将所有没被选择的）
+    if re.search(
+        r"额外将\d+张卡牌放于弃牌区|将(剩余的|那些|这张|那张|该|被选择的|被互换的|放置的|"
+        r"其中|其|放于双方|放于这只宝可梦身上的卡牌|双方|所有没被选择的)|"
+        r"(选择|可将|可将其)其中|这张卡牌放于弃牌区|给对手看过|各\d*张加入手牌|"
+        r"可再选择|对手允许|则放于弃牌区",
+        t,
+    ):
+        return "residual_action"
+    # 道具/能量自身生命周期句（回合结束脱着、附着回等；
+    # 第二轮放宽：放于这只宝可梦身上的「道具/能量」放于弃牌区 CSM2aC-115/CSV9C-135/CSV6C-100）
+    if re.search(
+        r"放于宝可梦身上的这张卡牌|将这张卡牌放于弃牌区|附着回|被放于弃牌区|"
+        r"身上的「.{0,12}」.{0,2}放于弃牌区",
+        t,
+    ):
+        return "tool_lifecycle"
+    # 能量视作/提供句（「视作2个【超】能量」「可以被视为1个【无】能量」）
+    if re.search(r"视作\d*个|被视为\d+个|都视作", t):
+        return "energy_provision"
+    # 败北条件句（胜负判定，win_condition 词表未覆盖的反向措辞）
+    if "败北" in t:
+        return "lose_condition"
+    # 放逐对手牌库顶句（task 049 第二轮：CS6bC-083，mill 向词表未覆盖；
+    # 须先于 opponent_procedure，否则被「将对手」开头抢先）
+    if re.search(r"将对手牌库上方[^。]{0,12}放于放逐区", t):
+        return "banish_mill"
+    # 对手向限制句（lock 词表未覆盖的「对手无法…」措辞）
+    if re.search(r"对手[^。]{0,20}无法|对手[^。]{0,20}不能|无法[^。]{0,16}被", t):
+        return "opponent_restriction"
+    # 对手操作流程句（「对手选择…」「令对手…」；
+    # 第二轮放宽：「将对手的1只宝可梦…放于弃牌区」CSM2bC-112）
+    if re.search(r"^(然后，)?(若希望，)?(可以?令对手|对手(选择|将|抛掷)|将对手)", t):
+        return "opponent_procedure"
+    # 昏厥结果/条件句（ko 词表未覆盖的 【昏厥】 措辞）
+    if "【昏厥】" in t:
+        return "ko_outcome"
+    # 卡牌自身区域限制句（task 049 第二轮：CSV8C-180「只要在弃牌区就无法加入手牌」，
+    # self_constraint 句级扩展；先于 usage_timing 的「无法使用」放宽）
+    if re.search(r"这张卡牌[^。]{0,12}无法", t):
+        return "self_constraint"
+    # 使用时机/次数/条件句（「在自己的回合可以使用1次」「则可使用1次」等；
+    # 第二轮放宽：同名特性一回合一次「无法使用这个特性」47 条大宗 + 「最初的回合」限制）
+    if re.search(
+        r"(可|可以|能|得|须|允许)[^。]{0,6}使用|有\d+次机会|自己的回合结束|"
+        r"无法使用|最初的回合",
+        t,
+    ):
+        return "usage_timing"
+    # 裸选择句（选择对象、后续句承载动作；第二轮放宽：「自己选择…类型」CSV6C-087）
+    if re.search(r"^(然后，)?(若希望，)?(可|自己)?选择", t):
+        return "selection_setup"
+    # 招式/特性头残留（mik 数据形态：段内混入下行招式头，无句末符且以【/[ 开头）
+    if not t.endswith(tuple("。！？")) and ("【" in t or t.startswith("[")):
+        return "header_artifact"
+    # 括号未配平（源数据截断，如 CSVH1C-045）
+    if not bracket_balanced(t):
+        return "data_artifact"
+    # 源数据噪音（如 CSNC-005 effect_text="clear"、SVP-NaN57 '"'），如实记录
+    if re.fullmatch(r"[\x20-\x7e]+", t):
         return "data_artifact"
     return None
 
@@ -463,6 +629,11 @@ class TaggingResult:
     env_label: str | None = None
     env_zero_categories: dict[str, int] | None = None
     env_unknown: int = 0
+    # 句级统计（task 049）：总句数 / 规则引用句数 / 零命中效果句归类 / unknown 清单
+    sentences_total: int = 0
+    sent_rule_reference: int = 0
+    sent_zero_categories: dict[str, int] = field(default_factory=dict)
+    unknown_sentences: tuple[tuple[str, str], ...] = ()  # (card_id, 句原文)
 
 
 def _classify_zero_card(items: list[TextItem]) -> tuple[str, ...] | None:
@@ -503,6 +674,10 @@ def run_tagging(
     multi: list[tuple[str, str, tuple[str, ...]]] = []
     zero_cards: list[ZeroTagCard] = []
     unknown: list[str] = []
+    sentences_total = 0
+    sent_rule_reference = 0
+    sent_zero_categories: dict[str, int] = {}
+    unknown_sentences: list[tuple[str, str]] = []
     try:
         with Session(engine) as s:
             rows = s.execute(
@@ -533,6 +708,16 @@ def run_tagging(
                     tag_hits[t] += 1
                 for f in et.detail.flags:
                     flag_hits[f] += 1
+                for st in et.detail.sentences:
+                    sentences_total += 1
+                    if st.sentence_class == "rule_reference":
+                        sent_rule_reference += 1
+                    elif st.sentence_class == "effect" and not st.tags:
+                        cat = classify_zero_text(st.text)
+                        if cat is None:
+                            unknown_sentences.append((card_id, st.text))
+                        else:
+                            sent_zero_categories[cat] = sent_zero_categories.get(cat, 0) + 1
                 if len(et.tags) >= 3:
                     multi.append((card_id, name, tuple(et.tags)))
                 if not et.tags:
@@ -600,6 +785,10 @@ def run_tagging(
         env_label=env_label,
         env_zero_categories=env_zero_categories,
         env_unknown=env_unknown,
+        sentences_total=sentences_total,
+        sent_rule_reference=sent_rule_reference,
+        sent_zero_categories=sent_zero_categories,
+        unknown_sentences=tuple(unknown_sentences),
     )
 
 

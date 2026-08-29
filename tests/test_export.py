@@ -162,6 +162,14 @@ def test_schema_md_effect_tags_contract(dist):
     assert "| `labels` |" in md  # mik 机制标签保留键（PRD v1.23）
 
 
+def test_schema_md_sentence_tag_contract(dist):
+    """task 049：句级打标导出契约——sentences 键 + SentenceTag 独立成节。"""
+    md = (dist / "schema.md").read_text(encoding="utf-8")
+    assert "| `sentences` |" in md  # EffectTagDetail 句级键（PRD v1.32）
+    assert "## SentenceTag" in md
+    assert "| `sentence_class` |" in md
+
+
 def test_cards_jsonl_effect_tags_key_present(dist):
     """task 040：cards.jsonl 每行带 effect_tags 键（FR-6.2 只加不删锚定）。"""
     rows = [

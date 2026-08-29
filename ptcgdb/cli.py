@@ -458,6 +458,10 @@ def tag_effects_cmd(
         f"zero_tag={len(result.zero_tag_cards)} unknown={unknown}"
         f"{' (dry-run)' if result.dry_run else ''}"
     )
+    typer.echo(
+        f"sentences={result.sentences_total} rule_ref={result.sent_rule_reference} "
+        f"unknown_sent={len(result.unknown_sentences)}"
+    )
     typer.echo(f"报告: {path}")
 
 

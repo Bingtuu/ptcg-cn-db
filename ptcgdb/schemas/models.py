@@ -20,6 +20,23 @@ class AttackCost(BaseModel):
     count: int
 
 
+class SentenceTag(BaseModel):
+    """句级标签单元（PRD v1.32 §6.4，task 049）。
+
+    句原文逐字取自源段（去首尾空白）；rule_reference（括号包裹整句的规则注释）
+    只标句类、tags 恒空；sentence_class 开放字符串：effect / rule_reference / flavor
+    （flavor 保留占位，当前打标语料无实例）。
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: str  # attack / ability / trainer / energy
+    attack_index: int | None = None  # 招式下标（kind=attack 时）
+    text: str  # 句原文逐字
+    tags: list[str] = []  # 句级意图标签（顺序 = 词表顺序）
+    sentence_class: str = "effect"
+
+
 class EffectTagDetail(BaseModel):
     """效果标签分项明细（PRD v1.23 §6.4）：规则引擎精确定位消费面。"""
 
@@ -29,6 +46,7 @@ class EffectTagDetail(BaseModel):
     ability: list[str] = []  # 特性段合并去重
     text: list[str] = []  # 卡面文本段（trainer/energy 的 text_raw）
     flags: list[str] = []  # 机制 flag（coin_flip/once_per_turn/conditional）
+    sentences: list[SentenceTag] = []  # 句级标签层（v1.32，task 049；只加不删）
 
 
 class EffectTags(BaseModel):

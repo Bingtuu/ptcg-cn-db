@@ -323,6 +323,124 @@ def test_classify_zero_text_task039_categories():
     ) == "transform_swap"
 
 
+def test_classify_zero_text_task049_r2_categories():
+    """task 049 第二轮句级归类（出处 .scratch/unknown-sentences-049-r2.txt 60 distinct）。"""
+    # usage_timing：同名特性一回合一次限制 / 最初回合限制（47 条大宗 + 变体）
+    assert classify_zero_text(
+        "在这个回合，如果已经使用了其他的「暗夜资产」了的话，则无法使用这个特性。"
+    ) == "usage_timing"
+    assert classify_zero_text("这张卡牌，只能在自己最初的回合使用。") == "usage_timing"
+    assert classify_zero_text(
+        "这张卡牌，如果自己场上有拥有特性的宝可梦的话，则无法使用。"
+    ) == "usage_timing"
+    assert classify_zero_text("这个招式，在后攻玩家的最初回合无法使用。") == "usage_timing"
+    # self_discard：任意数量/N 张自己的手牌放于弃牌区（CBB3C-0801/CSM2DC-301 类）
+    assert classify_zero_text(
+        "若希望，在抽取卡牌前，可将任意数量的自己的手牌放于弃牌区。"
+    ) == "self_discard"
+    assert classify_zero_text(
+        "另外，当使用这张卡牌时，可将2张自己的手牌放于弃牌区。"
+    ) == "self_discard"
+    # self_removal：这只宝可梦（及附着卡）自身离场 / 备战区遣送（多龙梅西亚）
+    assert classify_zero_text(
+        "然后，将这只宝可梦，以及放于其身上的所有卡牌，放于弃牌区。"
+    ) == "self_removal"
+    assert classify_zero_text("然后，将这只宝可梦放于放逐区。") == "self_removal"
+    assert classify_zero_text(
+        "将自己备战区中，最多与对手场上宝可梦数量相同数量的「多龙梅西亚」放于弃牌区，"
+        "选择与放于弃牌区数量相同数量的对手宝可梦。"
+    ) == "self_removal"
+    # residual_action：将其中/将其/给对手看过/各1张/可再选择/对手允许/将放于双方 等收尾
+    assert classify_zero_text(
+        "将其中1张支援者，在给对手看过之后，加入手牌。"
+    ) == "residual_action"
+    assert classify_zero_text(
+        "如果不是【斗】能量的话，则在给对手看过之后，加入手牌。"
+    ) == "residual_action"
+    assert classify_zero_text(
+        "如果那张卡牌是支援者的话，若希望，则可将其放于放逐区。"
+    ) == "residual_action"
+    assert classify_zero_text(
+        "在这种情况下，可将「宝可梦道具」和「特殊能量」各1张加入手牌。"
+    ) == "residual_action"
+    assert classify_zero_text(
+        "在这种情况下，可再选择属性各不相同的宝可梦最多3张，加入手牌。"
+    ) == "residual_action"
+    assert classify_zero_text("如果对手允许，则将选择的卡牌加入手牌。") == "residual_action"
+    assert classify_zero_text("如果该卡牌是支援者的话，则放于弃牌区。") == "residual_action"
+    assert classify_zero_text(
+        "将放于双方战斗宝可梦身上的卡牌，全部放于弃牌区。"
+    ) == "residual_action"
+    assert classify_zero_text(
+        "将双方场上宝可梦身上放置的1个伤害指示物，转放于双方场上的其他宝可梦身上。"
+    ) == "residual_action"
+    assert classify_zero_text(
+        "然后，将所有没被选择的自己的备战宝可梦，以及放于其身上的所有卡牌，放于弃牌区。"
+    ) == "residual_action"
+    assert classify_zero_text(
+        "将放于这只宝可梦身上的卡牌全部放于弃牌区，"
+        "将这只宝可梦作为「宝可梦道具」，放于自己的宝可梦身上。"
+    ) == "residual_action"
+    # activation_condition：则能生效/才生效 条件句
+    assert classify_zero_text(
+        "这个特性只有当自己场上所有的宝可梦都是【恶】属性的场合才生效。"
+    ) == "activation_condition"
+    assert classify_zero_text(
+        "如果自己场上所有的宝可梦都是「汇流」宝可梦的话则能生效。"
+    ) == "activation_condition"
+    assert classify_zero_text("如果自己场上有「正电拍拍」的话，则能生效。") == (
+        "activation_condition"
+    )
+    # attribute_rule：弱点/抗性计算与属性变更说明句
+    assert classify_zero_text(
+        "只要这只宝可梦在场上，对手战斗宝可梦的弱点按「×4」进行伤害计算。"
+    ) == "attribute_rule"
+    assert classify_zero_text(
+        "这个招式的伤害，即使作用于备战宝可梦也要计算弱点、抗性。"
+    ) == "attribute_rule"
+    assert classify_zero_text(
+        "只要这只宝可梦在场上，就会变为【超】和【斗】2种属性。"
+    ) == "attribute_rule"
+    assert classify_zero_text(
+        "从【草】【火】【水】【雷】【超】【斗】【恶】【钢】【龙】中选择1种属性。"
+    ) == "attribute_rule"
+    # damage_redirect：伤害重定向到备战宝可梦（CSM2aC-012）
+    assert classify_zero_text(
+        "当对手的场上宝可梦身上附有【水】能量时，若希望，可将这个招式的伤害，"
+        "给予对手的1只备战宝可梦而不是战斗宝可梦。"
+    ) == "damage_redirect"
+    # banish_mill：放逐对手牌库顶（CS6bC-083）
+    assert classify_zero_text("将对手牌库上方的1张卡牌，放于放逐区。") == "banish_mill"
+    # self_constraint 扩展：卡牌自身区域限制（CSV8C-180）
+    assert classify_zero_text(
+        "这张卡牌，只要在弃牌区，就无法加入手牌，也无法放回牌库。"
+    ) == "self_constraint"
+    # opponent_procedure 扩展：将对手的宝可梦放于弃牌区（CSM2bC-112）
+    assert classify_zero_text(
+        "将对手的1只宝可梦，以及放于其身上的所有卡牌，放于弃牌区。"
+    ) == "opponent_procedure"
+    # variable_quantity 扩展：数量单位「只」
+    assert classify_zero_text(
+        "如果追加附有3个【斗】能量的话，则放于弃牌区的宝可梦数量变为2只。"
+    ) == "variable_quantity"
+    # guess_game 扩展：反面放置（CSM2aC-128）
+    assert classify_zero_text("将自己手牌中的1张宝可梦，翻成反面放置。") == "guess_game"
+    # tool_lifecycle 扩展：附着道具/能量脱着（CSM2aC-115/CSV9C-135/CSV6C-100）
+    assert classify_zero_text(
+        "若希望，可将放于这只宝可梦身上的「宝可梦道具」，放于弃牌区。"
+    ) == "tool_lifecycle"
+    assert classify_zero_text(
+        "在造成伤害前，将放于这只宝可梦身上的「宝可梦道具」放于弃牌区。"
+    ) == "tool_lifecycle"
+    assert classify_zero_text(
+        "若希望，可在造成伤害后，将放于这只宝可梦身上的「驱劲能量 未来」放于弃牌区。"
+    ) == "tool_lifecycle"
+    # shuffle 扩展：重洗对手的牌库（CS5bC-108）
+    assert classify_zero_text("若希望，可重洗对手的牌库。") == "shuffle"
+    # selection_setup 扩展：自己选择类型（CSV6C-087）
+    assert classify_zero_text("自己选择物品或支援者其中一种类型。") == "selection_setup"
+
+
 # ── run_tagging 落库（临时库） ──
 
 _DDL = (
@@ -487,6 +605,22 @@ def test_write_tagging_report(tmp_path):
     assert "labels" in text_  # 机制标签保留统计
 
 
+def test_write_tagging_report_sentences(tmp_path):
+    """task 049：报告句级节——切分统计 + rule_reference + 句级归类桶 + unknown 句清单。"""
+    from ptcgdb.mapping.report import write_tagging_report
+
+    db = _mk_db(tmp_path)
+    result = run_tagging(db)
+    path = write_tagging_report(result, tmp_path / "reports")
+    text_ = path.read_text(encoding="utf-8")
+    assert "## 句级切分与句级归类（task 049）" in text_
+    assert f"句子总数：{result.sentences_total}" in text_
+    assert f"规则引用句（rule_reference 只标句类不打标）：{result.sent_rule_reference}" in text_
+    # 零命中句归类桶表 + unknown 句逐条浮出（fixture P4 全新机制措辞）
+    assert "句级零命中归类" in text_
+    assert "一种从未见过的全新机制措辞。" in text_
+
+
 # ── CLI tag-effects ──
 
 
@@ -502,6 +636,7 @@ def test_cli_tag_effects(tmp_path):
     )
     assert r1.exit_code == 0, r1.output
     assert "changed=6" in r1.output and "unknown=1" in r1.output
+    assert "sentences=" in r1.output and "unknown_sent=" in r1.output  # task 049 句级行
     assert _read_tags(db, "T1")["tags"] == ["discard_recover"]
     # 幂等复跑
     r2 = CliRunner().invoke(
