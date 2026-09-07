@@ -987,6 +987,10 @@ def scrape_jp_decks(
 
 @app.command("ingest-tourneys")
 def ingest_tourneys_cmd(
+    date_from: str | None = typer.Option(
+        None, "--date-from",
+        help="只收此日及之后的赛事（YYYY-MM-DD，task 051 退赛后口径）；日期缺失照入不猜",
+    ),
     raw_dir: Path = DEFAULT_RAW_DIR,
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
@@ -994,11 +998,17 @@ def ingest_tourneys_cmd(
 
     重跑幂等；count 合计 != 60 的卡组整组拦截（FR-9.6 质量门）并以非零码退出。
     """
-    result = ingest_tourneys(raw_dir, db_path)
+    from datetime import date as date_cls
+
+    result = ingest_tourneys(
+        raw_dir, db_path,
+        date_from=date_cls.fromisoformat(date_from) if date_from else None,
+    )
     typer.echo(
         f"tournaments={result.tournaments} decks={result.decks} appearances={result.appearances} "
         f"deck_cards={result.deck_cards} blocked={len(result.blocked)} "
         f"unknown_cards={len(result.unknown_cards)} warnings={len(result.warnings)}"
+        + (f" skipped_before_date={result.skipped_before_date}" if date_from else "")
     )
     for b in result.blocked:
         typer.echo(f"  ✗ {b['deck_id']}: {b['reason']}")

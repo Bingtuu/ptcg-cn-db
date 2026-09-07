@@ -18,6 +18,8 @@
 
 ### Changed
 
+- task 051 CN 赛事退赛后补采集（2026-09-08，无 schema 迁移）：`ingest-tourneys` 新增 `--date-from` 选项（`ingest_tourneys()` 关键字参数 `date_from: date | None = None`，默认不过滤零回归；早于此日的赛事跳过并计入 `TournamentIngestResult.skipped_before_date`，日期缺失照入不猜）——拍板口径「只收退赛后 date >= 2026-07-16」实装，退赛前旧行不删不动；补采集 series 55（S3 全季）/ 57（宁波超级赛）/ 59（S4，进行中）断点续传 2s/请求，正式 ingest tournaments=107 / decks=10,812 / appearances=11,282 / deck_cards=319,046 / blocked=0 / unknown_cards=0 / skipped_before_date=63；实测 mik 赛事 26→123（退赛后 107 场全 env=GHI，旧行 16 场零漂移）、全库 tournaments=283 / decks=10,760 / appearances=13,999 / deck_cards=320,493、mik topcut_slots 覆盖 61→73、WUR 时效恢复（cn basis 60 天窗 n_tournaments 5→54）；dist 十四件套重导；实测发现断点续传对 series-list/list 索引页无时效判断（08-02 旧页 hash 有效被跳过导致新建 S4 不可见，本次手工删页绕过，TTL/--force-index 另立项候选）；1096 测试全绿（1095+1）+ ruff 全净；任务档 `tasks/done/051-CN赛事退赛后补采集.md`
+
 - task 050 owner 归属词表补强（2026-09-07，无 schema 迁移）：`config/vocabularies/owners.yml` 追加 7 个训练家前缀（阿响/赫普/奇树/派帕/小霞/大吾/阿渡）——M1 种子词表仅 5 组，CSV10C 朱紫「训练家的宝可梦」入库时词表未扩、SSP 阿渡的喷火龙V 自 M1 起漏；重 ingest 7 系列（CSV10C/CSM2DC/CSM2aC/CSM1DC/CSM1aC/CSMPgC/SSP，skipped=0）后 **owner 非空 142→212**（+70：pokemon 56 + trainer 14，阿响 15/赫普 14/小霞 11/大吾 11/奇树 9/派帕 9/阿渡 1），species 同步去前缀 56 张；name_group 归组（按 name_full）/ card_relations / external_ids 全表零漂移，owner 进化链 24 条全部组内解析（§6.2 封闭约束成立）；**重 ingest 整行回写副作用两处实测发现并恢复**——union_position（SSP-109~112 被重置 NULL → `seed-union-positions` 重种子恢复）、effect_tags（7 系列 1,718 张被清 NULL → `tag-effects --set` 逐系列重打恢复，unknown_sent=0，恢复后逐字一致）；validate 全部规则 failures=0（含 text_raw 逐字、V-UNION 完整性 24）；1095 测试全绿 + ruff 全净；报告 `reports/validation-20260907T043927Z.md` + tag-effects 系列报告 ×7
 
 - `stats winrate --mirror` 默认值 exclude → **include**（PRD v1.25：include = standings record 汇总口径为默认；exclude 语义从「仅回显标签」变为真实逐局镜像剔除过滤）

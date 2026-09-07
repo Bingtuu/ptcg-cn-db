@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +63,7 @@ class TournamentIngestResult:
     blocked: list[dict[str, Any]] = field(default_factory=list)  # 60 张门 / raw 缺失
     unknown_cards: list[dict[str, Any]] = field(default_factory=list)  # card_id 未解析
     warnings: list[str] = field(default_factory=list)  # 未知 tier / subtype 等
+    skipped_before_date: int = 0  # --date-from 拦截（task 051，日期缺失照入不猜）
 
 
 def derive_stat_scope(card_type: str | None, trainer_subtype: str | None) -> str:
@@ -160,8 +161,13 @@ def ingest_tourneys(
     db_path: str | Path,
     *,
     vocab_dir: Path | None = None,
+    date_from: date | None = None,
 ) -> TournamentIngestResult:
-    """扫 raw mikmoe/tournaments + decks 目录 → 三表入库。raw 层只读，重跑幂等。"""
+    """扫 raw mikmoe/tournaments + decks 目录 → 三表入库。raw 层只读，重跑幂等。
+
+    date_from（task 051）：赛事日期早于此日的不写库不删行（只收退赛后口径）；
+    日期缺失照入不猜，与 FR-9.8 窗口守卫同哲学。
+    """
     raw_dir = Path(raw_dir)
     db_path = Path(db_path)
     vocab_dir = vocab_dir or VOCAB_DIR
@@ -214,6 +220,13 @@ def ingest_tourneys(
                 tier_map=tier_map,
                 division_map=division_map,
             )
+            if (
+                date_from is not None
+                and record.date is not None
+                and record.date < date_from
+            ):
+                result.skipped_before_date += 1
+                continue
             # env 推导（FR-9.1b）：日期 ∩ 日历段；未命中 → NULL + 记异常，不猜
             env_segment = derive_env(
                 SOURCE_REGION.get(record.source), record.date, env_calendar

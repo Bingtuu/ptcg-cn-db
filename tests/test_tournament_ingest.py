@@ -243,6 +243,22 @@ def query(db_path, stmt):
 # ---- 全流程 ----
 
 
+def test_ingest_date_from_filter(env):
+    """task 051：--date-from 只收退赛后——早于该日的赛事不写库不删行。"""
+    from datetime import date
+
+    raw_dir, db_path = env
+    # fixture 赛事 3211 日期 2026-05-31（退赛前）
+    r = ingest_tourneys(raw_dir, db_path, date_from=date(2026, 7, 16))
+    assert r.tournaments == 0
+    assert r.skipped_before_date == 1
+    assert query(db_path, select(Tournament)) == []
+    # 边界：等于 date_from 当天照收
+    r2 = ingest_tourneys(raw_dir, db_path, date_from=date(2026, 5, 31))
+    assert r2.tournaments == 1
+    assert r2.skipped_before_date == 0
+
+
 def test_ingest_full_flow(env):
     raw_dir, db_path = env
     result = ingest_tourneys(raw_dir, db_path)
