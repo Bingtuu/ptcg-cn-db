@@ -130,6 +130,19 @@ def test_split_owner_species():
     assert derive.split_owner_species("比克提尼◇", owners) == (None, "比克提尼")
     # 地区形态不是 owner，保留在 species 内
     assert derive.split_owner_species("阿罗拉 嘎啦嘎啦", owners) == (None, "阿罗拉 嘎啦嘎啦")
+    # task 050 词表补强：CSV10C 训练家的宝可梦 + SSP 阿渡
+    assert derive.split_owner_species("赫普的苍响ex", owners) == ("赫普", "苍响")
+    assert derive.split_owner_species("奇树的电肚蛙ex", owners) == ("奇树", "电肚蛙")
+    assert derive.split_owner_species("阿渡的喷火龙V", owners) == ("阿渡", "喷火龙")
+    assert derive.split_owner_species("小霞的干劲", owners) == ("小霞", "干劲")
+    assert derive.split_owner_species("阿响的凤王ex", owners) == ("阿响", "凤王")
+    assert derive.split_owner_species("大吾的巨金怪ex", owners) == ("大吾", "巨金怪")
+    assert derive.split_owner_species("派帕的三明治", owners) == ("派帕", "三明治")
+    # 形态名含「的」不是 owner
+    assert derive.split_owner_species("飘浮泡泡 太阳的样子", owners) == (
+        None,
+        "飘浮泡泡 太阳的样子",
+    )
 
 
 def test_name_group_key_rules():
