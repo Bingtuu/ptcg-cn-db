@@ -31,6 +31,7 @@ from ptcgdb.scrapers.limitless_site import BASE_URL as LIMITLESS_SITE_BASE_URL
 from ptcgdb.scrapers.limitless_site import DEFAULT_INTERVAL as LIMITLESS_SITE_INTERVAL
 from ptcgdb.scrapers.limitless_site import LimitlessSiteScraper
 from ptcgdb.scrapers.limitless_site_runner import LimitlessSiteScrapeRunner
+from ptcgdb.scrapers.mik_swiss import MikMoeSwissScraper
 from ptcgdb.scrapers.mikmoe import BASE_URL
 from ptcgdb.scrapers.mikmoe_tournament import MikMoeTournamentScraper
 from ptcgdb.scrapers.pokecabook_runner import BASE_URL as POKECABOOK_BASE_URL
@@ -38,6 +39,7 @@ from ptcgdb.scrapers.pokecabook_runner import PokecabookScraper, PokecabookShell
 from ptcgdb.scrapers.pokecardlab_runner import BASE_URL as POKECARDLAB_BASE_URL
 from ptcgdb.scrapers.pokecardlab_runner import PokecardlabScraper, PokecardlabShellRunner
 from ptcgdb.scrapers.runner import RunResult
+from ptcgdb.scrapers.swiss_runner import SwissPollRunner
 from ptcgdb.scrapers.tournament_runner import TournamentScrapeRunner
 from ptcgdb.stats.cli import init_db_with_caliber, query_cmd, stats_app
 from ptcgdb.validate import run_validations, write_report
@@ -761,6 +763,45 @@ def scrape_tourneys(
         f"run_id={result.run_id} status={'aborted' if stats.aborted else 'ok'} "
         f"fetched={fetched} skipped={skipped} question={len(stats.question)} "
         f"missing={len(stats.missing)} lists={result.lists_path}"
+    )
+    if stats.aborted:
+        typer.echo("警告：本轮运行因熔断提前中止，已抓产物与清单已落盘", err=True)
+        raise typer.Exit(code=1)
+
+
+@scrape_app.command("swiss")
+def scrape_swiss(
+    raw_dir: Path = DEFAULT_RAW_DIR,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    """瑞士轮实时积分榜轮询一轮（task 052 骨架）：探测 ongoing 赛事 → swiss 快照落 raw。
+
+    仅进行中赛事可用（ended 返回 400 按 unavailable 跳过）；内容不变的赛事
+    不重复写快照。比赛日密集轮询用 cron 周期调本命令（见 docs/data-sources.md §1）。
+    入库形态待真实 ongoing 响应字段确认后拍板——当前只产 raw。
+    """
+    try:
+        with HttpClient(BASE_URL) as http:
+            runner = SwissPollRunner(
+                raw_dir,
+                MikMoeTournamentScraper(http),
+                MikMoeSwissScraper(http),
+                db_path,
+            )
+            result = runner.poll()
+    except CircuitOpenError as exc:
+        typer.echo(f"熔断中止：{exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    stats = result.stats
+    counts: dict[str, int] = {}
+    for row in stats.scraped:
+        action = row["action"]
+        counts[action] = counts.get(action, 0) + 1
+    typer.echo(
+        f"run_id={result.run_id} status={'aborted' if stats.aborted else 'ok'} "
+        f"fetched={counts.get('fetched', 0)} unchanged={counts.get('unchanged', 0)} "
+        f"unavailable={counts.get('unavailable', 0)} question={len(stats.question)} "
+        f"lists={result.lists_path}"
     )
     if stats.aborted:
         typer.echo("警告：本轮运行因熔断提前中止，已抓产物与清单已落盘", err=True)
