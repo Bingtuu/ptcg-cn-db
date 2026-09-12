@@ -127,6 +127,9 @@ def check_required(
     源数据缺失豁免（task 006 实测）：给出 raw_index 时，text_raw 为空且 raw
     description 同样为空 = mik 源数据缺口（SSP-195 洗翠的沉重球），DB 忠实
     反映源数据，记 note 不算失败；raw 有文字而 DB 为空才算管线丢失判失败。
+    regulation_mark 同口径（task 054 实测）：raw regulationMark 为空串 =
+    赛制标记时代之前的复刻卡本真无标记（30thC-136~157 历代复刻 22 张），
+    记 note 豁免；raw 有标记而 DB 为空才判失败。
     """
     res = RuleResult(rule="必填非空", checked=len(cards))
     res.note = "regulation_mark/text_raw 对 is_basic_energy=TRUE 的卡豁免（PRD FR-3.2/§7.2）"
@@ -137,18 +140,23 @@ def check_required(
                 continue
             value = getattr(c, name)
             if value is None or (isinstance(value, str) and not value.strip()):
-                if name == "text_raw" and raw_index is not None:
+                if name in ("text_raw", "regulation_mark") and raw_index is not None:
                     raw_path = raw_index.get((c.set_id, c.number))
                     raw = read_raw(raw_path) if raw_path else None
-                    desc = ((raw or {}).get("data") or {}).get("description") or ""
-                    if raw is not None and not desc.strip():
+                    data = (raw or {}).get("data") or {}
+                    src = (
+                        data.get("description")
+                        if name == "text_raw"
+                        else data.get("regulationMark")
+                    ) or ""
+                    if raw is not None and not str(src).strip():
                         source_missing.append(c.card_id)
                         continue
                 res.fail(card_id=c.card_id, field=name, note="必填字段为空")
     if source_missing:
         res.note += (
             f"；源数据缺失豁免 {len(source_missing)} 张"
-            f"（raw description 同样为空）: {source_missing}"
+            f"（raw 对应字段同样为空）: {source_missing}"
         )
     return res
 

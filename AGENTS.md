@@ -2,12 +2,14 @@
 
 简中 PTCG 标准环境卡牌数据库。本地 SQLite 卡牌库 + 数据管线 + 更新机制，为下游（规则引擎 / AI 对战模拟 / 胜率统计）提供数据基建。
 
-**权威文档**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.32）——一切设计以它为准。
+**权威文档**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.33）——一切设计以它为准。
 **进展记录**：`STATUS.md`——当前阶段、里程碑、决策日志，开始工作前先读。
 **数据源**：`docs/data-sources.md`——全部数据源的获取方式与端点约定（mik.moe 主源 / 官网赛制页 / TCGdex / ptcd / PokéAPI / pokemon-card.com 抽样核对）。
 
 ## 当前状态
 
+**task 054 ✅（2026-09-12，PRD v1.33，user_version=13 无迁移）——30周年庆典预扩词表 + scratch 全链预演清偿 4 真实缺口**：mik 已提前收录 30thC 169 张 + MP 占位；F-03 再翻案（ancientTrait=="Tera" 实证存在 → is_tera = ingest ∪ map-tera 并集，拍板①）+ eras.yml Mega→特典（拍板②）；30thC/MP raw 全量采集（170 文件）+ scratch 全链预演（ingest→validate→activate→tag）抓到并清偿：stages.yml +4 恒等映射（Level Up/LEGEND/Mega Evolution/BREAK Evolution，不进 STAGE_RULE_BOX）/ derive 补 EX→ex + label SP/Mega / validate 规则 1 源数据豁免扩展 regulation_mark（复刻块 22 张本真无标记）/ heal +「移除伤害指示物」（既有库零回归）；预演终态 169+1 全入、validate 全过、tag 卡级 unknown=0、句级未知 3（一次性旧机制不猜）；真库零变更，09-16 发售日 L0 预期零卡点；1112 测试全绿 + ruff 全净；详见 STATUS.md。
+**task 052 DOING（2026-09-11 开工）——mik swiss 端点实证 = 积分榜快照非逐桌对阵（ended→400；无 pairings 供给）；拍板先建 shape-agnostic 骨架**（`scrapers/mik_swiss.py` + `swiss_runner.py` + CLI `scrape swiss`），待 09-12/13 周末真实 ongoing 响应到手后定入库形态；详见 STATUS.md。
 **task 049 ✅（2026-08-29，PRD v1.32，user_version=13 无迁移）——效果文本句级切分与句级打标，支撑批（044~049）收官**：`mapping/sentences.py` 确定性切分器（句末符+换行+字面 `\n` 边界、括号深度感知）+ `SentenceTag` frozen 模型 + `EffectTagDetail.sentences` 键（只加不删，段级并存）+ rule_reference 句类只标句类不打标 + 零命中句两轮归类收敛 unknown=0（新桶 5 个 + 八桶放宽，句级 44 桶）；实测 sentences_total=23,082 / rule_reference=1,678 / GHI 卡级覆盖 90.0%（句级 69.0% 差异有论证）/ 幂等零漂移；1095 测试全绿（1065+30）+ ruff 全净；报告 `reports/tag-effects-全库-active-20260828.md`；支撑批队列：045 ✅ / 046 ✅ / 047 ✅ / 048 搁置（官网无 Q&A 页供给）/ 049 ✅，详见 STATUS.md。
 **task 047 ✅（2026-08-28，PRD v1.31，user_version=13 无迁移）——勘误公告监控闭环**：FR-5.3 供给侧——L1 二级关键词 `ERRATA_KEYWORDS` 命中 → needs_manual 提案附 `errata_drafts` 草稿骨架（config/errata yml 同形、人工字段留空不猜）+ `monitor proposals` 草稿条数回显 + `ErrataSeed` 拒空串守卫 + 流程落 `config/errata/README.md`；errata 表 0 行如实保持；1065 测试全绿（1061+4）；支撑批队列：045 ✅ / 046 ✅ / 047 ✅ / 048 搁置（官网无 Q&A 页供给，调研结论留痕 data-sources.md §2）/ 049 句级打标，详见 STATUS.md。
 **task 046 ✅（2026-08-28，PRD v1.30，user_version=13 无迁移）——跨源 EN 结构化字段对账**：FR-2.3 规则 6 卡级跨源实装（tcgdex 列表端点无卡级字段实测证伪 → 第二源 = ptcd EN 卡级 JSON raw 144 套零新采集；链路 external_ids(tcgdex) → 套桥+编号归一复用 ja.py；五字段白名单 hp/weakness/resistance/retreat_cost/attacks；ptcd 口径两条：缺 retreatCost=0 费、"Free"=零费跳过；豁免五档 + 差异四分类零未知）；实测 12,304 比对 12,201 一致（99.2%）/ 103 差异全归类（建模差异 43 + 简中印刷修订 22 + 人工核销待办 38）/ 豁免 116；交付 `mapping/en_reconcile.py` + CLI `reconcile-en` + energy_types.yml en 键；1061 测试全绿（1031+30）；报告 `reports/reconcile-en-20260828.md`；支撑批队列：045 ✅ / 046 ✅ / 047 勘误闭环 / 048 官方 Q&A / 049 句级打标待下游 M5，详见 STATUS.md。
@@ -66,6 +68,7 @@ ptcgdb reconcile-en                             # 跨源 EN 结构化字段对�
 ptcgdb seed-face-totals / mark-aliases          # 卡面分母种子（F-01）/ 能量别名标记（F-02）
 ptcgdb seed-union-positions                     # V-UNION 部件方位种子（task 020 A3 核对，CSEC+SSP 组）
 ptcgdb scrape tourneys [--series-id 54] [--max-tournaments N]  # 采集 mik 赛事 → raw（限速 2s/请求）
+ptcgdb scrape swiss                             # 瑞士轮实时积分榜轮询一轮：ongoing 探测 → 快照落 raw（task 052 骨架，仅进行中赛事可用，入库形态待 ongoing 实测拍板）
 ptcgdb ingest-tourneys                          # 赛事 raw → 四表入库（60 张质量门）
 ptcgdb scrape limitless [--window A B]          # 采集 Limitless API 官方系列赛 → raw（6.5s/请求，窗口断点续传）
 ptcgdb ingest-limitless [--no-enforce-window]   # Limitless API raw → 四表入库（ptcd 映射链 + pairings + 窗口守卫 FR-9.8）

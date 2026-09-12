@@ -166,6 +166,19 @@ def test_deck_limit_and_prize():
     assert derive.derive_prize_cards("tag_team_gx") == 3
 
 
+def test_derive_is_tera():
+    """task 054：主信号 = mik pokemonAttr.ancientTrait=="Tera"（30thC 唯一信号）。"""
+    # ancientTrait 主信号（mechanic/label/卡名均无太晶字样也命中）
+    assert derive.derive_is_tera("ex", None, "超梦ex", "Tera") is True
+    # 空串/None 不命中，回退名/机制 haystack
+    assert derive.derive_is_tera("ex", None, "超梦ex", "") is False
+    assert derive.derive_is_tera("ex", None, "超梦ex", None) is False
+    assert derive.derive_is_tera("ex", None, "超梦ex") is False
+    # 回退路径：label/卡名含太晶仍命中
+    assert derive.derive_is_tera(None, ["太晶"], "妙蛙花") is True
+    assert derive.derive_is_tera(None, None, "太晶喷火龙") is True
+
+
 def test_resolve_evolution_chain_and_fallback():
     questions = Questions()
     records = [

@@ -98,7 +98,7 @@ def normalize_card(
         "evolution_chain_id": None,
         "rule_box_type": rule_box_type,
         "has_rule_box": rule_box_type is not None,
-        "is_tera": derive.derive_is_tera(mechanic, label, name_full),
+        "is_tera": derive.derive_is_tera(mechanic, label, name_full, pa.get("ancientTrait")),
         "union_position": None,
         "prize_cards": derive.derive_prize_cards(rule_box_type),
         "deck_limit": derive.derive_deck_limit(rule_box_type, is_ace_spec),

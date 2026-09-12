@@ -651,6 +651,39 @@ def test_required_source_missing_not_exempted_when_raw_has_text(db_env):
     )
 
 
+def test_required_regulation_mark_source_missing_exemption(db_env):
+    """regulation_mark 为空且 raw regulationMark 也为空串 → 豁免（task 054：
+
+    30thC-136~157 赛制标记时代之前的复刻卡本真无标记，DB 忠实反映源数据）。
+    """
+    raw_dir, db_path = db_env
+    mutate_card(db_path, f"{SET_ID}-001", regulation_mark=None, is_basic_energy=False)
+    base = card_payload("001", name="测试宝可梦001")
+    write_raw(
+        raw_dir / "mikmoe" / SET_ID / "001.json",
+        base | {"data": {**base["data"], "regulationMark": ""}},
+        source="mik_moe",
+        force=True,
+    )
+    res = get_rule(run_validations(db_path, set_id=SET_ID, raw_dir=raw_dir), "必填非空")
+    assert res.passed
+    assert res.note and "源数据缺失豁免" in res.note
+    assert f"{SET_ID}-001" in res.note
+
+
+def test_required_regulation_mark_not_exempted_when_raw_has_mark(db_env):
+    """regulation_mark 为空但 raw regulationMark 有值 → 判失败（管线丢失）。"""
+    raw_dir, db_path = db_env
+    mutate_card(db_path, f"{SET_ID}-001", regulation_mark=None, is_basic_energy=False)
+    # card_payload 默认 regulationMark="A"，raw 有值不豁免
+    res = get_rule(run_validations(db_path, set_id=SET_ID, raw_dir=raw_dir), "必填非空")
+    assert not res.passed
+    assert any(
+        f["card_id"] == f"{SET_ID}-001" and f["field"] == "regulation_mark"
+        for f in res.failures
+    )
+
+
 # ============================================================
 # 规则 2：枚举合法 — card_type 失败 + regulation_mark 无词表
 # ============================================================

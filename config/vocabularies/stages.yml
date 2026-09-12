@@ -8,3 +8,10 @@ stages:
   - { mik: VMAX, stage: VMAX }
   - { mik: V-UNION, stage: V-UNION }   # task 005 实测（SSP 皮卡丘V-UNION 四部件）
   - { mik: VSTAR, stage: VSTAR }       # task 005 实测（SSP 喷火龙VSTAR/超梦VSTAR）
+# task 054 实测（30thC 历代机制复刻 5 张）：机制名不翻译、恒等映射；
+# 均不进 STAGE_RULE_BOX（LV.X/LEGEND/BREAK 无 rule_box；M沙奈朵EX 为旧时代
+# 2 奖赏 EX，mechanic="EX"→ex 已正确，不可被 mega_ex=3 奖赏覆盖）。
+  - { mik: Level Up, stage: Level Up }         # 30thC-147 帕路奇亚LV.X
+  - { mik: LEGEND, stage: LEGEND }             # 30thC-151/152 达克莱伊&克雷色利亚LEGEND（两半同名）
+  - { mik: Mega Evolution, stage: Mega Evolution }  # 30thC-156 M沙奈朵EX（mechanic=EX + label=Mega）
+  - { mik: BREAK Evolution, stage: BREAK Evolution }  # 30thC-157 甲贺忍蛙BREAK

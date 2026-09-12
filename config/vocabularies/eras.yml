@@ -6,3 +6,6 @@ eras:
   - { mik_series: "Promo", era: 特典 }
   # task 005 补入（30thP 30周年庆典特典卡实测：series="30th"，归入特典）
   - { mik_series: "30th", era: 特典 }
+  # task 054 补入（MP 超级进化 特典卡实测：series="Mega"，特典卡占位归入特典；
+  # 未来 Mega 补充包本体若同 series 值再议）
+  - { mik_series: "Mega", era: 特典 }

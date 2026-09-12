@@ -23,6 +23,8 @@ MECHANIC_RULE_BOX = {
     "V": "v",
     "Radiant": "radiant",
     "ex": "ex",
+    # task 054 实测：30thC 旧时代复刻 EX（30thC-156 M沙奈朵EX），与朱紫 ex 同 2 奖赏
+    "EX": "ex",
 }
 
 # mik label → effect_tags 粗粒度标签（task 004 实测：Ultra Beast=究极异兽；
@@ -35,6 +37,11 @@ LABEL_TAGS = {
     # task 005 实测：朱紫古代/未来（SVP 轰鸣月ex/铁辙迹ex/雄伟牙 等）
     "Ancient": "古代",
     "Future": "未来",
+    # task 054 实测：30thC 白金时代复刻 SP 宝可梦（30thC-149 叉字蝠G；
+    # 该时代未入简中无官方译名，恒等保留）
+    "SP": "SP",
+    # task 054 实测：30thC 超级进化复刻（30thC-156 M沙奈朵EX，stage=Mega Evolution）
+    "Mega": "Mega",
 }
 
 # 被 rule_box 消费、不进 effect_tags 的 label（task 005 实测：TAG TEAM GX
@@ -160,8 +167,17 @@ def derive_prize_cards(rule_box_type: str | None) -> int:
     return 1
 
 
-def derive_is_tera(mechanic: str | None, label: list[str] | None, name_full: str) -> bool:
-    """太晶/星晶标志。日月/剑盾无样本；按朱紫机制预留判定（mechanic/label/卡名含太晶）。"""
+def derive_is_tera(
+    mechanic: str | None,
+    label: list[str] | None,
+    name_full: str,
+    ancient_trait: str | None = None,
+) -> bool:
+    """太晶/星晶标志。主信号 = mik pokemonAttr.ancientTrait=="Tera"（task 054 实测：
+    raw 158 张全 ⊂ task 030 ptcd 判定 166 张；30thC 无 EN 桥时此字段为唯一信号）；
+    回退 = mechanic/label/卡名含太晶（朱紫机制预留）。"""
+    if ancient_trait == "Tera":
+        return True
     haystacks = [mechanic or "", *(label or []), name_full]
     return any("太晶" in h or "Tera" in h for h in haystacks)
 
