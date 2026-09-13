@@ -8,6 +8,7 @@
 
 ## 当前状态
 
+**task 055 ✅（2026-09-13，PRD v1.33 不变，user_version=13 无迁移）——索引页 24h TTL 自动刷新 + CBB6C/30thP 收编实战验证**：可变索引页"有效即跳过"会让增量永久不可见（task 051/054 两次教训）→ `raw_store.is_fresh_raw` + `DEFAULT_INDEX_TTL=24h` + 双 runner `index_ttl` 参数（索引页超龄自动重抓 force 落盘、TTL 内零请求、内容不可变文件不受影响；顺路修掉 `scrape sets` 实抓不落盘的浪费）；实战首战 **30thP cardsNum 18→27 增量 9 张精确命中** + CBB6C 196 张全收，入库零阻塞、validate 全过、activate +205（**active 12,420→12,625**）、tag unknown=0、既有卡零漂移、dist 对平；1118 测试全绿（1112+6）+ ruff 全净；详见 STATUS.md。
 **task 054 ✅（2026-09-12，PRD v1.33，user_version=13 无迁移）——30周年庆典预扩词表 + scratch 全链预演清偿 4 真实缺口**：mik 已提前收录 30thC 169 张 + MP 占位；F-03 再翻案（ancientTrait=="Tera" 实证存在 → is_tera = ingest ∪ map-tera 并集，拍板①）+ eras.yml Mega→特典（拍板②）；30thC/MP raw 全量采集（170 文件）+ scratch 全链预演（ingest→validate→activate→tag）抓到并清偿：stages.yml +4 恒等映射（Level Up/LEGEND/Mega Evolution/BREAK Evolution，不进 STAGE_RULE_BOX）/ derive 补 EX→ex + label SP/Mega / validate 规则 1 源数据豁免扩展 regulation_mark（复刻块 22 张本真无标记）/ heal +「移除伤害指示物」（既有库零回归）；预演终态 169+1 全入、validate 全过、tag 卡级 unknown=0、句级未知 3（一次性旧机制不猜）；真库零变更，09-16 发售日 L0 预期零卡点；1112 测试全绿 + ruff 全净；详见 STATUS.md。
 **task 052 DOING（2026-09-11 开工）——mik swiss 端点实证 = 积分榜快照非逐桌对阵（ended→400；无 pairings 供给）；拍板先建 shape-agnostic 骨架**（`scrapers/mik_swiss.py` + `swiss_runner.py` + CLI `scrape swiss`），待 09-12/13 周末真实 ongoing 响应到手后定入库形态；详见 STATUS.md。
 **task 049 ✅（2026-08-29，PRD v1.32，user_version=13 无迁移）——效果文本句级切分与句级打标，支撑批（044~049）收官**：`mapping/sentences.py` 确定性切分器（句末符+换行+字面 `\n` 边界、括号深度感知）+ `SentenceTag` frozen 模型 + `EffectTagDetail.sentences` 键（只加不删，段级并存）+ rule_reference 句类只标句类不打标 + 零命中句两轮归类收敛 unknown=0（新桶 5 个 + 八桶放宽，句级 44 桶）；实测 sentences_total=23,082 / rule_reference=1,678 / GHI 卡级覆盖 90.0%（句级 69.0% 差异有论证）/ 幂等零漂移；1095 测试全绿（1065+30）+ ruff 全净；报告 `reports/tag-effects-全库-active-20260828.md`；支撑批队列：045 ✅ / 046 ✅ / 047 ✅ / 048 搁置（官网无 Q&A 页供给）/ 049 ✅，详见 STATUS.md。
@@ -45,7 +46,7 @@ PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -X utf8 -m pytest -q
 
 # 数据管线（.venv/Scripts/ptcgdb.exe）
 ptcgdb init-db                                  # 建库/迁移
-ptcgdb scrape sets | scrape cards [--set X]     # 采集 mik.moe → raw（限速 2s/请求）
+ptcgdb scrape sets | scrape cards [--set X]     # 采集 mik.moe → raw（限速 2s/请求；索引页 products/系列详情 24h TTL 自动刷新，task 055）
 ptcgdb ingest --set <setId>                     # raw → draft 入库
 ptcgdb validate [--set X] / activate            # FR-2.3 校验（含 text_raw 逐字保真）→ active
 ptcgdb legal --date 2026-08-01 --format standard  # 指定日期的合法卡池
@@ -67,7 +68,7 @@ ptcgdb map-tera                                 # 太晶识别：ptcd EN subtype
 ptcgdb reconcile-en                             # 跨源 EN 结构化字段对账：ptcd 卡级五字段 + 差异四分类（task 046，只读零网络）
 ptcgdb seed-face-totals / mark-aliases          # 卡面分母种子（F-01）/ 能量别名标记（F-02）
 ptcgdb seed-union-positions                     # V-UNION 部件方位种子（task 020 A3 核对，CSEC+SSP 组）
-ptcgdb scrape tourneys [--series-id 54] [--max-tournaments N]  # 采集 mik 赛事 → raw（限速 2s/请求）
+ptcgdb scrape tourneys [--series-id 54] [--max-tournaments N]  # 采集 mik 赛事 → raw（限速 2s/请求；series-list/list 索引页 24h TTL 自动刷新，task 055）
 ptcgdb scrape swiss                             # 瑞士轮实时积分榜轮询一轮：ongoing 探测 → 快照落 raw（task 052 骨架，仅进行中赛事可用，入库形态待 ongoing 实测拍板）
 ptcgdb ingest-tourneys                          # 赛事 raw → 四表入库（60 张质量门）
 ptcgdb scrape limitless [--window A B]          # 采集 Limitless API 官方系列赛 → raw（6.5s/请求，窗口断点续传）

@@ -14,11 +14,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 META_KEY = "_meta"
+
+# 可变索引页默认 TTL（task 055）：产品清单/系列详情/赛事 series-list/list 会随
+# 新系列/新场次登记变化，"有效即跳过"会让增量永久不可见（task 051 S4 不可见、
+# task 054 30thC/MP/CBB6C 缺席两次实战教训）；内容不可变文件（卡详情等）不用此口径。
+DEFAULT_INDEX_TTL = timedelta(hours=24)
 
 
 def canonical_json(payload: Any) -> str:
@@ -75,6 +80,26 @@ def is_valid_raw(path: Path) -> bool:
         return False
     payload = {k: v for k, v in doc.items() if k != META_KEY}
     return content_hash(payload) == stored
+
+
+def is_fresh_raw(path: Path, max_age: timedelta) -> bool:
+    """hash 有效且 _meta.fetched_at 在 max_age 内（task 055：可变索引页 TTL 口径）。
+
+    fetched_at 缺失/不可解析/带天真 tzinfo 一律视为不新鲜（不猜）。
+    """
+    if not is_valid_raw(path):
+        return False
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    fetched_raw = (doc.get(META_KEY) or {}).get("fetched_at")
+    if not isinstance(fetched_raw, str):
+        return False
+    try:
+        fetched = datetime.fromisoformat(fetched_raw)
+    except ValueError:
+        return False
+    if fetched.tzinfo is None:
+        return False
+    return datetime.now(UTC) - fetched <= max_age
 
 
 def read_raw(path: Path) -> dict[str, Any] | None:

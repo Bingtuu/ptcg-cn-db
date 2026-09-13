@@ -4,6 +4,7 @@
 """
 
 import json
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -21,7 +22,13 @@ from ptcgdb.scrapers import (
     ScrapeRunner,
     TransientHttpError,
 )
-from ptcgdb.scrapers.raw_store import content_hash, is_valid_raw, read_raw, write_raw
+from ptcgdb.scrapers.raw_store import (
+    content_hash,
+    is_fresh_raw,
+    is_valid_raw,
+    read_raw,
+    write_raw,
+)
 
 
 def make_client(handler, **kwargs) -> HttpClient:
@@ -409,3 +416,103 @@ def test_incremental_cardsnum_mismatch_triggers_refetch(tmp_path):
     # 首次抓取：cardsNum=5 ≠ 缓存 3 张 → 自动触发重拉（product-detail 被调用两次）
     runner.scrape_cards(set_ids=["TEST1"])
     assert call_count[0] == 2  # 首次拉取 + cardsNum 对账触发的重拉
+
+
+# ---- task 055：索引页 TTL（is_fresh_raw + ScrapeRunner 接入）----
+
+TTL_24H = timedelta(hours=25)  # 比默认 24h 多 1h 的旧时间戳
+
+
+def _old_ts() -> str:
+    return (datetime.now(UTC) - TTL_24H).isoformat()
+
+
+def test_is_fresh_raw(tmp_path):
+    path = tmp_path / "idx.json"
+    # 缺失 / 损坏 → 不新鲜
+    assert not is_fresh_raw(path, timedelta(hours=24))
+    path.write_text("not json", encoding="utf-8")
+    assert not is_fresh_raw(path, timedelta(hours=24))
+    # 刚写入 → 新鲜
+    write_raw(path, ok_envelope({"x": 1}), source="mik_moe")
+    assert is_fresh_raw(path, timedelta(hours=24))
+    # 超龄（hash 仍有效）→ 不新鲜
+    write_raw(path, ok_envelope({"x": 1}), source="mik_moe", fetched_at=_old_ts(), force=True)
+    assert is_valid_raw(path)
+    assert not is_fresh_raw(path, timedelta(hours=24))
+    # 天真时间戳（无 tz）→ 不新鲜不猜
+    naive = datetime.now(UTC).replace(tzinfo=None).isoformat()
+    write_raw(path, ok_envelope({"x": 1}), source="mik_moe", fetched_at=naive, force=True)
+    assert not is_fresh_raw(path, timedelta(hours=24))
+
+
+def test_scrape_sets_fresh_index_zero_requests(tmp_path):
+    """products.json 与系列详情均在 TTL 内 → 整轮零请求。"""
+    def handler(request):
+        raise AssertionError(f"fresh 索引不应发请求: {request.url.path}")
+
+    runner = make_runner(tmp_path, handler)
+    write_raw(runner.products_path(), PRODUCTS, source="mik_moe")
+    write_raw(runner.set_cards_path("TEST1"), DETAIL, source="mik_moe")
+    result = runner.scrape_sets()
+    assert {r["id"]: r["action"] for r in result.stats.scraped} == {
+        "product-list": "skipped",
+        "TEST1": "skipped",
+    }
+
+
+def test_scrape_sets_stale_index_refetched(tmp_path):
+    """products.json / 系列详情超 TTL → 自动重抓并以 force 落盘刷新。"""
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        if request.url.path == "/api/v3/card/product-list":
+            return httpx.Response(200, json=PRODUCTS)
+        if request.url.path == "/api/v3/card/product-detail":
+            return httpx.Response(200, json=DETAIL)
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    runner = make_runner(tmp_path, handler)
+    # 预置超龄索引（内容占位 x=0，重抓后应被覆盖为真实 PRODUCTS/DETAIL）
+    write_raw(runner.products_path(), ok_envelope({"list": []}), source="mik_moe",
+              fetched_at=_old_ts())
+    write_raw(runner.set_cards_path("TEST1"), ok_envelope({"cards": []}), source="mik_moe",
+              fetched_at=_old_ts())
+    result = runner.scrape_sets()
+    assert calls == ["/api/v3/card/product-list", "/api/v3/card/product-detail"]
+    assert {r["id"]: r["action"] for r in result.stats.scraped} == {
+        "product-list": "fetched",
+        "TEST1": "fetched",
+    }
+    assert read_raw(runner.products_path())["data"]["list"][0]["setId"] == "TEST1"
+    assert len(read_raw(runner.set_cards_path("TEST1"))["data"]["cards"]) == 2
+
+
+def test_scrape_cards_stale_set_detail_refetched_but_card_files_untouched(tmp_path):
+    """系列详情超 TTL 重抓；卡详情文件内容不可变，即使超龄也不重抓。"""
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        if request.url.path == "/api/v3/card/product-list":
+            return httpx.Response(200, json=PRODUCTS)
+        if request.url.path == "/api/v3/card/product-detail":
+            return httpx.Response(200, json=DETAIL)
+        if request.url.path == "/api/v3/card/card-detail":
+            return httpx.Response(200, json=CARD1)
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    runner = make_runner(tmp_path, handler)
+    write_raw(runner.products_path(), PRODUCTS, source="mik_moe")  # 新鲜
+    write_raw(runner.set_cards_path("TEST1"), ok_envelope({"cards": []}), source="mik_moe",
+              fetched_at=_old_ts())  # 超龄索引
+    # 卡详情预置为超龄但有效 → 不应重抓
+    write_raw(runner.card_path("TEST1", "001"), CARD1, source="mik_moe", fetched_at=_old_ts())
+    write_raw(runner.card_path("TEST1", "002"), CARD2, source="mik_moe", fetched_at=_old_ts())
+    result = runner.scrape_cards(set_ids=["TEST1"])
+    assert calls == ["/api/v3/card/product-detail"]  # 只有索引重抓，卡详情零请求
+    assert {r["id"]: r["action"] for r in result.stats.scraped} == {
+        "TEST1-001": "skipped",
+        "TEST1-002": "skipped",
+    }

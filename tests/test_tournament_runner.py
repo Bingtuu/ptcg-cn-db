@@ -28,7 +28,7 @@ from ptcgdb.scrapers.mikmoe_tournament import (
     tournament_detail_path,
     tournament_list_path,
 )
-from ptcgdb.scrapers.raw_store import is_valid_raw
+from ptcgdb.scrapers.raw_store import is_valid_raw, write_raw
 from ptcgdb.scrapers.tournament_runner import TournamentScrapeRunner
 
 FIXTURES = Path(__file__).parent / "fixtures" / "tournaments"
@@ -277,3 +277,47 @@ def test_cli_scrape_tourneys(tmp_path, monkeypatch):
     assert "status=ok" in result.output
     assert ("rank", 3215, 1, 32) in fake.calls
     assert is_valid_raw(tournament_detail_path(tmp_path / "raw", "3215"))
+
+
+# ---- task 055：索引页 TTL（series-list / tournament list）----
+
+
+def test_scrape_stale_index_pages_refetched_details_untouched(tmp_path):
+    """series-list / list 超 TTL 重抓；赛事详情等内容不可变文件超龄也不重抓。"""
+    from datetime import UTC, datetime, timedelta
+
+    scraper = FakeTournamentScraper()
+    runner = make_runner(tmp_path, scraper)
+    raw = tmp_path / "raw"
+    old = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
+    # 预置：索引页超龄（占位空内容），赛事详情超龄但有效
+    write_raw(series_list_path(raw, 1), {"code": 200, "data": {"list": []}, "msg": ""},
+              source="mik_moe", fetched_at=old)
+    write_raw(tournament_list_path(raw, "54", 1),
+              {"code": 200, "data": {"list": []}, "msg": ""},
+              source="mik_moe", fetched_at=old)
+    write_raw(tournament_detail_path(raw, "3215"),
+              {"code": 200, "data": {"id": 3215, "cached": True}, "msg": ""},
+              source="mik_moe", fetched_at=old)
+    result = runner.scrape(series_id="54", max_tournaments=1)
+    # 索引页重抓
+    assert ("series-list", 1) in scraper.calls
+    assert ("list", 54, 1) in scraper.calls
+    # 赛事详情虽超龄但有效 → 不重抓（内容不可变口径）
+    assert ("detail", 3215) not in scraper.calls
+    assert not result.stats.aborted
+
+
+def test_scrape_fresh_index_pages_zero_requests(tmp_path):
+    """索引页在 TTL 内 → 零索引请求，仅缺口内容文件实抓。"""
+    scraper = FakeTournamentScraper()
+    runner = make_runner(tmp_path, scraper)
+    raw = tmp_path / "raw"
+    write_raw(series_list_path(raw, 1), load_fixture("series_list.json"), source="mik_moe")
+    write_raw(tournament_list_path(raw, "54", 1), load_fixture("tournament_list.json"),
+              source="mik_moe")
+    runner.scrape(series_id="54", max_tournaments=1)
+    assert ("series-list", 1) not in scraper.calls
+    assert ("list", 54, 1) not in scraper.calls
+    # 详情/rank/static 等缺口仍正常实抓
+    assert ("detail", 3215) in scraper.calls

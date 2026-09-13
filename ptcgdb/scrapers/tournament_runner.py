@@ -12,6 +12,7 @@ force=True 重抓）。三清单 + scrape_runs 复用 runner.finish_run。
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,13 @@ from ptcgdb.scrapers.mikmoe_tournament import (
     tournament_detail_path,
     tournament_list_path,
 )
-from ptcgdb.scrapers.raw_store import is_valid_raw, read_raw, write_raw
+from ptcgdb.scrapers.raw_store import (
+    DEFAULT_INDEX_TTL,
+    is_fresh_raw,
+    is_valid_raw,
+    read_raw,
+    write_raw,
+)
 from ptcgdb.scrapers.runner import (
     RunResult,
     RunStats,
@@ -45,10 +52,13 @@ class TournamentScrapeRunner:
         raw_dir: Path,
         scraper: MikMoeTournamentScraper,
         db_path: Path | None = None,
+        index_ttl: timedelta | None = None,
     ) -> None:
         self.raw_dir = Path(raw_dir)
         self.scraper = scraper
         self.db_path = Path(db_path) if db_path else None
+        # 可变索引页 TTL（task 055）：series-list / 各系列 tournament list
+        self.index_ttl = index_ttl if index_ttl is not None else DEFAULT_INDEX_TTL
 
     def scrape(
         self,
@@ -98,6 +108,7 @@ class TournamentScrapeRunner:
                 lambda page=page: self.scraper.fetch_series_list(page, DEFAULT_PAGE_SIZE),
                 state,
                 force=force,
+                fresh_ttl=self.index_ttl,
             )
             if payload is None:
                 break
@@ -129,6 +140,7 @@ class TournamentScrapeRunner:
                 ),
                 state,
                 force=force,
+                fresh_ttl=self.index_ttl,
             )
             if payload is None:
                 break
@@ -205,11 +217,20 @@ class TournamentScrapeRunner:
         state: _State,
         *,
         force: bool,
+        fresh_ttl: timedelta | None = None,
     ) -> dict[str, Any] | None:
-        """保证 path 的 raw 可用；存在且 hash 有效即跳过（零请求）。返回响应包装。"""
-        if not force and is_valid_raw(path):
-            state.stats.scraped.append({"id": label, "path": str(path), "action": "skipped"})
-            return read_raw(path)
+        """保证 path 的 raw 可用；存在且 hash 有效即跳过（零请求）。返回响应包装。
+
+        fresh_ttl（task 055）：索引页专用——有效但超 TTL 也重抓（以 force 落盘，
+        write_raw 非 force 对有效文件跳过）；None = 内容不可变文件维持原口径。
+        """
+        if not force:
+            if fresh_ttl is None and is_valid_raw(path):
+                state.stats.scraped.append({"id": label, "path": str(path), "action": "skipped"})
+                return read_raw(path)
+            if fresh_ttl is not None and is_fresh_raw(path, fresh_ttl):
+                state.stats.scraped.append({"id": label, "path": str(path), "action": "skipped"})
+                return read_raw(path)
         try:
             payload = fetch()
         except MikMoeApiError as exc:
@@ -222,7 +243,7 @@ class TournamentScrapeRunner:
                 {"id": label, "endpoint": "-", "reason": f"重试耗尽（瞬时网络错误）：{exc}"}
             )
             raise  # 顶层兜底置 aborted，保 finish_run
-        write_raw(path, payload, source=mikmoe.SOURCE, force=force)
+        write_raw(path, payload, source=mikmoe.SOURCE, force=True)
         state.stats.scraped.append({"id": label, "path": str(path), "action": "fetched"})
         return payload
 

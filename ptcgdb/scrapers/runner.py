@@ -16,7 +16,7 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +28,14 @@ from ptcgdb.orm import ScrapeRun
 from ptcgdb.scrapers import mikmoe
 from ptcgdb.scrapers.http import CircuitOpenError
 from ptcgdb.scrapers.mikmoe import MikMoeApiError, MikMoeScraper
-from ptcgdb.scrapers.raw_store import canonical_json, is_valid_raw, read_raw, write_raw
+from ptcgdb.scrapers.raw_store import (
+    DEFAULT_INDEX_TTL,
+    canonical_json,
+    is_fresh_raw,
+    is_valid_raw,
+    read_raw,
+    write_raw,
+)
 
 STATUS_OK = "ok"
 STATUS_ABORTED = "aborted"
@@ -58,11 +65,14 @@ class ScrapeRunner:
         raw_dir: Path,
         scraper: MikMoeScraper,
         db_path: Path | None = None,
+        index_ttl: timedelta | None = None,
     ) -> None:
         self.raw_dir = Path(raw_dir)
         self.source_dir = self.raw_dir / mikmoe.RAW_SUBDIR
         self.scraper = scraper
         self.db_path = Path(db_path) if db_path else None
+        # 可变索引页 TTL（task 055）：products.json / 系列详情 cards.json
+        self.index_ttl = index_ttl if index_ttl is not None else DEFAULT_INDEX_TTL
 
     # ---- 路径约定 ----
     def products_path(self) -> Path:
@@ -76,26 +86,32 @@ class ScrapeRunner:
 
     # ---- 产品层 ----
     def ensure_products(self, *, force: bool = False) -> dict[str, Any]:
-        """保证 products.json 在本地可用；缺失/无效时实抓。返回完整 raw 文档。"""
-        if not force:
-            doc = read_raw(self.products_path())
-            if doc is not None:
-                return doc
+        """保证 products.json 在本地可用；缺失/无效/超 TTL 时实抓。返回完整 raw 文档。"""
+        if not force and is_fresh_raw(self.products_path(), self.index_ttl):
+            return read_raw(self.products_path()) or {}
         payload = self.scraper.fetch_product_list()
-        write_raw(self.products_path(), payload, source=mikmoe.SOURCE, force=force)
+        write_raw(self.products_path(), payload, source=mikmoe.SOURCE, force=True)
         return read_raw(self.products_path()) or {}
 
     def scrape_sets(self, *, force: bool = False) -> RunResult:
-        """抓系列清单 + 各系列详情（product-detail）。"""
+        """抓系列清单 + 各系列详情（product-detail）。
+
+        索引页 TTL（task 055）：products.json / 系列详情 cards.json 在 TTL 内读缓存
+        零请求，超龄才实抓并以 force 落盘（write_raw 非 force 对有效文件跳过，
+        索引页必须显式 force 才能刷新——task 054 实测教训）。
+        """
         run_id, started_at = _new_run_id()
         stats = RunStats()
         try:
-            products_payload = self.scraper.fetch_product_list()
-            write_raw(self.products_path(), products_payload, source=mikmoe.SOURCE, force=force)
-            products = _product_entries(products_payload)
-            stats.scraped.append(
-                {"id": "product-list", "path": str(self.products_path()), "action": "fetched"}
+            products_cached = not force and is_fresh_raw(
+                self.products_path(), self.index_ttl
             )
+            products_doc = self.ensure_products(force=force)
+            stats.scraped.append(
+                {"id": "product-list", "path": str(self.products_path()),
+                 "action": "skipped" if products_cached else "fetched"}
+            )
+            products = _product_entries(products_doc)
             stats.total = len(products)
             for product in products:
                 set_id = product.get("setId")
@@ -106,7 +122,7 @@ class ScrapeRunner:
                     )
                     continue
                 path = self.set_cards_path(set_id)
-                if not force and is_valid_raw(path):
+                if not force and is_fresh_raw(path, self.index_ttl):
                     stats.scraped.append({"id": set_id, "path": str(path), "action": "skipped"})
                     continue
                 try:
@@ -116,7 +132,7 @@ class ScrapeRunner:
                         {"id": set_id, "endpoint": exc.endpoint, "reason": str(exc)}
                     )
                     continue
-                write_raw(path, payload, source=mikmoe.SOURCE, force=force)
+                write_raw(path, payload, source=mikmoe.SOURCE, force=True)
                 stats.scraped.append({"id": set_id, "path": str(path), "action": "fetched"})
         except CircuitOpenError:
             stats.aborted = True
@@ -161,10 +177,11 @@ class ScrapeRunner:
         self, set_id: str, stats: RunStats, *, force: bool,
         cards_num_map: dict[str, int] | None = None,
     ) -> None:
-        # 系列详情缺失时先补抓
-        if force or not is_valid_raw(self.set_cards_path(set_id)):
+        # 系列详情缺失/超 TTL 时先补抓（索引页可变：cardsNum 会随新卡登记增长，
+        # task 054 实测 30thP 18→27；cardsNum 对账兜底在下方保留）
+        if force or not is_fresh_raw(self.set_cards_path(set_id), self.index_ttl):
             payload = self.scraper.fetch_product_detail(set_id)
-            write_raw(self.set_cards_path(set_id), payload, source=mikmoe.SOURCE, force=force)
+            write_raw(self.set_cards_path(set_id), payload, source=mikmoe.SOURCE, force=True)
         doc = read_raw(self.set_cards_path(set_id))
         if doc is None:
             stats.question.append(

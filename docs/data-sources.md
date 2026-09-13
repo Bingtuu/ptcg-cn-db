@@ -53,6 +53,7 @@
 - 能量/属性用单字母编码与 `【】` 占位符，归一化映射表是 normalize 层的核心工作（黄金样本覆盖）。
 - `cardIndex` 必须传字符串（`"001"`），传整数会返回 `{code:10002, msg:"内部错误"}`。
 - 基本搜索中文命中不佳（"超梦"返回空），全量采集走 `product-list → product-detail → card-detail` 链路，不依赖搜索。
+- **索引页 TTL（task 055，2026-09-13）**：products.json / 系列详情 cards.json / 赛事 series-list / tournament list 是**可变索引**（新系列/新场次/ cardsNum 增长会改写内容），"存在且 hash 有效即跳过"的断点续传口径会让增量永久不可见（task 051 S4 不可见、task 054 30thC/MP/CBB6C 缺席两次实战教训）——采集 runner 对索引页按 **24h TTL** 自动重抓（`raw_store.is_fresh_raw`，超龄以 force 落盘；`ScrapeRunner`/`TournamentScrapeRunner` 构造参数 `index_ttl` 可覆盖）；卡详情/赛事详情/卡组详情等内容不可变文件维持"有效即跳过"永不受 TTL 影响；`--force` 照旧全量重抓。L0（`monitor l0`）本就 force 刷新 products.json，不受影响。
 
 ### 赛事 API（task 027 调研实测 2026-08-02，真实采集校准同日）
 
