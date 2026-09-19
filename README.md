@@ -171,6 +171,99 @@ duckdb.sql("SELECT name_full, effect_tags FROM 'dist/cards.parquet' LIMIT 5")
 - **低样本**：n 低于阈值打 `low_confidence`；一切输出的 meta 回显 as_of / 窗口 / 口径 / 词表 hash，可原样重放。
 - **窗口注意**：pairings 覆盖赛事集中在 2025-06 前后，exclude / matchup 口径需显式 `--from 2025-04-01` 级别的窗口，默认 90 天滚动窗内可能为空集（诚实结果，非 bug）。
 
+## 📈 实战示例：竹兰的烈咬陆鲨ex 的出场与胜率（示例数据截至 2026-09-19）
+
+以一张真实卡走一遍完整分析流程（窗口 = 当前简中环境 2026-07-16 退赛后起，basis=cn，65 场赛事）：
+
+```bash
+# ① 定位卡与归组（同名 4 张异画印刷 CSV10C-113/241/269/283 合并为一个统计单元）
+ptcgdb query "SELECT c.card_id, c.name_full, c.regulation_mark, cng.group_key
+              FROM cards c JOIN cards_name_group cng ON c.card_id=cng.card_id
+              WHERE c.name_full LIKE '%烈咬陆鲨%' AND c.status='active'"
+
+# ② 逐赛事钻取：34 场出战、8 次 top-cut、最好成绩城市赛亚军
+ptcgdb stats card 竹兰的烈咬陆鲨ex --from 2026-07-16
+
+# ③ 三指标（basis=cn 默认）
+ptcgdb stats usage   --from 2026-07-16 --format csv   # 加权出场率 WUR
+ptcgdb stats winrate --layer b --from 2026-07-16 --format csv   # 胜率（B 层）
+ptcgdb stats wws     --layer b --from 2026-07-16 --format csv   # 加权胜率 WWS
+
+# ④ 卡组级视角：什么卡组强
+ptcgdb stats usage --granularity archetype --from 2026-07-16 --format csv
+```
+
+结果一览：
+
+| 指标 | 数值 | n | 名次 | 低置信？ |
+|---|---|---|---|---|
+| WUR 卡级出场率 | 0.84% | 67 卡组次 | 144/576 | 否 |
+| WR（B 层 top-cut 转化率） | 42.4% | 66 | 316/576 | 否 |
+| WWS 加权胜率 | 0.00154 | 67 | 148/576 | 否 |
+| WUR 卡组级（archetype） | 0.84% | 66 套 | 20/82 | 否 |
+
+**WWS 为什么这么小？** 这是最常见的口径疑问，答案在公式里：WWS 不是胜率，而是「对环境胜利的贡献份额」——`WWS = WUR × WR_adj`，上界就是出场率，低出场卡必然小（环境第一奇树 WWS 0.526 = 0.874 × 0.60，靠的是 87% 出场率）。且 B 层 `WR_adj = (T_w + k·q0)/(U_w + k)`（k=10，q0=赛事基准转化率）带贝叶斯收缩。每个因子都能用 `ptcgdb query` 原样复算——这正是可复算性契约的意义：
+
+<details>
+<summary>复算 SQL（与 ptcgdb/stats/sql/wws.sql 同一公式链，仅加 group_key 过滤）</summary>
+
+```sql
+WITH eligible AS (
+  SELECT tournament_id, topcut_slots, participant_count,
+         static_weight * pow(0.5, (julianday('2026-09-19') - julianday(date)) / 90.0) AS w_t
+  FROM v_tournament_weights
+  WHERE date BETWEEN '2026-07-16' AND '2026-09-19'
+    AND (division = 'master' OR division IS NULL)
+    AND is_qual = 0 AND is_team = 0
+    AND basis = 'cn' AND static_weight IS NOT NULL
+),
+eligible_b AS (
+  SELECT * FROM eligible WHERE topcut_slots IS NOT NULL AND participant_count IS NOT NULL
+),
+app AS (
+  SELECT a.tournament_id, a.deck_id, a.rank,
+         CASE WHEN a.points IS NOT NULL AND a.points > 0 THEN a.points ELSE 1.0 / a.rank END AS w_d
+  FROM deck_appearances a
+  JOIN decks d ON d.deck_id = a.deck_id AND d.mapping_status = 'full'
+  WHERE a.tournament_id IN (SELECT tournament_id FROM eligible)
+),
+norm AS (
+  SELECT tournament_id, deck_id, rank, w_d / SUM(w_d) OVER (PARTITION BY tournament_id) AS w_share
+  FROM app
+),
+per_app AS (
+  SELECT v.group_key, v.tournament_id, v.deck_id, v.rank, MAX(n.w_share) AS carry
+  FROM v_stat_deck_cards v
+  JOIN norm n ON n.tournament_id = v.tournament_id AND n.deck_id = v.deck_id AND n.rank = v.rank
+  WHERE v.group_key = '竹兰的烈咬陆鲨ex'
+  GROUP BY v.group_key, v.tournament_id, v.deck_id, v.rank
+)
+SELECT
+  SUM(e.w_t * p.carry) AS wur_num,
+  (SELECT SUM(w_t) FROM eligible) AS wur_den,
+  SUM(CASE WHEN eb.tournament_id IS NOT NULL THEN e.w_t * p.carry ELSE 0.0 END) AS u_w,
+  SUM(CASE WHEN eb.tournament_id IS NOT NULL AND p.rank <= e.topcut_slots THEN e.w_t * p.carry ELSE 0.0 END) AS t_w,
+  (SELECT SUM(w_t * 1.0 * topcut_slots / participant_count) / SUM(w_t) FROM eligible_b) AS q0,
+  COUNT(*) AS n_apps
+FROM per_app p
+JOIN eligible e ON e.tournament_id = p.tournament_id
+LEFT JOIN eligible_b eb ON eb.tournament_id = p.tournament_id
+```
+
+实测输出一行：`wur_num=0.7949 / wur_den=94.7272 / u_w=0.7948 / t_w=0.3370 / q0=0.1649 / n_apps=67`（注意：`ptcgdb query` 只执行单条语句，复制时去掉行尾分号）。
+
+</details>
+
+| 中间量 | 数值 | 核对 |
+|---|---|---|
+| WUR | 0.7949 / 94.7272 = 0.008391 | 与 `stats usage` 输出一致 ✓ |
+| 原始转化率 T_w/U_w | 0.3370 / 0.7948 = 0.4240 | 与 `stats winrate --layer b` 一致 ✓ |
+| q0 赛事基准转化率 | 0.1649 | |
+| 收缩后 WR_adj | (0.3370 + 10×0.1649) / (0.7948 + 10) = 0.1840 | |
+| **WWS** | 0.008391 × 0.1840 = **0.001544** | 与 `stats wws` 输出 0.0015441 逐位一致 ✓ |
+
+读数时注意三点口径：①mik 源无逐局对阵，CN 胜率只有 B 层 top-cut 转化率口径（42.4% 的含义 = 出战约 2.4 次转化 1 次上位，不能与逐局胜率直接比）；②k=10 的收缩强度挂钩的是**加权出战份额**而非卡组计数——小众卡（U_w 仅 0.79）会被 12.6:1 的先验大幅拉向赛事基准（42.4%→18.4%），热门卡几乎不受影响，看"实力信号"应读 WR + 钻取的上位记录，WWS 回答的是"贡献份额"；③本例样本多为城市赛，且 mik 源数据时效到 2026-09-06（周末新赛事登记有几天滞后），跑 `ptcgdb monitor tourneys` 刷新后数值会变。
+
 ## 🏗️ 架构
 
 ```mermaid
