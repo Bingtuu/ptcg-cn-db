@@ -6,9 +6,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-30周年庆典已收编(132系列/12,795张)-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.33-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-1118%20passed-success.svg?style=flat-square)](STATUS.md)
+[![Status](https://img.shields.io/badge/Status-133系列/12,908张-brightgreen.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.34-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-1120%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -22,18 +22,18 @@
 
 ## ✨ 亮点
 
-- **📸 快照化合法性引擎** —— 赛制标记 + 白名单 + 禁卡表 + 视作覆盖 + 能量种类全部按生效日版本化；旧快照永不删除，可回放任意历史环境（`legal_at('2026-08-01', 'standard')`）
-- **🏆 真实赛事卡组管线（三赛区）** —— 283 场赛事（CN mik 123 + EN Limitless 双通道 54 + JP 聚合站通道 106）/ 10,760 套卡组内容（mik 全 full）/ 13,999 条出战记录入库，pairings 逐桌对阵 479 桌；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用），`mapping_status` 分档、只统计可映射简中环境的卡组；**三赛区旋转日历种子**（`config/tournament_envs.yml`）+ 赛事日期推导环境落库，CN/EN/JP 环境标号对齐（FR-9.1b）；EN 侧 Limitless **API + 主站 HTML 双通道**（官方大赛 Top Cut，含 Worlds 2025 补录与亚洲联赛 MBL/PBL/KL 9 场，tier 系数词表化）；JP 侧 **PokecaBook 壳 + 官方 deck confirm 卡表定向解析**（红线定向放宽 + 成本守卫：估算超闸门自动降级最高等级场次），`basis` 口径标签互不混同；无简中对应卡落 `deck_card_misses` 缺口标识（简中进 Mega 环境后可 `remap-decks` 整体刷新，partial→full 单调升级已实战验证）；mik topcut_slots 反推物化 73 场，CN 样本 B 层胜率/WWS 非空
-- **📊 可复算的统计三指标 + 对阵矩阵** —— 加权出场率 WUR / 胜率 WR（逐局战绩与 top-cut 转化率两层口径，**镜像剔除已实装**：`--mirror exclude` 仅消费 pairings 覆盖赛事逐局判定）/ 加权胜率 WWS（贝叶斯收缩）/ **matchup 对阵矩阵**（archetype×archetype 逐局胜率长表，`stats matchup`）；**公式只在 canonical SQL 文件里**（单一事实源），权重输入全量落库，任何人都能用 SQL 原样重放官方数字
-- **🔍 像写 SQL 一样查库** —— `ptcgdb query` 只读 ad-hoc SQL（mode=ro，拒写操作）；导出 DB 自带统计物化视图，口径词表 hash 版本化进 meta
-- **🌏 三语卡名映射** —— 简中卡 99.3% 挂英文桥（12,337 张），经 TCGdex + pokemon-tcg-data + PokéAPI 链路 + 人工词表种子填充日文名 11,046 张；映射来源经 `external_ids` 体系逐条可溯，pokemon-card.com 官方抽样 31 张核对一致率 100%
-- **🔌 规则语义一等公民的 SDK** —— 合法性：`legal_at` / `effective_text`；卡组校验：`validate_deck`（结构化违规列表，banned/not_legal 互斥）；统计：`stats_usage` / `stats_winrate` / `stats_wws`；**卡组查询：`get_deck` / `list_decks`**（对局池批量拉取，默认只回 full 卡组）；`open_db` / `open_jsonl` 双后端同一接口、契约测试保一致，合法性判定实例级缓存（legal_at 重复调用近零耗时）
-- **📦 十四件套导出契约** —— `manifest.json` + 八份 JSONL（cards / sets / relations + 赛事五表含 pairings）+ `cards.parquet`（DuckDB 直读免灌库）+ `legality.json` + 只读 SQLite + `schema.md` + `checksums.sha256`，字段只加不删；双轨版本化（日历版本管数据，SemVer 管 schema），对齐 MTGJSON/Scryfall 惯例
+- **📸 快照化合法性引擎** —— 赛制标记 + 白名单 + 禁卡表 + 视作覆盖 + 能量种类全部按生效日版本化；旧快照永不删除，可回放任意历史环境（`legal_at('2026-08-01', 'standard')`）。当前快照：standard（G/H/I/J，2026-09-16 起生效）/ open
+- **🏆 真实赛事卡组管线（CN/EN/JP 三赛区）** —— 283 场赛事 / 10,760 套卡组 / 13,999 条出战记录 / 479 桌逐局对阵入库；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用）；三赛区旋转日历 + 赛事日期自动推导环境标号，CN/EN/JP 样本以 `basis` 口径隔离互不混同；EN 侧 Limitless **API + 主站双通道**（官方大赛 Top Cut，含 Worlds 2025 与亚洲联赛），JP 侧聚合站壳 + 官方卡组码卡表解析
+- **📊 可复算的统计指标 + 对阵矩阵** —— 加权出场率 WUR / 胜率 WR（逐局战绩与 top-cut 转化率两层口径，支持镜像局剔除）/ 加权胜率 WWS（贝叶斯收缩）/ matchup 对阵矩阵（archetype×archetype 逐局胜率）；**公式只在 canonical SQL 文件里**（单一事实源），权重输入全量落库，任何人都能用 SQL 原样重放每一个数字
+- **🔍 像写 SQL 一样查库** —— `ptcgdb query` 只读 ad-hoc SQL；导出 DB 自带统计物化视图，口径词表 hash 版本化进 meta
+- **🌏 三语卡名映射** —— 简中卡 99.3% 挂英文桥（12,337 张），日文名 11,046 张；映射来源经 `external_ids` 体系逐条可溯，pokemon-card.com 官方抽样核对一致率 100%
+- **🔌 规则语义一等公民的 SDK** —— 合法性 `legal_at` / `effective_text`；卡组校验 `validate_deck`（结构化违规列表）；统计 `stats_usage` / `stats_winrate` / `stats_wws` / `stats_matchup`；卡组查询 `get_deck` / `list_decks`；`open_db` / `open_jsonl` 双后端同一接口、契约测试保一致
+- **📦 十四件套导出契约** —— `manifest.json` + 八份 JSONL + `cards.parquet`（DuckDB 直读免灌库）+ `legality.json` + 只读 SQLite + `schema.md` + `checksums.sha256`；字段只加不删，双轨版本化（日历版本管数据，SemVer 管 schema），对齐 MTGJSON/Scryfall 惯例
 - **🔄 分级自动更新** —— L0 新卡每日增量入库、L1 赛制页变更自动生成提案、L2 勘误人工维护；目标新包发售 30 分钟内完成更新
-- **🛡️ 原文保真** —— `text_raw` 逐字保留绝不规范化，原文与派生字段严格分层；DB vs raw 同源自验 + 三清单日志保证数据质量
-- **📐 卡面口径保真** —— 卡号分母逐系列种子口径（`sets.card_face_total`，实测数据点驱动），种子未覆盖系列只显分子不伪装；字母编号能量卡的 mik 双重列示以 `alias_of` 归并到数字正本
-- **🔮 机制全覆盖且前瞻** —— ex / 太晶（mik `ancientTrait` 主信号 ∪ ptcd subtypes 并集，is_tera 176 张）/ ACE SPEC / 训练家宝可梦（owner 归属 212 张）/ V-UNION（四部件方位结构化，24 张齐全）/ GX / 超级进化ex，词表开放，新机制直接进库
-- **🏷️ 效果粗粒度标签层** —— 29 意图标签 + 3 机制 flag 词表（`config/vocabularies/effect_tags.yml` 唯一事实源，开放追加零代码）；规则打底（确定性正则匹配 + 段级 exclude 否定守卫、幂等可重跑）+ 人工兜底（零命中入清单核销，不猜）；GHI 环境 1,507 条效果文本实测覆盖 88.7%、全库 unknown=0；**句级打标（task 049）**：效果文本确定性切分到句（括号深度感知），`detail.sentences` 逐句挂标签并分类 effect/rule_reference（括号整句只标句类不打标），全库 23,082 句 unknown=0；这是下游规则引擎/AI 模拟的数据接缝（效果 DSL 归下游项目）
+- **🛡️ 原文保真** —— `text_raw` 逐字保留绝不规范化，原文与派生字段严格分层；DB 与 raw 同源自验保证数据质量
+- **📐 卡面口径保真** —— 卡号分母逐系列种子口径（实测数据点驱动），种子未覆盖系列只显分子不伪装；mik 双重列示的字母编号能量卡以 `alias_of` 归并到数字正本
+- **🔮 机制全覆盖且前瞻** —— ex / 太晶（177 张，双信号源交叉识别）/ ACE SPEC / 训练家的宝可梦（owner 归属 212 张）/ V-UNION（四部件方位结构化，24 张齐全）/ GX / 超级进化ex；词表开放，新机制直接进库
+- **🏷️ 效果标签层** —— 29 意图标签 + 3 机制 flag 词表（`config/vocabularies/effect_tags.yml` 唯一事实源，开放追加零代码）；确定性规则匹配 + 人工兜底复核（不猜），段级与**句级**双层打标（23,082 句逐句归类，全库 unknown=0）；这是下游规则引擎/AI 模拟的数据接缝
 
 ## 🔧 安装与初始化
 
@@ -45,79 +45,114 @@ ptcgdb init-db           # 建库 + 全部迁移（默认 data/ptcg-cn.db）
 ```
 
 > **数据库本体不随仓库分发**（见合规声明）。拿到数据的两条路：
-> ① **自行跑管线**：`ptcgdb scrape sets && ptcgdb scrape cards`（限速 2s/请求，全量约数小时）→ `ingest` → `validate` → `activate`；
+> ① **自行跑管线**：`ptcgdb scrape sets && ptcgdb scrape cards`（限速 2s/请求，全量约数小时）→ `ptcgdb ingest` → `ptcgdb validate` → `ptcgdb activate`；
 > ② **消费导出件**：已有 `dist/` 时直接 `open_jsonl("dist/")` 或 `duckdb` 直读 `cards.parquet`，无需建库。
 
 开发自检：
 
 ```bash
-python -m pytest -q      # 1118 测试（全量约 6 分钟）
+python -m pytest -q      # 1120 测试（全量约 5 分钟）
 ruff check .
 ```
 
 ## 🚀 快速预览
 
-> 当前库内数据：**132 系列 / 12,795 张卡**（active，含 30周年庆典 30thC 169 张 + 特典 30thP 27 张；三语卡名 EN 12,337+ / JA 11,046+）· **283 场赛事（CN mik 123 + EN Limitless API 5 + 主站 49 含 Worlds 2025 与亚洲联赛 + JP 106）/ 10,760 套卡组 / 13,999 条出战 / pairings 479 桌** · 合法卡池 standard 5,526 / open 12,627（@2026-09-13）。以下接口均已可用（开发进度见 Roadmap）。
+> 当前库内数据：**133 系列 / 12,908 张卡**（active；三语卡名 EN 12,337+ / JA 11,046+）· **283 场赛事（CN 123 + EN 54 + JP 106）/ 10,760 套卡组 / 13,999 条出战 / pairings 479 桌** · 合法卡池 standard 5,701 / open 12,879（@2026-09-19，赛制 2026-09-16 版）。
 
-**CLI**
+### CLI 速查
 
 ```bash
 # ── 采集与入库（mik.moe 主源，限速 2s/请求）──
 ptcgdb scrape sets && ptcgdb scrape cards      # 采集卡牌（索引页 24h TTL 自动刷新，增量不会漏）
-ptcgdb scrape tourneys --series-id 54          # 采集赛事卡组（索引页同样 TTL 刷新）
-ptcgdb scrape swiss                            # 瑞士轮实时积分榜快照（仅进行中赛事，入库形态待定）
-ptcgdb scrape limitless && ptcgdb ingest-limitless   # EN 对齐窗口 API 通道（Limitless 在线赛）
-ptcgdb scrape limitless-site && ptcgdb ingest-limitless-site   # EN 主站收录通道（官方大赛 Top Cut）
-ptcgdb scrape jp-shells && ptcgdb scrape jp-decks    # JP 通道：聚合站壳 → 官方 deck confirm 卡表（估算超闸门自动降级）
-ptcgdb ingest-jp                                     # JP 赛事入库（name_ja 名字链映射 + 同组裁决）
 ptcgdb ingest --set CSV10C                     # 卡牌入库（raw → draft）
+ptcgdb validate && ptcgdb activate             # 全规则校验（含 text_raw 逐字保真）→ active
+ptcgdb scrape tourneys                         # 采集赛事卡组
 ptcgdb ingest-tourneys                         # 赛事入库（60 张质量门）
-ptcgdb validate && ptcgdb activate             # FR-2.3 校验（含 text_raw 逐字保真）→ active
-
-# ── 合法性与卡组校验 ──
-ptcgdb legal --date 2026-09-13 --format standard   # 某日期的合法卡池（standard 5,526 / open 12,627）
-ptcgdb deck-check --file deck.yml              # FR-8 卡组校验（ok 退 0 / 违规 1 / 错误 2）
-
-# ── 统计与查询 ──
-ptcgdb stats usage --window-days 90            # 加权出场率 WUR（--basis cn/intl_aligned/jp；--granularity card|archetype 卡级/卡组级）
-ptcgdb stats winrate --layer a --mirror exclude --from 2025-04-01   # A 层逐局胜率（镜像局剔除，pairings 覆盖赛事）
-ptcgdb stats matchup --basis intl_aligned --from 2025-04-01         # matchup 对阵矩阵（archetype×archetype）
-ptcgdb stats wws --layer b                     # 加权胜率 WWS（贝叶斯收缩）；stats card <名> 单卡/单 archetype 钻取
-ptcgdb query "SELECT * FROM v_stat_deck_cards LIMIT 5"   # 只读 ad-hoc SQL
-ptcgdb export --out dist/                      # 导出十四件套（--no-parquet 跳过 parquet）
+ptcgdb scrape limitless && ptcgdb ingest-limitless           # EN 通道（Limitless 在线赛）
+ptcgdb scrape limitless-site && ptcgdb ingest-limitless-site # EN 主站通道（官方大赛 Top Cut）
+ptcgdb scrape jp-shells && ptcgdb scrape jp-decks && ptcgdb ingest-jp   # JP 通道
+ptcgdb scrape swiss                            # 瑞士轮实时积分榜快照（仅进行中赛事，快照留存）
 
 # ── 更新管线与验收 ──
-ptcgdb monitor l0 --dry-run                    # L0 新卡增量探测；monitor l1 赛制页监控 → 提案
-ptcgdb monitor tourneys                        # 赛事增量刷新：mik 轮询 + EN 近 14 天重抓 → ingest
-ptcgdb backfill-misses && ptcgdb remap-decks   # 映射缺口回填 / 卡库增长后刷新（partial→full 单调升级）
-ptcgdb accept && ptcgdb sample                 # 一键验收 A1~A8；A2/A3 抽样比对清单
-
-# ── 跨语言与机制映射 ──
-ptcgdb map-en && ptcgdb map-tcgdex && ptcgdb map-ja   # EN 桥 → TCGdex ID → JP 名（map-ja-trainer 补 trainer/特殊能量）
-ptcgdb map-tera                                # 太晶识别：ptcd EN subtypes → is_tera
-ptcgdb tag-effects                             # 效果标签标注落库（29 标签 + 3 flag + 句级 sentences，幂等；tag-effects-scan 评测 / tag-effects-audit 桶审查）
+ptcgdb monitor l0 --dry-run                    # L0 新卡增量探测（去掉 --dry-run 即正式跑）
+ptcgdb monitor l1                              # L1 赛制页监控 → 变更提案；monitor proposals 查看
+ptcgdb monitor tourneys                        # 赛事增量刷新：采集 → 入库一站跑完
+ptcgdb accept                                  # 一键验收 A1~A8（真实库只读）
 ```
 
-**SDK**
+### 合法性查询
+
+```bash
+# 某日期某赛制的合法卡池规模与白名单命中
+ptcgdb legal --date 2026-09-19 --format standard
+ptcgdb legal --date 2026-08-01 --format open       # 历史日期回放（旧快照永不删除）
+
+# 卡组校验：准备一份卡表 YAML（cards = card_id → 数量）
+cat > deck.yml <<'EOF'
+format: standard
+date: 2026-09-19
+cards:
+  CSV10C-001: 4     # 阿响的凯罗斯
+  CSV10C-003: 3     # 远古巨蜓ex
+  CSV10C-004: 4     # 竹兰的毒蔷薇
+  # ... 合计 60 张
+EOF
+ptcgdb deck-check --file deck.yml                  # 合法退 0 / 有违规退 1 / 输入错误退 2
+ptcgdb deck-check --file deck.yml --format open    # CLI 选项覆盖文件内的 format/date
+```
+
+### 统计与查询
+
+```bash
+ptcgdb stats usage --window-days 90                # 加权出场率 WUR（默认 basis=cn）
+ptcgdb stats usage --granularity archetype         # 卡组级粒度：什么卡组强
+ptcgdb stats usage --basis jp                      # JP 赛区样本
+ptcgdb stats winrate --layer a --mirror exclude --basis intl_aligned --from 2025-04-01
+                                                   # A 层逐局胜率（镜像局剔除，pairings 覆盖赛事）
+ptcgdb stats wws --layer b                         # 加权胜率 WWS（贝叶斯收缩）
+ptcgdb stats matchup --basis intl_aligned --from 2025-04-01 --min-n 3
+                                                   # matchup 对阵矩阵（archetype×archetype）
+ptcgdb stats card 老大的指令                       # 单卡钻取（逐赛事/逐系列）
+ptcgdb stats card 沙奈朵 --granularity archetype   # 单 archetype 钻取
+ptcgdb stats usage --format json                   # table|json|csv 三种输出（所有 stats 子命令通用）
+
+# 只读 ad-hoc SQL（mode=ro，仅 SELECT/WITH，默认 LIMIT 500）
+ptcgdb query "SELECT name_full, rarity FROM cards WHERE set_id='30thC' AND rarity='RGB'"
+ptcgdb query "SELECT * FROM v_stat_deck_cards LIMIT 5" --format csv
+
+# 导出十四件套到 dist/（--no-parquet 可跳过 parquet）
+ptcgdb export --out dist/
+```
+
+### 跨语言与标签管线（建库后跑一次即可）
+
+```bash
+ptcgdb map-en && ptcgdb map-tcgdex && ptcgdb map-ja    # EN 桥 → TCGdex ID → JP 名
+ptcgdb map-ja-trainer && ptcgdb map-tera               # trainer 日文名补强 / 太晶识别
+ptcgdb tag-effects                                     # 效果标签标注落库（幂等，可重跑）
+ptcgdb backfill-misses && ptcgdb remap-decks           # 赛事卡组映射缺口回填 / 刷新
+```
+
+### SDK
 
 ```python
 from ptcgdb.sdk import open_db
 
 db = open_db("data/ptcg-cn.db")               # 或 open_jsonl("dist/")，同一接口
-pool = db.legal_at(date="2026-08-01", format="standard")   # -> LegalityPool
-text = db.effective_text("CSM2DC-339", date="2026-08-01")  # 勘误 > 最新印刷 > 原文
+pool = db.legal_at(date="2026-09-19", format="standard")   # -> LegalityPool
+text = db.effective_text("CSM2DC-339", date="2026-09-19")  # 勘误 > 最新印刷 > 原文
 usage = db.stats_usage(window_days=90)        # -> StatsResult[CardStat]，meta 回显口径+词表 hash
-arch = db.stats_usage(granularity="archetype", date_from="2025-01-01")   # 卡组级：什么卡组强
-wr = db.stats_winrate(layer="a", mirror="exclude", basis="intl_aligned", date_from="2025-04-01")  # 逐局 + 镜像剔除
-matchup = db.stats_matchup(basis="intl_aligned", date_from="2025-04-01")   # matchup 对阵矩阵
-decks = db.list_decks(archetype="沙奈朵", date_from="2026-07-01")   # 对局池批量拉取（默认只回 full 卡组）
-deck = db.get_deck("mik_moe:607870")                # 单卡组：内容 + 60 张卡表 + 出战史（DeckAppearance）
-boss = db.stats_card("老大的指令")             # 单卡 drilldown（按赛事/按系列）
-cards = db.search_cards(name="喵喵", marks=("G", "H", "I"))
-report = db.validate_deck(my_deck, date="2026-08-01", format="standard")   # -> DeckReport（结构化违规列表）
+arch = db.stats_usage(granularity="archetype")            # 卡组级：什么卡组强
+wr = db.stats_winrate(layer="a", mirror="exclude", basis="intl_aligned", date_from="2025-04-01")
+matchup = db.stats_matchup(basis="intl_aligned", date_from="2025-04-01")   # 对阵矩阵
+decks = db.list_decks(archetype="沙奈朵", date_from="2026-07-01")   # 批量拉取（默认只回 full 卡组）
+deck = db.get_deck("mik_moe:607870")          # 单卡组：内容 + 60 张卡表 + 出战史
+boss = db.stats_card("老大的指令")            # 单卡 drilldown
+cards = db.search_cards(name="喵喵", marks=("G", "H", "I", "J"))
+report = db.validate_deck(my_deck, date="2026-09-19", format="standard")   # -> DeckReport
 ```
 
-**DuckDB 直读 parquet（OLAP 分析）**
+### DuckDB 直读 parquet（OLAP 分析）
 
 ```python
 import duckdb   # 下游自选：dist/cards.parquet 免灌库直查
@@ -126,13 +161,13 @@ duckdb.sql("SELECT name_full, effect_tags FROM 'dist/cards.parquet' LIMIT 5")
 
 ## 📏 统计口径速览
 
-> 完整定义见 PRD FR-9.4 / FR-9.6；所有口径以 `ptcgdb/stats/sql/*.sql` canonical SQL 为单一事实源，CLI/SDK/导出三处共用。
+> 完整定义见 PRD 第 9 章；所有口径以 `ptcgdb/stats/sql/*.sql` canonical SQL 为单一事实源，CLI/SDK/导出三处共用。
 
 - **统计范围**：仅宝可梦/支援者/竞技场进统计（能量/物品/道具不进）；卡级粒度 = name_group（跨印刷同名合并）；只消费 `mapping_status='full'` 的卡组。
 - **WR 两层口径**：A 层（Limitless，逐局/战绩）与 B 层（mik 无逐局，代理 = top-cut 转化率）互不混算，`basis` 标签（cn / intl_aligned / jp）隔离赛区样本。
-- **镜像剔除（`--mirror`）**：`include`（默认）= standings record 汇总口径；`exclude` = **仅消费 pairings 覆盖赛事**，逐局剔除双方同含该卡的镜像局，镜像判定要求双侧卡组 full。两口径数据源不同（逐局 vs 汇总），数值不相等属预期，meta 各自标注。
-- **matchup 矩阵**：archetype×archetype 有向逐局胜率（平局计 0.5），消费源站卡组归类名、**不按 mapping_status 过滤**；同 archetype 内战不进矩阵；winner 空局（平局/未报不可区分，不猜）排除出 n 并在 meta 回显。
-- **archetype 粒度（`--granularity archetype`）**：三指标统计单元从卡级 name_group 切到卡组归类名（源站事实，不归并同名不同写）；**卡组级去重**（一套卡组一权重），卡级 scope 过滤不适用并回显；archetype 缺失的出战条目排除并计数回显；跨语言命名分裂不治理——basis=cn/intl_aligned 各自同源一致，`--basis all` 混合时如实呈现并附警告。
+- **镜像剔除（`--mirror`）**：`include`（默认）= standings record 汇总口径；`exclude` = 仅消费 pairings 覆盖赛事，逐局剔除双方同含该卡的镜像局（镜像判定要求双侧卡组 full）。两口径数据源不同（逐局 vs 汇总），数值不相等属预期，meta 各自标注。
+- **matchup 矩阵**：archetype×archetype 有向逐局胜率（平局计 0.5），消费源站卡组归类名、不按 mapping_status 过滤；同 archetype 内战不进矩阵；winner 空局（平局/未报不可区分）排除出 n 并在 meta 回显。
+- **archetype 粒度（`--granularity archetype`）**：统计单元从卡级 name_group 切到卡组归类名（源站事实，不归并同名不同写）；卡组级去重（一套卡组一权重）；archetype 缺失的出战条目排除并计数回显；跨语言命名分裂不治理——basis 内各自同源一致，`--basis all` 混合时如实呈现并附警告。
 - **低样本**：n 低于阈值打 `low_confidence`；一切输出的 meta 回显 as_of / 窗口 / 口径 / 词表 hash，可原样重放。
 - **窗口注意**：pairings 覆盖赛事集中在 2025-06 前后，exclude / matchup 口径需显式 `--from 2025-04-01` 级别的窗口，默认 90 天滚动窗内可能为空集（诚实结果，非 bug）。
 
@@ -145,16 +180,16 @@ flowchart TB
         B["官网赛制页 / 公告<br/>合法性权威源"]
         C["官方小程序<br/>接口四层防护不可得 · 人工比对通道"]
         D["TCGdex / pokemon-tcg-data / PokéAPI<br/>跨语言映射源（EN→JA 名字级 dexId 链）"]
-        E["pokemon-card.com<br/>官方卡查 · 抽样权威核对 + deck confirm 卡表定向解析（JP）"]
-        F["Limitless TCG（EN）<br/>逐局胜率源 · API+主站双通道已接入"]
+        E["pokemon-card.com<br/>官方卡查 · 抽样权威核对 + 卡组码卡表解析（JP）"]
+        F["Limitless TCG（EN）<br/>逐局胜率源 · API+主站双通道"]
         G["PokecaBook（JP）<br/>JP 官方赛事上位卡组聚合壳源"]
     end
 
     subgraph PIPE["⚙️ 数据管线"]
         RAW[/"raw/ · append-only 原始层"/]
         NORM["normalize<br/>Pydantic 校验 + 字段归一 + 派生计算"]
-        MAP["mapping<br/>EN 桥 → TCGdex ID → JP 名（置信度分档）"]
-        DB[("SQLite (WAL)<br/>draft → 校验 → active<br/>user_version=13")]
+        MAP["mapping<br/>EN 桥 → TCGdex ID → JP 名"]
+        DB[("SQLite (WAL)<br/>draft → 校验 → active")]
         STATS["stats<br/>canonical SQL 单一事实源<br/>物化视图 v_stat_deck_cards / v_tournament_weights"]
     end
 
@@ -173,8 +208,8 @@ flowchart TB
     G --> RAW
     RAW --> NORM --> DB
     RAW --> MAP --> DB
-    E -.->|抽样核对 31 张 · 一致率 100%| MAP
-    C -.->|A2/A3 人工比对| NORM
+    E -.->|抽样核对 · 一致率 100%| MAP
+    C -.->|人工卡面比对| NORM
     DB --> STATS
     STATS --> CLI
     DB --> CLI
@@ -196,38 +231,20 @@ flowchart TB
 
 ## 🗺️ Roadmap
 
-- ✅ **M0** 主数据源决策（D1 = 路线 B：mik.moe 公开 API；小程序接口四层防护否决）
-- ✅ **Phase 1a** schema 建库 + 全卡首批入库（129 系列 / 12,420 张）+ 校验报告
-- ✅ **Phase 1b** 环境快照 + 合法性引擎 + 版本化/回滚 + 导出 + SDK 双后端
-- ✅ **Phase 1c** L0/L1 自动更新管线 + M4 验收 A1~A8 全过（赶在 2026-09-16 新包发售前就位）
-- ✅ **Phase 2**（数据质量与扩展，2026-08-16 全里程碑达成）
-  - ✅ **M5** 进化解析：跨系列回退解析，未解析 401→5（仅剩化石豁免）
-  - ✅ **M6** 跨语言映射：EN 桥 12,337（99.3%）→ TCGdex ID 12,322（99.88%）→ JP 名 11,046（官方抽样 100% + trainer 词表补强）
-  - ✅ **M7** 同名计数引擎 + `validate_deck` SDK 双后端 + CLI deck-check（真实卡组 408/408 全过）
-  - ✅ **M8** A2/A3 卡面人工比对全部核销（A2 100/100 = 1,100 项次、A3 62/62 含太晶补验 12 例零误判，一致率均 100%）+ 三件技术债清偿（卡号分母逐系列种子 / 字母能量 `alias_of` / 太晶识别 is_tera 166）+ V-UNION 四部件方位回填 24 张齐全
-  - ✅ **M9** 赛事卡组管线与统计基建：CN mik + 统计可复算与查询层 + EN Limitless 对齐窗口 API/主站双通道（官方系列赛归类 + 名次截断 `config/site_tournament_rules.yml` 配置化 + decklist→简中映射链含 paren_strip 回退 + pairings 落库）；`basis` 口径标签不与 CN 混同（FR-9.1a/b）；**范围收口：以当前简中环境为起点收集维护，历史不回填**
-  - ✅ **刷新与缺口治理**（task 031/032/033/034）：赛事刷新管线（ingest 窗口守卫 / L0 remap 钩子 / recaliber / monitor tourneys）+ `deck_card_misses` 缺口标识可刷新 + Worlds 2025 补录（tier 6.0）+ 亚洲联赛 9 场收录（MBL/KL=1.5、PBL=1.0）+ mik topcut_slots 反推物化
-  - ✅ **M10 JP 对齐二期**（task 036/037）：trainer 日文名表补强（词表 290 条，name_ja +1,566）+ JP 卡级管线（PokecaBook 壳 → deck confirm 卡表定向采集：成本守卫降级 champions-only 229 码 → name_ja 名字链映射入库 106 赛 / 229 卡组，卡级映射 96.3%、Mega 前月段 full 率 99.2%）→ `basis=jp` WUR 统计解锁
-- ✅ **Phase 3** 效果粗粒度标签层（规则引擎/AI 模拟的数据接缝，效果 DSL 归下游项目）
-  - ✅ **task 038 词表定稿**：28 意图标签 + 3 机制 flag（`config/vocabularies/effect_tags.yml`，开放追加零代码）+ `tag-effects-scan` 命中率评测；GHI 环境实测覆盖 88.7%、零命中 171 条全归类
-  - ✅ **task 039 标注器与全库首标**：`cards.effect_tags` 落库（12,420 张首标，unknown=0，幂等零漂移）
-  - ✅ **task 040 抽检核销与管线收官**：99 张人工抽检 91 正确/7 误标/1 漏标全修 → 第 29 意图标签 cooldown；exclude 段级守卫 + L0 自动打标钩子 + 导出契约同步
-- ✅ **Phase 4** 统计深化与模拟基建（设计 `docs/superpowers/specs/2026-08-23-phase4-统计深化-design.md`；模拟结果永远落独立库，主库只读）
-  - ✅ **M12-1 pairings 消费层（task 041）**：WR A 层镜像剔除实装 + matchup 对阵矩阵（`stats matchup` / `stats_matchup()`）+ `v_pairing_players` 视图（user_version=13）
-  - ✅ **M12-2 archetype 级统计（task 042）**：三指标 `:granularity` 参数（card 默认零回归 / archetype 卡组级去重），CLI `--granularity` + SDK 透传
-  - ✅ **M12-3 cards.parquet + sim 骨架契约（task 043）**：导出第十四件 `cards.parquet`（DuckDB 直读，`--no-parquet` 可跳过）+ PRD FR-10 sim 库骨架（独立库 / card_id·name_group·快照 id 关联 / 三层表意向，细结构归下游规则引擎项目）
-- ✅ **下游 battlefrontier 支撑批（task 044~049，对战模拟引擎数据支撑）**：text_raw 全库逐字对账（044）→ SDK 卡组查询 `get_deck`/`list_decks` + legal_at 实例级缓存（045）→ 跨源 EN 结构化字段对账（046，12,304 比对 99.2% 一致）→ 勘误公告监控闭环（047）→ 官方 Q&A 搁置（048，官网供给端不存在）→ **效果文本句级切分与句级打标（049）**：`detail.sentences` 逐句标签 + rule_reference 句类，全库 23,082 句 unknown=0、GHI 卡级覆盖 90.0%
-- ✅ **运营与维护（2026-09）**：owner 归属词表补强（050，owner 142→212）→ CN 赛事退赛后补采集（051，mik 赛事 26→123、WUR 时效恢复）→ 30周年庆典预扩词表 + 全链预演（054，F-03 再翻案：mik ancientTrait 太晶信号实证）→ **索引页 24h TTL 自动刷新**（055，可变索引页增量不再不可见；CBB6C 196 张 + 30thP +9 实战命中）→ **30thC/MP 提前收编（2026-09-13，132 系列 / 12,795 张）**；task 052 瑞士轮实时积分榜采集中（骨架就位，待真实进行中赛事响应定入库形态）、task 053 TopDeck 接入待 API key
-- ⬜ **Phase 4 后续** 对战模拟引擎与 AI 策略（下游项目，本 repo 提供数据契约与关联键）
-
-> ✅ 「30周年庆典」（2026-09-16 全球同步发售，简中首次同步，新罕贵度 FUR）已提前于 2026-09-13 全链收编（30thC 169 张 + MP 占位，零卡点）；发售日当天 L0 兜底临场增量。
+- ✅ **M0** 主数据源决策（mik.moe 公开 API；官方小程序接口四层防护否决）
+- ✅ **Phase 1** 卡牌库 + 合法性引擎 + 更新管线：schema 建库与全卡首批入库 → 环境快照 / 版本化回滚 / 导出 / SDK 双后端 → L0/L1 自动更新管线 → 验收 A1~A8 全过
+- ✅ **Phase 2** 数据质量与扩展：跨系列进化解析 · 三语映射（EN 桥 12,337 / JP 名 11,046）· 同名计数引擎与 `validate_deck` · 卡面人工比对复核（一致率 100%）· **赛事卡组管线三赛区**（CN mik + EN Limitless 双通道 + JP 卡组码通道）与可复算统计基建 · 范围收口：以当前简中环境为起点收集维护，历史不回填
+- ✅ **Phase 3** 效果标签层：29 意图标签 + 3 机制 flag 词表 · 全库首标 unknown=0 · 人工抽检复核 · 句级打标（规则引擎/AI 模拟的数据接缝，效果 DSL 归下游项目）
+- ✅ **Phase 4** 统计深化与模拟基建：pairings 消费层（镜像剔除 + matchup 矩阵）· archetype 级统计 · `cards.parquet` 导出 + 对战模拟数据契约（模拟结果永远落独立库，主库只读）
+- ✅ **持续运营**：新包发售日 L0 自动增量全链验证（「30周年庆典」2026-09-16 全球同步发售当日收编 30thC/30thP/30thDC/MP，active 12,908 张 / 133 系列）· 赛制快照随官方赛制页滚动（当前 2026-09-16 版：standard G/H/I/J）· CN 赛事退赛后补采集与增量刷新管线
+- ⬜ **后续** 对战模拟引擎与 AI 策略（下游项目，本 repo 提供数据契约与关联键）
 
 ## 📚 文档
 
 | 文档 | 内容 |
 |---|---|
-| [PRD v1.33](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约（十四件套含 cards.parquet）、SDK 设计、跨语言映射、赛事卡组与统计基建（FR-9 可复算性契约 / FR-9.1a 对齐筛选口径 / FR-9.1b 环境推导落库 / FR-9.4 统计口径含镜像剔除、matchup 与 archetype 粒度 / FR-9.5 deck confirm 定向放宽与成本守卫 / FR-9.8 刷新管线）、效果标签策略（§6.4 词表 29+3 开放追加 + 句级 sentences）、对战模拟数据契约（FR-10 骨架） |
-| [数据源与接口文档](docs/data-sources.md) | 全部数据源获取方式：mik.moe 主源 API（卡牌 + 赛事）、官网赛制页、TCGdex / pokemon-tcg-data / PokéAPI、Limitless / TopDeck / RK9 与 JP 卡组聚合站（task 028 调研）、pokemon-card.com 抽样核对 |
+| [PRD v1.34](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约（十四件套）、SDK 设计、跨语言映射、赛事卡组与统计基建、效果标签策略、对战模拟数据契约 |
+| [数据源与接口文档](docs/data-sources.md) | 全部数据源获取方式：mik.moe 主源 API（卡牌 + 赛事）、官网赛制页、TCGdex / pokemon-tcg-data / PokéAPI、Limitless 与 JP 卡组聚合站、pokemon-card.com 抽样核对 |
 | [STATUS.md](STATUS.md) | 当前阶段、里程碑进度、决策日志、技术债 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更（四段式，数据日历版本 + schema SemVer 双轨） |
 | [AGENTS.md](AGENTS.md) | 工程约定与技术红线（协作者/AI 共读） |
