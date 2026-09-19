@@ -86,6 +86,20 @@ def alignment_window(
     return min(starts), max(ends)
 
 
+def cn_collection_start(calendar: dict[str, Any] | None = None) -> date:
+    """CN 赛事收集起点 = 日历 cn 段最早 effective_from（2026-09-19 拍板）。
+
+    monitor tourneys mik 通道 ingest 的底线守卫：早于该日的赛事 raw（历史积压）
+    不入库。取最早段而非最新段——旋转追加新段后起点不漂移（已入库历史段
+    赛事的 raw 订正仍可重 ingest）。cn 无段 → ValueError（不猜）。
+    """
+    calendar = calendar if calendar is not None else load_calendar()
+    segments = (calendar.get("cn") or {}).get("segments") or []
+    if not segments:
+        raise ValueError("CN 赛区日历无段，无法推导收集起点")
+    return min(_parse_day(seg["effective_from"]) for seg in segments)
+
+
 def derive_env(
     region: str | None,
     day: date | None,

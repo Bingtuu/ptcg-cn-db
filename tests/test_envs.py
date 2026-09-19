@@ -317,3 +317,17 @@ def test_ingest_env_migration_user_version_8(tmp_path):
 
     db_path = tmp_path / "t.db"
     assert apply_migrations(db_path) == available_migrations()[-1][0]
+
+
+def test_cn_collection_start():
+    """CN 收集起点 = 日历 cn 段最早 effective_from（2026-09-19 拍板：monitor tourneys
+    mik 通道 ingest 底线守卫，防退赛前积压 raw 误入库）。"""
+    from ptcgdb.normalize.envs import cn_collection_start
+
+    assert cn_collection_start() == date(2026, 7, 16)
+    # 追加新段（旋转后）起点不变：取最早段而非最新段
+    calendar = load_calendar()
+    calendar["cn"]["segments"].append(
+        {"effective_from": "2026-09-16", "allowed_marks": ["G", "H", "I", "J"]}
+    )
+    assert cn_collection_start(calendar=calendar) == date(2026, 7, 16)

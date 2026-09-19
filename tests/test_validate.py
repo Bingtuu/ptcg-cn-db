@@ -4,6 +4,7 @@
 绝不允许联网，绝不碰 data/ptcg-cn.db 与 data/raw/。
 """
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -955,3 +956,28 @@ def test_sampling_raw_dir_none_skip(db_env):
     assert res.passed
     assert res.checked == 0
     assert res.note and "未提供 raw_dir" in res.note
+
+
+# ============================================================
+# deprecated 状态：源站下架条目退出校验面
+# （2026-09-19 实测：mik 删除 8 条字段全等双重列示，用户拍板置 deprecated）
+# ============================================================
+
+
+def test_deprecated_cards_excluded_from_validation(db_env):
+    """status=deprecated 的卡不参与校验；系列对账按其退出后的口径通过。"""
+    raw_dir, db_path = db_env
+    # 模拟 mik 删除列示：cards.json 清单去掉 005，DB 行置 deprecated
+    cards_json = raw_dir / "mikmoe" / SET_ID / "cards.json"
+    payload = json.loads(cards_json.read_text(encoding="utf-8"))
+    data = payload["data"]
+    data["cards"] = [e for e in data["cards"] if e["cardIndex"] != "005"]
+    data["cardsNum"] = CARD_COUNT - 1
+    write_raw(cards_json, payload, source="mik_moe", force=True)
+    mutate_card(db_path, f"{SET_ID}-005", status="deprecated")
+    results = run_validations(db_path, set_id=SET_ID, raw_dir=raw_dir)
+    assert all(r.passed for r in results)
+    recon = get_rule(results, "系列对账")
+    assert recon.details == [
+        {"set_id": SET_ID, "expected": CARD_COUNT - 1, "actual": CARD_COUNT - 1, "ok": True}
+    ]

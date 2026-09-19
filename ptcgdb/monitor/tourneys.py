@@ -3,7 +3,9 @@
 编排既有采集器 + 入库器一站跑完。本模块**零网络**——每源的 scrape/ingest 可
 调用对象（handler）由 CLI 层注入，测试用桩：
 
-- **mik**：断点续传轮询全系列（既有 raw 零请求）→ ingest-tourneys；
+- **mik**：断点续传轮询全系列（既有 raw 零请求）→ ingest-tourneys
+  （收集起点底线守卫：date_from=cn_collection_start()，退赛前积压 raw 不入库，
+  2026-09-19 拍板）；
 - **limitless / limitless_site**：近 refresh_days 天**强制重抓**（赛后约 7 天
   decklist 延迟公开，缺省 14 = 7 + 余量；force + 收窄 date_from，成本有界）
   → 对应 ingest（窗口守卫 FR-9.8 默认开）；
@@ -94,7 +96,13 @@ def run_monitor_tourneys(
     )
     for src in sources:
         if src == "mik":
-            result.plan.append("mik：断点续传轮询全系列 → ingest-tourneys")
+            from ptcgdb.normalize.envs import cn_collection_start
+
+            floor = cn_collection_start()
+            result.plan.append(
+                f"mik：断点续传轮询全系列 → ingest-tourneys"
+                f"（收集起点底线 {floor}，更早的退赛前赛事不入库，2026-09-19 拍板）"
+            )
         else:
             result.plan.append(
                 f"{src}：强制重抓 {refresh_from} 起近 {refresh_days} 天窗口"

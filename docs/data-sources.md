@@ -70,13 +70,13 @@
 | `/api/v3/deck/deck-static-by-tour` | `{tournamentId: int}`（**只传这一个参数**，多传 topcut/points/isVariant 任何参数报 10002） | **Meta 统计**：每 variant 的 rawCount/rawShare/share/points/topcutTimes[]——使用率与 top-cut 转化率直接可对账；无数据赛事返回 10002（可预期空结果） |
 | `/api/v3/tournament/regulation-list` | `{}` | 赛制词表（"赛制标记-截止系列"形态，如 `GHI-CSV10C`） |
 | `/api/v3/deck/category-detail` | `{id}`（variantId） | 卡组分类详情（relatedVariant 等） |
-| `/api/v3/tournament/swiss` | `{tournamentId: int}`（**只传这一个参数**，bundle 实证无轮次/分页参数） | **瑞士轮实时积分榜快照**（task 052，2026-09-11 bundle 逆向 + ended 实测）：data = `{participantCount, list}`，list 项前端展示模型 = {rank, name, pinCode, points}——**不是逐桌对阵**（mik 全部赛事端点无 pairings 供给）；**仅赛事进行中可用**，ended/未开赛返回 code=400 "赛事未进行中"（3539 实测，可预期空结果）；数据随时变，轮询按 UTC 时间戳快照落盘（`tournaments/swiss/{tournamentId}/{ts}.json`，内容不变不重写）；list 项完整字段待真实 ongoing 响应确认 |
+| `/api/v3/tournament/swiss` | `{tournamentId: int}`（**只传这一个参数**，bundle 实证无轮次/分页参数） | **瑞士轮实时积分榜快照**（task 052，2026-09-11 bundle 逆向 + ended 实测 + **09-19 真实 ongoing 13 场 888 行穷举确认**）：data = `{participantCount, list}`，list 项完整字段 = {rank, points, name, pinCode} 四键（无 W-L-T / 对手 / 卡组）——**不是逐桌对阵**（mik 全部赛事端点无 pairings 供给）；**仅赛事进行中可用**，ended/未开赛返回 code=400 "赛事未进行中"（3539 实测，可预期空结果）；数据随时变，轮询按 UTC 时间戳快照落盘（`tournaments/swiss/{tournamentId}/{ts}.json`，内容不变不重写）；**入库形态拍板（2026-09-19）= 仅 raw 留存不入库**（无对阵/卡组信息、含昵称违反隐私最小化、赛后被 rank-individual 终版覆盖） |
 
 **id 参数类型陷阱（2026-08-02 实测）**：seriesId/tournamentId/deckId 必须传 **int**，传 str 一律 `code=10002 内部错误`——与 cardIndex 必须传 str 的规则正好相反。采集器对 id 参数做强类型校验（`MikMoeTournamentScraper._require_int`），非 int 直接 TypeError 不发出请求。
 
 仅从前端 bundle 得知、未实测或有条件：`/deck/core-card`（核心卡使用率，regulation 传 `GHI-CSV10C` 形态）、`/deck/deck-static-by-date-and-reg`（时段 Meta）、`/player/rank-official` / `rank-season` / `rank-career`、`/api/v4/player/recent-played`（选手近期参赛记录；2026-09-11 试参 `{pinCode,type,season,page,pageSize}` 返回 10002，参数取值未解）、`/deck/category-list`（**需登录 401**）。
 
-**swiss 轮询调度（task 052）**：`ptcgdb scrape swiss` 单轮轮询（探测 ongoing 赛季→ongoing 赛事→快照落盘，ended 400 优雅跳过）。比赛日（城市赛多为周末白天）用 cron 每 10~15 分钟调一次；赛后补一次确认 400 口径。入库形态（pairings 或新表）待真实 ongoing 响应字段确认后拍板。
+**swiss 轮询调度（task 052）**：`ptcgdb scrape swiss` 单轮轮询（探测 ongoing 赛季→ongoing 赛事→快照落盘，ended 400 优雅跳过）。比赛日（城市赛多为周末白天）用 cron 每 10~15 分钟调一次；赛后补一次确认 400 口径。**入库形态已定（2026-09-19 拍板）：仅 raw 留存，不入库**——快照仅供备查，统计层不消费。
 
 **采集纪律**（FR-9.5）：2s/请求；只拉上位卡组（rank 默认 64/页与 top64 对齐）；player_ref 只存 pinCode，不存昵称。
 

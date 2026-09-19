@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## [v20260919.3] - 2026-09-19
+
+### Added
+
+- 环境快照 `open-2026-09-16`（open，2026-09-16 起生效；提案 `data\proposals\20260919_open-2026-09-16.yaml`）
+## [v20260919.2] - 2026-09-19
+
+### Added
+
+- 环境快照 `standard-2026-09-16`（standard，2026-09-16 起生效；提案 `data\proposals\20260919_standard-2026-09-16.yaml`）
+## [v20260919.1] - 2026-09-19
+
+### Changed
+
+- L0 增量合入：系列 SVP, 30thP, 30thDC
+- 刷新当前快照 latest_text_overrides（open-2026-07-16, standard-2026-07-16）
+- 映射缺口刷新（L0 remap 钩子，task 031）：resolved=561 decks_affected=464 partial→full 升级=292
+- 效果标签打标（L0 tag-effects 钩子，task 040）：changed=583 零命中归类=160 unknown=0
 四段式：Added / Changed / Deprecated / Removed。
 版本双轨（PRD §FR-7）：数据用日历版本 `vYYYYMMDD.N`，schema 用 SemVer（破坏性变更升 major 并提前一个版本在此预告）。
 
@@ -7,6 +25,9 @@
 
 ### Added
 
+- 09-16 发售日临场增量收编（2026-09-19，PRD v1.34，无 schema 迁移）：`monitor l0` 实跑——SVP 442→507（+65）/ 30thP 27→31（+4）/ 30thDC「30周年庆典 豪华礼盒」新系列 45 张直接 activate / 30thC 169→176（+7，首跑被新罕贵度 `RGB` 拦截 → `config/vocabularies/rarities.yml` 补 RGB：30thC-B/G/R 三张梦幻 → validate 全过 → activate）；**active 12,795→12,908，sets 132→133**；L0 钩子自动 remap resolved=561 / partial→full 升级 292 / tag-effects changed=583 unknown=0（30thC 阻断钩子，事后手工 `tag-effects --set 30thC` changed=176 unknown=0 unknown_sent=3 与 task 054 预演一致）
+- mik 赛事收集起点底线守卫（2026-09-19，PRD v1.34 FR-9.8 续，无 schema 迁移）：`normalize/envs.py::cn_collection_start()`（赛区旋转日历 cn 段最早 effective_from=2026-07-16，取最早段未来旋转不漂移）+ `monitor/tourneys.py` plan 行回显底线 + mik `ingest-tourneys` handler 自动带 `date_from=floor`——task 051 积压 raw 曾被无底线 ingest 吃回 47 场退赛前赛事（已拍板清退还原），此后结构性拦截
+- task 052 mik 瑞士轮现场采集收官（2026-09-19 拍板，无 schema 迁移）：09-19 `scrape swiss` 命中 13 场 ongoing（tournamentId 3580~3594），888 行 list 项穷举确认字段仅 {rank, points, name, pinCode}（无对阵/卡组/W-L-T）→ **拍板仅 raw 留存不入库**（CN pairings 供给确认不存在）；任务档归档 `tasks/done/052`
 - 30thC/MP 提前收编（2026-09-13 晚，用户拍板提前于 09-16 发售日，纯数据管线运维零代码变更）：官方卡表公布、mik 卡详情 09-12 起全量在手 → 30thC「30周年庆典」169 张 + MP「超级进化 特典卡」1 张占位全链入库——scrape 零增量（TTL 链路确认）→ ingest 169+1（1 条 note 级 question：系列内赛制标记 A/C/D/E/F/G/I/J 不唯一，sets 行逗号连接设计口径）→ validate 十规则全过 → activate +170（**active 12,625→12,795**，sets 130→132，era 均=特典，is_tera 166→176 命中 ancientTrait 10 张与 task 054 预演逐张一致）→ tag-effects unknown=0 / unknown_sent=3（预演已核一次性旧机制不猜）→ 既有 12,625 张逐字段零漂移、赛事六表全表对平 → dist 重导 counts 对平；报告 `reports/validation-20260913T145041Z.md` / `reports/tag-effects-系列-30thC-20260913.md` / `reports/tag-effects-系列-MP-20260913.md`；09-16 发售日仍跑 L0 兜底临场增量
 - task 055 索引页 24h TTL 自动刷新 + CBB6C/30thP 收编实战验证（2026-09-13，无 schema 迁移）：可变索引页（products.json/系列详情 cards.json/赛事 series-list/list）"hash 有效即跳过"会让增量永久不可见（task 051 S4、task 054 30thC 两次实战教训）——`raw_store.is_fresh_raw(path, max_age)`（hash 有效且 `_meta.fetched_at` 在 TTL 内；天真时间戳/缺 meta 一律不新鲜不猜）+ `DEFAULT_INDEX_TTL=24h` + ScrapeRunner/TournamentRunner `index_ttl` 构造参数：索引页超龄自动重抓 `write_raw(force=True)` 必落盘、TTL 内零请求、内容不可变文件（卡详情/rank/deck）维持"有效即跳过"永不受影响；顺路修复 `scrape sets` 实抓新数据却落不了盘的浪费（products 缓存命中改记 `skipped`）；**实战首战**：`scrape cards --set CBB6C` fetched=196 零 question、`--set 30thP` fetched=9 skipped=18（cardsNum 18→27 增量精确命中）→ ingest 196+27 零阻塞 question → validate 全规则 failures=0 → activate +205（**active 12,420→12,625**，sets 129→130，CBB6C era=朱&紫、30thP regulation_mark=J）→ tag-effects 两系列 unknown=0/unknown_sent=0 → 既有 12,402 张非目标系列逐字段零漂移 + 30thP 旧 18 张按 card_id 对齐零漂移 → dist 重导 counts 对平；1118 测试全绿（1112+6）；报告 `reports/validation-20260913T143019Z.md` / `reports/validation-20260913T143020Z.md` / `reports/tag-effects-系列-CBB6C-20260913.md` / `reports/tag-effects-系列-30thP-20260913.md`；任务档 `tasks/done/055`
 - task 052 mik 瑞士轮现场采集骨架（2026-09-11，进行中待周末实测，无 schema 迁移）：**端点实证推翻立项假设**——`/api/v3/tournament/swiss` 经前端 bundle 逆向 + ended 赛事实测为**瑞士轮实时积分榜快照**（请求体仅 `{tournamentId: int}`，data=`{participantCount, list}`，list 项前端模型 {rank, name, pinCode, points}；ended 返回 code=400 "赛事未进行中" 3539 实测），mik 全部赛事端点无逐桌 pairings 供给；**用户拍板先建 shape-agnostic 骨架**（`scrapers/mik_swiss.py` MikMoeSwissScraper.fetch_swiss + `scrapers/swiss_runner.py` SwissPollRunner：series-list/list status=ongoing 探测每轮实抓保鲜 → swiss UTC 时间戳快照落盘 `tournaments/swiss/{tid}/{ts}.json`，content_hash 不变不重写、400 计 unavailable 优雅跳过）+ CLI `scrape swiss` + 调度 cron 文档化（data-sources.md §1）；入库形态待真实 ongoing 响应字段确认后拍板
@@ -23,6 +44,10 @@
 - task 041 pairings 消费层（Phase 4 开工 M12-1，PRD v1.25，migration 013 / user_version=13）：①**`v_pairing_players` 视图**——pairings ⋈ deck_appearances 双侧关联（tournament_id + player_ref=player1/player2），逐局解析双方 deck_id/archetype_name/winner_side 归一化；多重 appearance 选手整侧剔除不猜（GROUP BY HAVING COUNT(*)=1 防御，当前 limitless 实测为零）；jsonldb 内存库同步建同名视图（旧导出缺 pairings.jsonl 兼容空表）；②**WR A 层镜像剔除实装**——`winrate_a.sql` 新增 `:mirror` 参数：exclude = 仅消费 pairings 覆盖赛事，逐局判定双方同含 group_key 的镜像局剔除（判定要求双侧卡组 full，任一侧非 full 整局剔除不猜；winner 空=平局/未报不可区分排除出 n）；③**matchup 对阵矩阵**——新 canonical SQL `matchup.sql`（archetype_name×archetype_name 有向长表，不按 mapping_status 过滤，同 archetype 内战不进矩阵）+ CLI `stats matchup [--min-n]` + SDK `stats_matchup()` 双后端 + frozen `MatchupStat`/`MatchupResult`；meta 回显 n_pairing_tournaments / n_pairings / excluded_ambiguous_players / excluded_unreported_games / n_games_used；实跑（intl_aligned 2025-04-01 起）exclude 233 行 / matchup 272 有向行 n_games_used=208，对称对抽查 0 违反；README 新增「统计口径速览」小节；报告 `reports/task041-pairings-20260823.md`（含实库新发现：pairings 5 场中 3 场可双侧关联、窗口注意事项）
 
 ### Changed
+
+- mik 下架 8 条字段全等双重列示置 **deprecated**（2026-09-19 拍板，不删行，deprecated 状态首次实有数据）：CS5.5C-016-1 / CSV1C-030-1 / CSV1C-039-1 / CSV3C-036-1 / CSV5C-035-1 / CSV7C-066-1 / CSV7C-071-1 / CSVH5C-NaN1（7 条 `-1` 后缀同号宝可梦 + 1 条能量——NaN1 孪生是字母码 GRA，F-02 遗留闭环）；cards 表行数不变，导出 cards.jsonl/parquet 仍含 deprecated 行（字段只加不删，status 字段既有）
+- validate 排除 deprecated（2026-09-19，PRD v1.34 FR-2.3 续，TDD）：`run_validations` 卡级语句改 `status != "deprecated"`——双重列示下架后 mik raw 不再提供这 8 条，逐字保真/源字段比对类规则不再误报；新增测试 `test_validate.py::test_deprecated_cards_excluded_from_validation`，6 涉事系列 validate 复跑全过
+- monitor tourneys 误收 47 场退赛前赛事清退还原（2026-09-19 拍板）：task 051 积压 raw（fetched_at=2026-09-07）被无底线 ingest 吃回，违反 09-07「只收退赛后」拍板——删 47 tournaments + 4,659 appearances + 3,691 decks + 112,310 deck_cards（141 套共享 deck 保留、misses 0 引用、16 场元老行 fetched_at=2026-08-02 不动），恢复 tournaments=283 / mik=123 / decks=10,760 / appearances=13,999 / deck_cards=320,493 全对平；备份 `.scratch/ptcg-cn-before-prerotation-cleanup-20260919.db`
 
 - task 051 CN 赛事退赛后补采集（2026-09-08，无 schema 迁移）：`ingest-tourneys` 新增 `--date-from` 选项（`ingest_tourneys()` 关键字参数 `date_from: date | None = None`，默认不过滤零回归；早于此日的赛事跳过并计入 `TournamentIngestResult.skipped_before_date`，日期缺失照入不猜）——拍板口径「只收退赛后 date >= 2026-07-16」实装，退赛前旧行不删不动；补采集 series 55（S3 全季）/ 57（宁波超级赛）/ 59（S4，进行中）断点续传 2s/请求，正式 ingest tournaments=107 / decks=10,812 / appearances=11,282 / deck_cards=319,046 / blocked=0 / unknown_cards=0 / skipped_before_date=63；实测 mik 赛事 26→123（退赛后 107 场全 env=GHI，旧行 16 场零漂移）、全库 tournaments=283 / decks=10,760 / appearances=13,999 / deck_cards=320,493、mik topcut_slots 覆盖 61→73、WUR 时效恢复（cn basis 60 天窗 n_tournaments 5→54）；dist 十四件套重导；实测发现断点续传对 series-list/list 索引页无时效判断（08-02 旧页 hash 有效被跳过导致新建 S4 不可见，本次手工删页绕过，TTL/--force-index 另立项候选）；1096 测试全绿（1095+1）+ ruff 全净；任务档 `tasks/done/051-CN赛事退赛后补采集.md`
 
@@ -125,4 +150,7 @@
 ---
 
 数据版本说明：当前库 meta 尚无 data_version（L0 零增量、从未实际合入），export manifest 显示 fallback `v20260801.0`；自 L0 首次实际合入增量起按日历版本递增。
+
+
+
 

@@ -565,7 +565,7 @@ def run_validations(
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         set_stmt = select(Set)
-        card_stmt = select(Card)
+        card_stmt = select(Card).where(Card.status != "deprecated")
         if set_id:
             if session.get(Set, set_id) is None:
                 raise ValueError(f"系列不存在: {set_id}")

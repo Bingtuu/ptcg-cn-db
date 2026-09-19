@@ -31,3 +31,5 @@ rarities:
   - ★★★
   # task 005 补入（CSV7C 实测：ACE SPEC 卡专用罕贵度）
   - ACE
+  # 2026-09-19 L0 增量补入（30thC 发售日临场增量实测：RGB=30周年庆典特别罕贵，30thC-B/G/R 三张梦幻）
+  - RGB

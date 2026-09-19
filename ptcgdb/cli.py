@@ -1519,13 +1519,17 @@ def monitor_tourneys_cmd(
             handlers: dict[str, dict] = {}
             if not dry_run:
                 if source in ("all", "mik"):
+                    from ptcgdb.normalize.envs import cn_collection_start
+
                     http = stack.enter_context(HttpClient(BASE_URL))
                     runner = TournamentScrapeRunner(
                         raw_dir, MikMoeTournamentScraper(http), db_path
                     )
+                    floor = cn_collection_start()
                     handlers["mik"] = {
                         "scrape": lambda: runner.scrape(),
-                        "ingest": lambda: ingest_tourneys(raw_dir, db_path),
+                        # 收集起点底线守卫（2026-09-19 拍板）：退赛前积压 raw 不入库
+                        "ingest": lambda: ingest_tourneys(raw_dir, db_path, date_from=floor),
                     }
                 if source in ("all", "limitless"):
                     http = stack.enter_context(HttpClient(
