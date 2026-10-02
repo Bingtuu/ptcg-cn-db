@@ -31,3 +31,4 @@ Thumbs.db
 
 # Code Review 产物（本地工作文档，不进仓库）
 .scratch/code-review-*.md
+.scratch/task056/

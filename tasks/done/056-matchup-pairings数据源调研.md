@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 状态 | TODO |
+| 状态 | DONE（2026-10-02） |
 | 关联 | 下游 battlefrontier 对战系统启动门槛 `ptcgdb stats matchup --min-n 30`（头部配对格 n≥30）；task 053 关闭结论（2026-10-02 拍板）；PRD FR-9.1a / data-sources.md §7 |
 | 预估 | 0.5~1 天（调研，零入库） |
 
@@ -30,3 +30,13 @@
 - [ ] 调研结论留痕 data-sources.md；零库变更
 
 ## 完成总结（DONE 时填写）
+
+**完成（2026-10-02，当日开工当日收官）**。
+
+做了什么：四个方向逐一实测——①RK9：`robots.txt` 显式 `Disallow: /pairings/` → 红线不可采，关闭；②Limitless 主站对阵页：不存在（线下赛事页仅外链 rk9.gg/pairings/）→ 关闭；③**Limitless 在线公开赛扩窗：唯一可行路径**——既有 raw 清单零请求分析（在窗 2,749 场，非官方 ≥64 人 980 场、月均 52~100）+ API 抽样 2 场 4 请求（decklist 100% 覆盖且与既有映射链同形、pairings 全量含 swiss+淘汰、名字连接 ~91%）+ 头部格月级 n≈150 估算；④排除项复核（pokedata/ptcgstats/play.pokemon.com 维持 task 028 结论）。
+
+验收结果：①每方向有实测结论 ✅；②明确回答「n≥30 由在线公开赛扩窗可达，代价 ~1.5~2 天」✅；③结论留痕 data-sources.md §7/§7c + 报告 `reports/task056-pairings-survey-20261002.md`，零库变更 ✅。
+
+拍板（2026-10-02）：**方案甲（pre-Mega 段 2025-04-11~2025-08-31，≥64 人 399 场）+ tier online_open coef=0.5 + 人数门 ≥64** → PRD v1.35（FR-9.1a 定向放宽）→ 立项 task 057 实施。
+
+遗留：Mega 段（2025-09 起）在线赛收编与否待 057 落地后视 archetype 失真风险再议；监测 `monitor tourneys` 日常刷新不收在线公开赛（窗口守卫 + 档级 date_range 双重拦截）。
