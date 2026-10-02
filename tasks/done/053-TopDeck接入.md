@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 状态 | TODO（前置：用户申请 API key） |
+| 状态 | **关闭（2026-10-02 拍板，未实施）**——供给侧实证不成立，详见「完成总结」 |
 | 关联 | PRD FR-9.1a（对齐口径）/ data-sources.md §7b；下游 battlefrontier M6 matchup 校准；拍板会话 2026-09-07「建议接入，评估成本和工作量」 |
 | 预估 | 2~2.5 天（评估结论见下） |
 
@@ -34,3 +34,13 @@
 - [ ] 署名条款落实；测试全绿 + ruff 全净
 
 ## 完成总结（DONE 时填写）
+
+**关闭（2026-10-02，用户拍板）——API key 到手后供给侧实证推翻立项价值假设，未写任何管线代码。**
+
+实测过程（14 次请求，限速自控内；key 存 `data/secrets/topdeck.key`，gitignored 不入库；探测中间产物 `.scratch/task053/` gitignored）：
+
+1. **key 与端点形态验证通过**：`POST /api/v2/tournaments`（game=Pokemon / format=Standard / start+end unix 秒 / columns / rounds）按文档工作；rounds 逐桌带 `winner_id` + `winner_games/loser_games` 局分、玩家 `id` 可关联——立项时的结构判断属实。
+2. **decklist 供给实证崩塌**：对齐窗口（2025-04-11~2026-04-09）逐月全量扫描——Pokemon Standard 全窗 ~180 场（97% 为 <32 人小店赛，≥32 人仅 ~6 场）、standings ~2,400 条、**带 decklist 仅 ~19 条（<1%）、deckObj 结构化卡表 0 条**（全窗口从未出现，文档"structured deck data when available"对 Pokemon 不兑现）。
+3. decklist 文本形态本身可解析（PTCGO 变体 `2 Dreepy ASC 247`），但混非英文卡名（实测德语），且量级对 matchup 矩阵无意义——matchup 需对阵双方卡组归属 archetype，~19 条卡组贡献≈0。
+
+**拍板结论**：task 053 关闭，API key 留存 `data/secrets/` 备用；matchup n≥30 样本缺口改由 task 056（pairings 数据源调研）承接。同日实测启动门槛：`stats matchup --basis intl_aligned --from 2025-04-01 --min-n 30` 头部格最大 n=10（n_games_used=208，pairings 479 行/5 赛可双侧关联），门槛当前不满足。

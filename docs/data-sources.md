@@ -142,6 +142,7 @@
 - **免费 API**（文档 [topdeck.gg/docs/tournaments-v2](https://topdeck.gg/docs/tournaments-v2)，2026-08-04 调研）：明确支持 **Pokemon（Standard / Expanded / Legacy / GLC）**；`POST /api/v2/tournaments` 按 game+format+日期窗查已结束赛事，返回 standings（名次/decklist/deckObj 结构化卡表/胜负战绩）+ **rounds 逐桌对阵（winner_id + winner_games/loser_games 局分）**——逐局数据结构比 Limitless pairings 更全。
 - 限速 100 req/min（429 + Retry-After）；需 API key（免费申请）+ **页面署名**（attribution 硬性条款）。
 - 覆盖以北美草根店赛为主（组织者自办），量级大；官方系列赛仍以 Limitless 为准，TopDeck 作补充源候选。
+- **⚠️ 2026-10-02 供给侧实测（task 053 关闭依据）**：API key 到手后全窗口（2025-04-11~2026-04-09）逐月扫描——Pokemon Standard ~180 场（97% <32 人小店赛）、standings ~2,400 条、**decklist 仅 ~19 条（<1%）、deckObj 0 条**（Pokemon 全窗口从未出现）；decklist 为 PTCGO 文本变体但混非英文卡名。**结论：对 matchup/卡级统计无供给价值，接入任务关闭（拍板 2026-10-02）**；API key 留存 `data/secrets/topdeck.key`（gitignored）备用。
 
 ## 7c. RK9.gg（官方顶级赛事对账源，task 028 调研）
 
