@@ -67,6 +67,14 @@ tiers:
     label: League Cup（EN 联盟杯）
     coef: 1
     aliases: [league_cup, League Cup]
+  # ---- 在线公开赛档（task 057，2026-10-02 用户拍板，PRD v1.35）----
+  # Limitless 平台自办在线公开赛（非官方系列赛、≥64 人、pre-Mega 段收编），
+  # 核心价值 = pairings 逐局对阵供给（下游 matchup 矩阵）；草根在线赛权重压低
+  # 于 league_cup=1.0 → coef=0.5。
+  - tier: online_open
+    label: 在线公开赛（Limitless 平台自办）
+    coef: 0.5
+    aliases: [online_open, Online Open]
   # ---- 亚洲联赛档（task 033，2026-08-09 用户拍板）----
   # MBL/KL 为亚洲顶级联赛，顶替原 Regional 级定位 → coef=1.5；
   # PBL 为其次级，顶替原 League Cup 级定位 → coef=1.0。

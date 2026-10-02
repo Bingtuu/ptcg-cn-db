@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## [v20261003.1] - 2026-10-03
+
+### Added
+
+- task 057 Limitless 在线公开赛收编（2026-10-03，PRD v1.35 FR-9.1a 定向放宽，无 schema 迁移）：`config/api_tournament_rules.yml` 新单一事实源（官方四档 + `online_open` catch-all：min_players=64、date_range=2025-04-11~2025-08-31、reject casual）+ `scrapers/api_rules.py` fail-fast loader + `classify_tournament` 改接配置（scrapers/limitless.py 删硬编码 TIER_PATTERNS）+ ingest 侧分类拒收跳过（`skipped_not_accepted`）+ 词表 `tournament_tiers.yml` 追加 online_open coef=0.5；回溯采集 accepted=392（online_open 388 + 官方档 4 走缓存）/ rejected=694（人数 652 + casual 42）；入库 **tournaments 283→671（+388 online_open）/ decks→51,294 / appearances→60,905 / deck_cards→1,480,632 / pairings 479→140,965**；online_open 卡组 full 39,675 / partial 1,003（97.5%）；misses 未解 1,271→10,963（+9,692 行 = 54 distinct 名全 no_cn_printing，Brave Bangle 等 2024 年卡疑似桥缺口记报告留痕待核查）；零漂移核验通过（mik 123 / site 49 / jp 106 / 官方 limitless 5 场全不变）；**下游门槛达成**：matchup n_games_used=99,797、头部格 Gardevoir×RBO n=1,559（≥30 门槛头部配对格全达成）；1139 测试全绿（1118+21）；报告 `reports/task057-online-open-20261003.md`；任务档 `tasks/done/057`
+
+### Changed
+
+- recaliber：tournament_tiers 词表变更（9f87626ea316 → 3229fe16c2e2），tier_coef 全量重物化 671 场 / 变更 0 行
 ## [v20260919.3] - 2026-09-19
 
 ### Added
@@ -150,6 +159,7 @@
 ---
 
 数据版本说明：当前库 meta 尚无 data_version（L0 零增量、从未实际合入），export manifest 显示 fallback `v20260801.0`；自 L0 首次实际合入增量起按日历版本递增。
+
 
 
 

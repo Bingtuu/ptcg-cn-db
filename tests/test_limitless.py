@@ -216,10 +216,11 @@ def test_classify_players_gate():
     assert classify_tournament("Regional Championship", None)[0] is None
 
 
-def test_classify_rejects_non_official_name():
-    tier, reason = classify_tournament("Professor Oak Casual Meetup", 120)
+def test_classify_rejects_casual_meetup():
+    # 非官方名 + casual 字样 → online_open 拒收正则拦截（task 057，PRD v1.35）
+    tier, reason = classify_tournament("Professor Oak Casual Meetup", 120, day=date(2025, 6, 1))
     assert tier is None
-    assert "未命中官方系列赛" in reason
+    assert "休闲场" in reason
 
 
 # ---- alignment_window ----
@@ -321,7 +322,7 @@ def test_scrape_full_flow(tmp_path):
     assert set(by_id) == {T1, T2, T3, T4}  # 窗口外 T5 不记取舍细节
     assert by_id[T1]["action"] == "accepted" and by_id[T1]["tier"] == "regional"
     assert by_id[T2]["action"] == "accepted" and by_id[T2]["tier"] == "league_cup"
-    assert by_id[T3]["action"] == "rejected" and "未命中官方系列赛" in by_id[T3]["reason"]
+    assert by_id[T3]["action"] == "rejected" and "休闲场" in by_id[T3]["reason"]
     assert by_id[T4]["action"] == "rejected" and "人数" in by_id[T4]["reason"]
     assert all({"name", "tier", "reason", "players", "date"} <= set(r) for r in by_id.values())
 
@@ -525,3 +526,32 @@ def test_cli_scrape_limitless_bad_date_exit_2(tmp_path, monkeypatch):
     )
     assert result.exit_code == 2
     assert "日期格式错误" in result.output
+
+
+# ---- online_open 档（task 057，PRD v1.35）----
+
+T6 = "ddddddddddddddddddddddd6"  # 在线公开赛，pre-Mega 段内 100 人 → online_open
+T7 = "ddddddddddddddddddddddd7"  # 在线公开赛，超收编段（2025-10-15）→ rejected
+
+
+def test_scrape_online_open(tmp_path):
+    """online_open catch-all：段内 ≥64 人收编并抓详情；超收编段拒收只记录。"""
+    pages = {1: [
+        {"game": "PTCG", "name": "Moujii's Dojo #42",
+         "date": "2025-10-15T18:00:00.000Z", "format": "STANDARD",
+         "id": T7, "players": 100, "organizerId": "org-oo"},
+        {"game": "PTCG", "name": "Moujii's Dojo #42",
+         "date": "2025-06-15T18:00:00.000Z", "format": "STANDARD",
+         "id": T6, "players": 100, "organizerId": "org-oo"},
+    ]}
+    scraper = FakeLimitlessScraper(pages=pages)
+    result = make_runner(tmp_path, scraper).scrape()
+    raw = tmp_path / "raw"
+
+    assert result.stats.total == 1
+    by_id = {r["id"]: r for r in decisions(result)}
+    assert by_id[T6]["action"] == "accepted" and by_id[T6]["tier"] == "online_open"
+    assert by_id[T7]["action"] == "rejected" and "收编段" in by_id[T7]["reason"]
+    assert is_valid_raw(standings_path(raw, T6))
+    assert is_valid_raw(pairings_path(raw, T6))
+    assert not standings_path(raw, T7).exists()

@@ -146,7 +146,7 @@ class LimitlessScrapeRunner:
     ) -> None:
         name = item.get("name")
         players = item.get("players")
-        tier, reason = classify_tournament(name, players)
+        tier, reason = classify_tournament(name, players, day=day)
         accepted = tier is not None
         # 取舍决策逐场记录（验收：采集报告列明每场赛事归类与取舍）
         state.stats.scraped.append(

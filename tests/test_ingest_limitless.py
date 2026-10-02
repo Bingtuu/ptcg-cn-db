@@ -525,7 +525,7 @@ def test_cli_ingest_limitless(tmp_path):
 
 T_OUT = "ccccccccccccccccccccccc3"  # 窗口外赛事（2026-07-15，对齐窗口外）
 LIST_OUT = [{
-    "game": "PTCG", "name": "SEASAC Cup",
+    "game": "PTCG", "name": "SEASAC Regional Championship",
     "date": "2026-07-15T02:10:00.000Z", "format": "STANDARD",
     "id": T_OUT, "players": 300, "organizerId": "org-9",
 }]
@@ -575,3 +575,58 @@ def test_window_guard_missing_date_ingests(tmp_path):
     result = ingest_limitless(raw_dir, db_path)
     assert result.tournaments == 1
     assert result.skipped_out_of_window == 0
+
+
+# ---- online_open 档收编与拒收（task 057，PRD v1.35）----
+
+T_OO = "ooooooooooooooooooooooo1"  # 在线公开赛，pre-Mega 段内（2025-06-15，100 人）
+T_OO_LATE = "ooooooooooooooooooooooo2"  # 超收编段（2025-10-15）→ 分类拒收
+T_OO_SMALL = "ooooooooooooooooooooooo3"  # 人数 40 < 64 → 分类拒收
+
+LIST_OO = [
+    {"game": "PTCG", "name": "Moujii's Dojo #42",
+     "date": "2025-06-15T18:00:00.000Z", "format": "STANDARD",
+     "id": T_OO, "players": 100, "organizerId": "org-oo"},
+    {"game": "PTCG", "name": "Moujii's Dojo #99",
+     "date": "2025-10-15T18:00:00.000Z", "format": "STANDARD",
+     "id": T_OO_LATE, "players": 100, "organizerId": "org-oo"},
+    {"game": "PTCG", "name": "Moujii's Dojo #13",
+     "date": "2025-06-16T18:00:00.000Z", "format": "STANDARD",
+     "id": T_OO_SMALL, "players": 40, "organizerId": "org-oo"},
+]
+
+
+def test_ingest_online_open(tmp_path):
+    """online_open 档：段内收编（tier/coef 物化 + env 推导），超段/人数不足拒收入库。"""
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_ptcd_raw(raw_dir)
+    write_limitless_raw(
+        raw_dir,
+        list_entries=LIST_OO,
+        standings={
+            T_OO: [STANDINGS_A[0]],
+            T_OO_LATE: [STANDINGS_A[0]],
+            T_OO_SMALL: [STANDINGS_A[0]],
+        },
+    )
+    build_db(db_path)
+    result = ingest_limitless(raw_dir, db_path)
+
+    assert result.tournaments == 1
+    assert result.skipped_not_accepted == 2  # 超收编段 + 人数门
+    tours = query_all(db_path, Tournament)
+    assert [t.tournament_id for t in tours] == [f"limitless:{T_OO}"]
+    assert tours[0].tier == "online_open"
+    assert tours[0].tier_coef == 0.5  # 2026-10-02 拍板系数
+    assert tours[0].env == "GHI"  # 2025-06-15 命中 EN G/H/I 段
+    assert tours[0].date == date(2025, 6, 15)
+    assert tours[0].participant_count == 100
+    assert any("分类拒收" in w for w in result.warnings)
+    # 卡组照常入库（DECK_A 全映射 → full）
+    assert make_deck_id(DECK_A) in {d.deck_id for d in query_all(db_path, Deck)}
+
+    # 幂等：重跑计数一致、拒收仍拒收
+    result2 = ingest_limitless(raw_dir, db_path)
+    assert result2.tournaments == 1
+    assert result2.skipped_not_accepted == 2
+    assert len(query_all(db_path, Tournament)) == 1

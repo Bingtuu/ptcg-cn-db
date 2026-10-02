@@ -16,8 +16,11 @@ mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
 - env 推导（FR-9.1b）：derive_env("en", date)；未命中 → NULL + warning（记 monitor
   异常，不猜）；落库后以卡组最大赛制标记 ∈ env.allowed_marks 交叉校验，不符告警
   不拒收。映射裁决的 env 优先子集也用同一 env_marks。
-- tier：classify_tournament(name, players) 重判 → 词表物化 tier_coef
+- tier：classify_tournament(name, players, day) 重判 → 词表物化 tier_coef
   （FR-9.6 事实完整性）；未命中 → tier/tier_coef None + warning（不猜）。
+  **v1.35（task 057）**：分类拒收（含 online_open 档 date_range 超界）的赛事
+  直接跳过入库计 skipped_not_accepted（不删既有行）；缺 list 条目的最小入库
+  旧路径（name 缺失无法分类）维持不变。
 - 幂等：tournaments/decks merge upsert；deck_cards 按 deck_id 先删后插；
   出战条目按 (deck_id, tournament_id) 先删后插（同 placing 碰撞后写覆盖）；
   pairings 按 tournament_id 先删后插（PK 同键后写覆盖）。
@@ -85,6 +88,7 @@ class LimitlessIngestResult:
     deck_cards: int = 0
     pairings: int = 0  # 逐桌对阵行（PRD v1.14）
     skipped_out_of_window: int = 0  # 窗口守卫跳过的赛事数（FR-9.8，task 031）
+    skipped_not_accepted: int = 0  # 分类拒收跳过的赛事数（PRD v1.35，task 057）
     mapping_rules: dict[str, int] = field(default_factory=dict)  # 映射决策 rule → 次数
     blocked: list[dict[str, Any]] = field(default_factory=list)  # 60 张门
     unknown_cards: list[dict[str, Any]] = field(default_factory=list)  # card_id 未解析
@@ -235,13 +239,22 @@ def _ingest_one_tournament(
         )
     name = str(item.get("name") or "")
     players = item.get("players") if isinstance(item.get("players"), int) else None
-    tier, classify_reason = classify_tournament(item.get("name"), players)
+    day = _parse_day(item.get("date"))
+    # 分类重判（FR-9.6 事实完整性；v1.35 起含 online_open date_range 拒收）
+    tier, classify_reason = classify_tournament(item.get("name"), players, day=day)
+    if tier is None and item.get("name"):
+        # 分类拒收（含 online_open 超收编段）→ 不入库不删行（PRD v1.35）；
+        # 缺 list 条目（name 缺失）维持最小入库旧路径不猜
+        result.skipped_not_accepted += 1
+        result.warnings.append(
+            f"赛事分类拒收，跳过入库: {tournament_id} — {classify_reason}"
+        )
+        return
     if tier is None:
         result.warnings.append(
             f"赛事 tier 归类未命中（tier/tier_coef 置空）: {tournament_id} — {classify_reason}"
         )
     tier_coef = tier_map[tier][1] if tier is not None and tier in tier_map else None
-    day = _parse_day(item.get("date"))
     # 窗口守卫（FR-9.8）：窗口外 → 跳过（不写库不删既有行）；day 缺失照入库（不猜）
     if window is not None and day is not None and not (window[0] <= day <= window[1]):
         result.skipped_out_of_window += 1

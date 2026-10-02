@@ -1,0 +1,31 @@
+# Limitless API 通道赛事分类规则（task 057，PRD v1.35 FR-9.1a）
+# 单一事实源：采集端（scrapers/limitless_runner）与入库端（normalize/ingest_limitless）
+# 共用；loader = ptcgdb/scrapers/api_rules.py（fail-fast 校验，tier 须在
+# config/vocabularies/tournament_tiers.yml 词表内）。
+# 变更流程 = 改本文件零代码：改完跑 `ptcgdb scrape limitless` 断点续传按新口径补抓，
+# ingest 幂等补库。
+#
+# 官方四档：名称正则命中 + 默认人数门 min_players=32（FR-9.1a）。
+min_players: 32
+tiers:
+  - tier: regional
+    patterns: ["Regional Championship"]
+  - tier: international
+    patterns: ["International Championship"]
+  - tier: special
+    patterns: ["Special Event"]
+  - tier: league_cup
+    patterns: ["League Cup"]
+  # ---- online_open catch-all 档（task 057，2026-10-02 拍板，PRD v1.35）----
+  # 收编 Limitless 平台自办在线公开赛（名称不命中以上官方档者），核心供给 = pairings
+  # 逐局对阵（下游 matchup 矩阵 n≥30 门槛，task 056 调研实证 decklist 100% 覆盖）。
+  # 防草根噪声三重闸：人数门 64（高于官方档 32）+ date_range pre-Mega 段（Mega 时代卡
+  # 未映射致 archetype 失真，后段再议）+ reject 正则拒休闲场。
+  # date_range 只约束本档；day 缺失不猜照收（与窗口守卫口径一致）。
+  - tier: online_open
+    catch_all: true
+    min_players: 64
+    date_range: ["2025-04-11", "2025-08-31"]
+    reject:
+      - pattern: "casual"
+        reason: "休闲场（娱乐卡组比例高，FR-9.1a 样本污染）"
