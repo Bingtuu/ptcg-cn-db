@@ -211,6 +211,20 @@ def test_migration_013_idempotent(tmp_path):
 # ---- WR A 层镜像剔除（winrate_a.sql :mirror）----
 
 
+def test_winrate_a_exclude_carry_source_narrowed():
+    """性能守卫（2026-10-05 code review F2）：exclude 口径携带判定源收窄至
+    pairings 覆盖赛事的 full 卡组 + DISTINCT 去重——禁止回退到 v_stat_deck_cards
+    全库扫描（实测单日 70s / 全窗不可完成）。"""
+    import re
+
+    sql = (
+        Path(__file__).parent.parent / "ptcgdb/stats/sql/winrate_a.sql"
+    ).read_text(encoding="utf-8")
+    norm = re.sub(r"\s+", " ", sql)
+    assert "SELECT DISTINCT deck_id, group_key FROM v_stat_deck_cards" in norm
+    assert "tournament_id IN (SELECT tournament_id FROM covered)" in norm
+
+
 def by_key(stats):
     return {s.group_key: s for s in stats}
 

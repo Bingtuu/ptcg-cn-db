@@ -64,6 +64,10 @@ class SwissPollRunner:
         except TransientHttpError:
             # 重试耗尽兜底（同 tournament_runner 口径）：保 finish_run/三清单落盘
             stats.aborted = True
+        except MikMoeApiError:
+            # ongoing 探测（series-list/list）业务错误兜底（2026-10 review G5）：
+            # 保 finish_run/三清单落盘，不炸穿零清单
+            stats.aborted = True
         return finish_run(self.raw_dir, self.db_path, run_id, started_at, stats)
 
     # ---- ongoing 探测（实抓不落盘，每轮保鲜）----

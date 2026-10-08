@@ -58,6 +58,10 @@ DEFAULT_INTERVAL = 2.5
 
 INDEX_PAGE_SIZE = 100  # 索引页 show 参数上限（实测 2526 赛季 42 行，单页抓全）
 
+# 索引页零条目歧义兜底锚（2026-10 review G6，照 pokecabook 容器先例）：
+# 容器在+零条目=正常空页；容器不在+零条目=疑似拦截页/改版 → 业务错误不静默吞赛季
+_INDEX_CONTAINER = '<table class="data-table'
+
 
 class LimitlessSiteApiError(RuntimeError):
     """业务级失败：HTTP 非 200（计为可疑，进 question 清单）。"""
@@ -324,12 +328,24 @@ class LimitlessSiteScraper:
 
     def fetch_index_page(self, season: str, page: int = 1) -> list[dict[str, Any]]:
         """赛季索引第 N 页。page>1 时追加 ?page=N（未实测校准参数，见模块 docstring：
-        仅在恰好 100 行边界触发，runner 用"无新 id 即停"兜底）。"""
+        仅在恰好 100 行边界触发，runner 用"无新 id 即停"兜底）。
+
+        零条目 fail-fast（2026-10 review G6）：解析零条目且数据表容器缺失 → 抛
+        LimitlessSiteApiError（疑似拦截页/改版，记 question 不落盘不猜）；
+        容器在 + 零条目 = 正常空页返回 []。
+        """
         params: dict[str, Any] = {"time": season, "format": "standard", "show": INDEX_PAGE_SIZE}
         if page > 1:
             params["page"] = page
         html = self._get("/tournaments", params)
-        return parse_index_page(html)
+        entries = parse_index_page(html)
+        if not entries and _INDEX_CONTAINER not in html:
+            raise LimitlessSiteApiError(
+                "/tournaments", 200,
+                f"索引页 season={season} page={page} 解析零条目且数据表容器缺失"
+                "（疑似拦截页/改版），不落盘不猜",
+            )
+        return entries
 
     def fetch_standings(self, tournament_id: str) -> dict[str, Any]:
         """赛事页 standings（名次+选手+卡组链接；无 record/pairings）。"""

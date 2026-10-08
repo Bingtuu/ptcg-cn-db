@@ -59,6 +59,7 @@ class L0Result:
     data_version: str | None = None
     remap: RemapResult | None = None  # 合入后映射缺口刷新（FR-9.8，task 031）
     tagging: TaggingResult | None = None  # 合入后效果标签打标（task 040）
+    hook_warnings: list[str] = field(default_factory=list)  # 钩子失败留痕（不阻断主流程）
     dry_run: bool = False
 
 
@@ -205,37 +206,52 @@ def run_l0(
 
     # 4. 合入后处理（有合入才做）：先 remap 刷新映射缺口（FR-9.8，task 031），
     #    再对新 active 系列打效果标签（task 040，幂等），摘要并入同一 CHANGELOG 版本块，
-    #    再走快照后处理
+    #    再走快照后处理。钩子逐个 try/except 隔离（2026-10 review G2）：expected_count
+    #    已在 activate 时先行更新（增量信号已消费，重跑探测不到），钩子裸奔抛异常会让
+    #    后续钩子永不补跑——失败记 hook_warnings 留痕，不阻断主流程。
     if result.activated:
-        remap = remap_decks(raw_dir, db_path)
-        result.remap = remap
-        emit("remap", {"attempted": remap.attempted, "resolved": remap.resolved,
-                       "decks_affected": remap.decks_affected,
-                       "decks_upgraded": remap.decks_upgraded})
-        tagging = run_tagging(db_path, sets=result.activated)
-        result.tagging = tagging
-        unknown_ids = tagging.questions.get("unknown", [])
-        emit("tag_effects", {"changed": tagging.changed,
-                             "zero_tag": len(tagging.zero_tag_cards),
-                             "unknown": len(unknown_ids)})
         extra_items: list[str] = []
-        if remap.resolved:
-            extra_items.append(
-                f"映射缺口刷新（L0 remap 钩子，task 031）："
-                f"resolved={remap.resolved} decks_affected={remap.decks_affected} "
-                f"partial→full 升级={remap.decks_upgraded}"
+        try:
+            remap = remap_decks(raw_dir, db_path)
+        except Exception as exc:
+            result.hook_warnings.append(f"remap 钩子失败（不阻断主流程）：{exc!r}")
+        else:
+            result.remap = remap
+            emit("remap", {"attempted": remap.attempted, "resolved": remap.resolved,
+                           "decks_affected": remap.decks_affected,
+                           "decks_upgraded": remap.decks_upgraded})
+            if remap.resolved:
+                extra_items.append(
+                    f"映射缺口刷新（L0 remap 钩子，task 031）："
+                    f"resolved={remap.resolved} decks_affected={remap.decks_affected} "
+                    f"partial→full 升级={remap.decks_upgraded}"
+                )
+        unknown_ids: list[str] = []
+        try:
+            tagging = run_tagging(db_path, sets=result.activated)
+        except Exception as exc:
+            result.hook_warnings.append(f"tag-effects 钩子失败（不阻断主流程）：{exc!r}")
+        else:
+            result.tagging = tagging
+            unknown_ids = tagging.questions.get("unknown", [])
+            emit("tag_effects", {"changed": tagging.changed,
+                                 "zero_tag": len(tagging.zero_tag_cards),
+                                 "unknown": len(unknown_ids)})
+            tag_item = (
+                f"效果标签打标（L0 tag-effects 钩子，task 040）：changed={tagging.changed} "
+                f"零命中归类={len(tagging.zero_tag_cards)} unknown={len(unknown_ids)}"
             )
-        tag_item = (
-            f"效果标签打标（L0 tag-effects 钩子，task 040）：changed={tagging.changed} "
-            f"零命中归类={len(tagging.zero_tag_cards)} unknown={len(unknown_ids)}"
-        )
-        if unknown_ids:
-            tag_item += f"，疑似新机制待人工归类：{', '.join(unknown_ids)}"
-        extra_items.append(tag_item)
-        result.data_version = refresh_snapshot_overrides(
-            db_path, changelog_path=changelog_path,
-            activated=result.activated, extra_items=extra_items,
-        )
-        emit("postprocess", {"data_version": result.data_version,
-                             "activated": list(result.activated)})
+            if unknown_ids:
+                tag_item += f"，疑似新机制待人工归类：{', '.join(unknown_ids)}"
+            extra_items.append(tag_item)
+        try:
+            result.data_version = refresh_snapshot_overrides(
+                db_path, changelog_path=changelog_path,
+                activated=result.activated, extra_items=extra_items,
+            )
+        except Exception as exc:
+            result.hook_warnings.append(f"快照后处理失败（不阻断主流程）：{exc!r}")
+        else:
+            emit("postprocess", {"data_version": result.data_version,
+                                 "activated": list(result.activated)})
     return result

@@ -589,3 +589,81 @@ def test_l0_tag_effects_hook_skipped_without_activation(tmp_path):
     assert result.activated == []
     assert result.tagging is None
     assert not any(e == "tag_effects" for e, _ in events)
+
+
+# ---- 2026-10 code review G2：钩子链失败隔离 ----
+
+
+def test_l0_remap_hook_failure_isolated(tmp_path, monkeypatch):
+    """G2 回归：remap 钩子抛异常 → 不阻断主流程。
+
+    expected_count 已在 activate 时先行更新（增量信号已消费，重跑探测不到），
+    钩子裸奔抛异常会让 tag/后处理永不补跑——必须逐钩子隔离 + hook_warnings 留痕。
+    """
+    import ptcgdb.monitor.l0 as l0_mod
+
+    raw_dir = _setup_raw(tmp_path, CARDS_INIT, 6)
+    db_path = tmp_path / "test.db"
+    _ingest_and_activate(raw_dir, db_path)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("remap exploded")
+
+    monkeypatch.setattr(l0_mod, "remap_decks", boom)
+    scraper = _make_scraper(CARDS_INIT + [CARD_NEW], 7)
+    result = run_l0(db_path, raw_dir, scraper, changelog_path=tmp_path / "CHANGELOG.md")
+
+    assert result.activated == [SET_ID]  # 主流程完成
+    assert result.remap is None
+    assert any("remap" in w for w in result.hook_warnings)  # 留痕
+    assert result.tagging is not None  # 后续钩子仍执行
+    assert result.data_version is not None  # 快照后处理仍执行
+    changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert "效果标签" in changelog
+    assert _active_count(db_path) == 7
+
+
+def test_l0_tag_hook_failure_isolated(tmp_path, monkeypatch):
+    """G2：tag-effects 钩子抛异常 → 留痕；remap 已执行、快照后处理仍执行。"""
+    import ptcgdb.monitor.l0 as l0_mod
+
+    raw_dir = _setup_raw(tmp_path, CARDS_INIT, 6)
+    db_path = tmp_path / "test.db"
+    _ingest_and_activate(raw_dir, db_path)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("tagging exploded")
+
+    monkeypatch.setattr(l0_mod, "run_tagging", boom)
+    scraper = _make_scraper(CARDS_INIT + [CARD_NEW], 7)
+    result = run_l0(db_path, raw_dir, scraper, changelog_path=tmp_path / "CHANGELOG.md")
+
+    assert result.activated == [SET_ID]
+    assert result.remap is not None  # 前序钩子不受影响
+    assert result.tagging is None
+    assert any("tag-effects" in w for w in result.hook_warnings)
+    assert result.data_version is not None
+    changelog = (tmp_path / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert SET_ID in changelog
+
+
+def test_l0_refresh_hook_failure_isolated(tmp_path, monkeypatch):
+    """G2：快照后处理失败 → data_version None + 留痕；卡已 activate 不回滚。"""
+    import ptcgdb.monitor.l0 as l0_mod
+
+    raw_dir = _setup_raw(tmp_path, CARDS_INIT, 6)
+    db_path = tmp_path / "test.db"
+    _ingest_and_activate(raw_dir, db_path)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("refresh exploded")
+
+    monkeypatch.setattr(l0_mod, "refresh_snapshot_overrides", boom)
+    scraper = _make_scraper(CARDS_INIT + [CARD_NEW], 7)
+    result = run_l0(db_path, raw_dir, scraper, changelog_path=tmp_path / "CHANGELOG.md")
+
+    assert result.activated == [SET_ID]
+    assert result.data_version is None
+    assert any("快照后处理" in w for w in result.hook_warnings)
+    assert result.remap is not None and result.tagging is not None
+    assert _active_count(db_path) == 7

@@ -165,18 +165,23 @@ def _schema_md() -> str:
 
 
 def _checkpoint_and_copy(db_path: Path, out_dir: Path) -> None:
-    """WAL checkpoint + DB 复制；checkpoint 失败或 busy 时跳过复制并告警。"""
+    """WAL checkpoint + DB 复制；checkpoint busy/失败抛 RuntimeError（H5）。
+
+    不许静默跳过复制：否则 manifest 会对上一次导出的陈旧副本取 db_sha256、
+    counts 却是新数据，产出自相矛盾的 dist 套件（tracker 2026-10-05 P1-13）。
+    """
     logger = logging.getLogger(__name__)
     conn = sqlite3.connect(str(db_path))
     try:
         busy, log, checkpointed = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
         if busy:
-            logger.warning("WAL checkpoint busy，跳过 DB 复制（有其它连接持有锁）")
-            return
+            raise RuntimeError(
+                "WAL checkpoint busy（有其它连接持有锁），中止导出："
+                "不允许携带陈旧 DB 出库"
+            )
         logger.debug("WAL checkpoint OK (log=%s, checkpointed=%s)", log, checkpointed)
     except sqlite3.Error as exc:
-        logger.warning("WAL checkpoint 失败，跳过 DB 复制: %s", exc)
-        return
+        raise RuntimeError(f"WAL checkpoint 失败，中止导出: {exc}") from exc
     finally:
         conn.close()
     shutil.copy2(db_path, out_dir / "ptcg-cn.db")
@@ -267,7 +272,8 @@ def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
         json.dumps(legality, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    # 只读 DB 快照：WAL checkpoint 后复制（FR-7）；失败时记录并跳过
+    # 只读 DB 快照：WAL checkpoint 后复制（FR-7）；busy/失败整体抛错中止（H5：
+    # 不携带陈旧副本出库，manifest/校验和不落盘）
     _checkpoint_and_copy(db_path, out_dir)
 
     (out_dir / "schema.md").write_text(_schema_md(), encoding="utf-8")

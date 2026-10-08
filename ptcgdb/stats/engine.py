@@ -112,7 +112,8 @@ def _base_meta(
     conn: sqlite3.Connection, params: StatsParams, *, require_topcut: bool = False
 ) -> dict[str, Any]:
     """meta 回显（FR-9.6）。n_tournaments = 该指标实际参与的赛事数：
-    B 层（require_topcut=True）不计 topcut_slots 为 NULL 的赛事（与 canonical SQL 一致）。"""
+    B 层（require_topcut=True）与 canonical SQL eligible_b 同口径——
+    topcut_slots 或 participant_count 为 NULL 的赛事均不计（q0 需人数基准，不猜）。"""
     meta = dict(conn.execute("SELECT key, value FROM meta").fetchall())
     n_tournaments = conn.execute(
         "SELECT count(*) FROM v_tournament_weights "
@@ -122,7 +123,7 @@ def _base_meta(
         "AND (? IS NULL OR INSTR(',' || ? || ',', ',' || tier || ',') > 0) "
         "AND (? IS NULL OR basis = ?) "
         "AND static_weight IS NOT NULL "
-        "AND (? = 0 OR topcut_slots IS NOT NULL)",
+        "AND (? = 0 OR (topcut_slots IS NOT NULL AND participant_count IS NOT NULL))",
         (
             params.date_from,
             params.date_to,
@@ -403,6 +404,11 @@ def wws(
 ) -> tuple[list[CardStat], dict[str, Any]]:
     """WWS 加权胜率（canonical: wws.sql；贝叶斯收缩 :k_a/:k_b）。"""
     _check_granularity(params)
+    # k ≤ 0 时分母（wsum+lsum+tsum+k_a / u_w+k_b）可对零数据归零 → 除零 NULL
+    if params.k_a <= 0:
+        raise ValueError(f"k_a 必须是正数：{params.k_a!r}")
+    if params.k_b <= 0:
+        raise ValueError(f"k_b 必须是正数：{params.k_b!r}")
     conn, owned = _connect(db)
     try:
         resolved = _resolve_layer(conn, params, layer)

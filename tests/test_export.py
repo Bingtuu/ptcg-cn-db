@@ -272,8 +272,9 @@ def test_export_no_parquet(db_path, tmp_path):
 # ---- WAL checkpoint + integrity_check ----
 
 
-def test_wal_checkpoint_busy_skips_db_copy(db_path, tmp_path):
-    """WAL checkpoint 返回 busy=1 时跳过 DB 复制（不抛异常、不 copy）。"""
+def test_wal_checkpoint_busy_raises(db_path, tmp_path):
+    """H5：WAL checkpoint busy=1 → 抛错（不静默跳过复制——否则 manifest 会对
+    上一次导出的陈旧副本取 db_sha256，配新 counts，产出自相矛盾的 dist 套件）。"""
     out_dir = tmp_path / "dist"
     out_dir.mkdir()
 
@@ -282,9 +283,51 @@ def test_wal_checkpoint_busy_skips_db_copy(db_path, tmp_path):
 
     with patch("ptcgdb.export.exporter.sqlite3.connect", return_value=mock_conn), \
          patch("ptcgdb.export.exporter.shutil.copy2") as mock_copy2:
-        _checkpoint_and_copy(db_path, out_dir)
+        with pytest.raises(RuntimeError, match="WAL checkpoint busy"):
+            _checkpoint_and_copy(db_path, out_dir)
 
     mock_copy2.assert_not_called()
+
+
+def test_wal_checkpoint_error_raises(db_path, tmp_path):
+    """H5：WAL checkpoint 执行异常 → 抛错（不静默跳过复制）。"""
+    import sqlite3 as _sqlite3
+
+    out_dir = tmp_path / "dist"
+    out_dir.mkdir()
+
+    mock_conn = MagicMock()
+    mock_conn.execute.side_effect = _sqlite3.OperationalError("disk I/O error")
+
+    with patch("ptcgdb.export.exporter.sqlite3.connect", return_value=mock_conn), \
+         patch("ptcgdb.export.exporter.shutil.copy2") as mock_copy2:
+        with pytest.raises(RuntimeError, match="WAL checkpoint 失败"):
+            _checkpoint_and_copy(db_path, out_dir)
+
+    mock_copy2.assert_not_called()
+
+
+def test_export_all_aborts_without_manifest_on_checkpoint_busy(db_path, tmp_path):
+    """H5：export_all 在 checkpoint busy 时整体抛错，且不产出 manifest（不携带
+    陈旧 DB 出库）。"""
+    import sqlite3 as real_sqlite3
+
+    out_dir = tmp_path / "dist"
+
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchone.return_value = (1, 0, 0)  # busy=1
+    # 只换 exporter 模块内的 sqlite3 引用（SQLAlchemy 自持引用不受影响）；
+    # parquet=False 跳过 _write_cards_parquet（其也走 exporter.sqlite3）
+    fake_sqlite3 = MagicMock(wraps=real_sqlite3)
+    fake_sqlite3.connect = MagicMock(return_value=mock_conn)
+    fake_sqlite3.Error = real_sqlite3.Error  # except 子句需要真异常类
+
+    with patch("ptcgdb.export.exporter.sqlite3", fake_sqlite3):
+        with pytest.raises(RuntimeError, match="WAL checkpoint busy"):
+            export_all(db_path, out_dir, parquet=False)
+
+    assert not (out_dir / "manifest.json").exists()
+    assert not (out_dir / "checksums.sha256").exists()
 
 
 def test_integrity_check_fails_raises(db_path, tmp_path):

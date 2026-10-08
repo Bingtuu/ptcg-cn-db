@@ -552,7 +552,9 @@ def _ingest_one_deck(
                 stat_scope=derive_stat_scope(info[0], info[1]),
             )
         )
-    seen_null: set[str] = set()  # card_id 为 NULL 时按 (deck_id, raw_name) 去重（PRD §7.5）
+    # card_id 为 NULL 时按 (deck_id, raw_name) 合并 count（H3 修复：保真全量
+    # 60 张，与 mapped 行同 card_id 合并口径一致；原为去重丢 count）
+    null_counts: dict[str, int] = {}
     miss_now = datetime.now(UTC)
     for raw_name, count, jp_set, jp_number, rule in unmapped:
         result.unknown_cards.append(
@@ -563,12 +565,12 @@ def _ingest_one_deck(
             session, deck_id, raw_name, jp_set, jp_number,
             None, _miss_kind(rule), miss_now,
         )
-        if raw_name in seen_null:
+        if raw_name in null_counts:
             result.warnings.append(
-                f"deck_cards 重复行已跳过: deck={deck_id} raw_name={raw_name}"
+                f"同名未映射条目合并 count: deck={deck_id} raw_name={raw_name}"
             )
-            continue
-        seen_null.add(raw_name)
+        null_counts[raw_name] = null_counts.get(raw_name, 0) + count
+    for raw_name, count in null_counts.items():
         deck_rows.append(
             DeckCard(
                 deck_id=deck_id, card_id=None, count=count,

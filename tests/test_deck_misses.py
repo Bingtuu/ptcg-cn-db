@@ -6,14 +6,16 @@
 - 双通道 ingest 写 miss（ptcd_miss / no_cn_printing，set/number 保真，幂等）；
 - backfill_misses DB 锚定回填（删后重建一致、双通道、幂等）；
 - remap_decks：当前卡池 0 命中空跑、先缺后补升级 full、同 card_id 冲突合并、
-  source 过滤、幂等（重跑 attempted=0）。
+  source 过滤、幂等（重跑 attempted=0）；
+- H3② remap 重算 ratio 分母 = raw 总张数（raw 不可得回退 DB 合计 + warning）。
 """
 
 import json
 from datetime import date, datetime
 from pathlib import Path
 
-from sqlalchemy import create_engine, delete, select
+import pytest
+from sqlalchemy import create_engine, delete, select, update
 from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations, available_migrations
@@ -373,3 +375,99 @@ def test_remap_source_filter(tmp_path):
     assert result.attempted == 0 and result.resolved == 0
     result = remap_decks(raw_dir, db_path, source="limitless_site")
     assert result.resolved == 1
+
+
+# ---- H3②（2026-10-05）：remap 重算 ratio 分母 = raw 总张数 ----
+
+
+def build_denominator_fixture(tmp_path):
+    """52 映射 + 同名未映射 4+4（两 miss 键不同 set/number）→ raw 合计 60。"""
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_ptcd_raw(raw_dir)
+    cards = site_cards([
+        (52, "SVI", "1", "Basic Psychic Energy", "Energy"),
+        (4, "SVI", "200", "Lillie's Determination", "Trainer"),
+        (4, "XXX", "999", "Lillie's Determination", "Trainer"),  # 同名第二条目
+    ])
+    write_site_raw(
+        raw_dir,
+        index_entries=[
+            {"tournament_id": T1, "name": "Regional Testville", "date": "2026-03-30",
+             "players": 100, "country": "US", "url": f"/tournaments/{T1}"},
+        ],
+        standings={
+            T1: {"tournament_id": T1, "name": "Regional Testville",
+                 "standings": [make_standing(1, "up", "d9")]},
+        },
+        decklists={"d9": {"decklist_id": "d9", "archetype": "A", "player": "up",
+                          "cards": cards}},
+    )
+    build_db(db_path)
+    return raw_dir, db_path, cards
+
+
+def simulate_legacy_dropped_count(db_path, deck_id):
+    """模拟 H3① 修复前沿量：同名第二条目 count 被旧去重逻辑丢弃（DB 合计 60→56）。"""
+    # card_id 是主键且为 NULL，ORM flush 无法定位行 → 走 core update
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.begin() as conn:
+        merged = conn.execute(
+            select(DeckCard.count).where(
+                DeckCard.deck_id == deck_id, DeckCard.card_id.is_(None)
+            )
+        ).scalar_one()
+        assert merged == 8  # H3① 修复后合并值（ingest 已合并）
+        conn.execute(
+            update(DeckCard)
+            .where(DeckCard.deck_id == deck_id, DeckCard.card_id.is_(None))
+            .values(count=4)  # 旧形态：第二条目 4 张被去重丢弃
+        )
+    engine.dispose()
+
+
+def add_lillie(db_path):
+    add_card_later(db_path, make_card(
+        "CSH-100", "CSH", "Lillie's Determination", "H",
+        ctype="trainer", subtype="支援者",
+    ))
+
+
+def test_remap_ratio_uses_raw_denominator(tmp_path):
+    """raw 分母 60 → 56/60≈0.933 维持 partial；DB 合计分母（56）会误判 full。"""
+    from ptcgdb.normalize.ingest_limitless_site import make_deck_id as site_deck_id
+
+    raw_dir, db_path, cards = build_denominator_fixture(tmp_path)
+    ingest_limitless_site(raw_dir, db_path)
+    deck_id = site_deck_id(cards)
+    simulate_legacy_dropped_count(db_path, deck_id)
+    add_lillie(db_path)
+
+    result = remap_decks(raw_dir, db_path)
+    # 同名两 miss 共享一行合并 NULL：首条解出（count 4 回写映射行），
+    # 次条 NULL 行已不在 → 保持未解 + warning（既有口径）
+    assert result.resolved == 1
+    assert result.decks_upgraded == 0
+    deck = next(d for d in query_all(db_path, Deck) if d.deck_id == deck_id)
+    assert deck.mapping_status == "partial"
+    assert deck.mapped_ratio == pytest.approx(56 / 60)
+
+
+def test_remap_ratio_falls_back_to_db_total_without_raw(tmp_path):
+    """raw 不可得（旧量 raw 已清等）→ 回退 DB 合计分母（修复前口径）+ warning。"""
+    from ptcgdb.normalize.ingest_limitless_site import make_deck_id as site_deck_id
+
+    raw_dir, db_path, cards = build_denominator_fixture(tmp_path)
+    ingest_limitless_site(raw_dir, db_path)
+    deck_id = site_deck_id(cards)
+    simulate_legacy_dropped_count(db_path, deck_id)
+    add_lillie(db_path)
+    (raw_dir / "limitless_site" / "decks" / "list" / "d9.json").unlink()  # raw 不可得
+
+    result = remap_decks(raw_dir, db_path)
+    assert result.resolved == 1
+    deck = next(d for d in query_all(db_path, Deck) if d.deck_id == deck_id)
+    # 回退 DB 分母 56 → 56/56 = 1.0 full（修复前口径，已知偏差留痕 tracker）
+    assert deck.mapping_status == "full"
+    assert deck.mapped_ratio == pytest.approx(1.0)
+    assert result.decks_upgraded == 1
+    assert any("回退 DB 合计" in w and deck_id in w for w in result.warnings)

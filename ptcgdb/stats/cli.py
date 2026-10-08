@@ -252,6 +252,10 @@ def wws_cmd(
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
     """加权胜率 WWS = WUR × 贝叶斯收缩胜率（canonical: wws.sql）。"""
+    if k_a <= 0:
+        raise typer.BadParameter("--k-a 必须是正数（贝叶斯收缩等效局数）")
+    if k_b <= 0:
+        raise typer.BadParameter("--k-b 必须是正数（贝叶斯收缩等效卡组数）")
     params = _params(
         as_of, date_from, date_to, window_days, scope, tier, division, min_n,
         include_qual, include_team, k_a=k_a, k_b=k_b, basis=basis,

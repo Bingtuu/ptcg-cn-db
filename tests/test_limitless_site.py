@@ -47,7 +47,7 @@ from ptcgdb.scrapers.limitless_site import (
     standings_path,
 )
 from ptcgdb.scrapers.limitless_site_runner import LimitlessSiteScrapeRunner, _decklist_ids
-from ptcgdb.scrapers.raw_store import is_valid_raw, read_raw
+from ptcgdb.scrapers.raw_store import is_valid_raw, read_raw, write_raw
 from ptcgdb.scrapers.site_rules import load_site_rules
 
 FIXTURES = Path(__file__).parent / "fixtures" / "limitless_site"
@@ -630,6 +630,119 @@ def test_malformed_index_entry_goes_question(tmp_path):
     )
     assert len(result.stats.question) == 1
     assert "缺 tournament_id/date" in result.stats.question[0]["reason"]
+
+
+# ---- 2026-10 code review G6：零结果 fail-fast 三守卫（漂移 HTML 不静默吞数据）----
+
+
+def test_fetch_index_page_drift_raises():
+    """G6①：索引页解析零条目且数据表容器缺失 → 业务错误（防漂移 HTML 静默吞赛季）。"""
+    scraper = LimitlessSiteScraper(
+        make_client(lambda r: httpx.Response(200, text=load_html("drift_index.html")))
+    )
+    with pytest.raises(LimitlessSiteApiError, match="容器"):
+        scraper.fetch_index_page("2526")
+
+
+def test_fetch_index_page_empty_with_container_ok():
+    """容器在 + 零条目 = 正常空页（赛季无赛事），不报错返回 []。"""
+    html = (
+        '<table class="data-table striped completed-tournaments">'
+        "<tr><th>Date</th><th>Name</th></tr></table>"
+    )
+    scraper = LimitlessSiteScraper(make_client(lambda r: httpx.Response(200, text=html)))
+    assert scraper.fetch_index_page("2526") == []
+
+
+def make_http_runner(tmp_path, handler):
+    """真实 LimitlessSiteScraper + MockTransport 的 runner（漂移 HTML 端到端）。"""
+    scraper = LimitlessSiteScraper(make_client(handler))
+    return LimitlessSiteScrapeRunner(tmp_path / "raw", scraper, tmp_path / "test.db")
+
+
+def test_runner_index_drift_question_no_write(tmp_path):
+    """G6①：漂移索引页 → 记 question 不落盘，不当「赛季抓全」静默 break。"""
+    def handler(request):
+        assert request.url.path == "/tournaments"
+        return httpx.Response(200, text=load_html("drift_index.html"))
+
+    result = make_http_runner(tmp_path, handler).scrape(seasons=["2526"])
+    assert not result.stats.aborted
+    assert len(result.stats.question) == 1
+    assert "index/2526/page-1" == result.stats.question[0]["id"]
+    assert not index_path(tmp_path / "raw", "2526", 1).exists()
+    assert result.stats.total == 0
+
+
+def test_runner_standings_drift_question_no_write(tmp_path):
+    """G6②：accepted 赛事 standings 解析为空 → 记 question 不落盘（不猜），
+    不当「无卡组」静默消费。"""
+    def handler(request):
+        if request.url.path == "/tournaments":
+            return httpx.Response(200, text=load_html("index_2526.html"))
+        if request.url.path.startswith("/tournaments/"):
+            return httpx.Response(200, text=load_html("drift_standings.html"))
+        raise AssertionError(f"unexpected {request.url.path}")
+
+    raw = tmp_path / "raw"
+    result = make_http_runner(tmp_path, handler).scrape(
+        date_from="2026-04-01", date_to="2026-07-01", seasons=["2526"]
+    )
+    assert not result.stats.aborted
+    assert len(result.stats.question) == 4  # 4 场 accepted 各一记
+    assert all("standings" in q["id"] for q in result.stats.question)
+    for tid in (T_NALC, T_TURIN, T_INDY, T_KOREA):
+        assert not standings_path(raw, tid).exists()
+    assert not (raw / "limitless_site" / "decks").exists()  # standings 空 → 无卡组抓取
+    assert len(result.stats.missing) == 4  # 对账：standings 应有未有
+
+
+def test_runner_decklist_drift_question_no_write(tmp_path):
+    """G6③：decklist 页 cards 解析为空 → 记 question 不落盘。"""
+    def handler(request):
+        if request.url.path == "/tournaments":
+            return httpx.Response(200, text=load_html("index_2526.html"))
+        if request.url.path.startswith("/tournaments/"):
+            return httpx.Response(200, text=load_html("standings.html"))
+        if request.url.path.startswith("/decks/list/"):
+            return httpx.Response(200, text=load_html("drift_decklist.html"))
+        raise AssertionError(f"unexpected {request.url.path}")
+
+    raw = tmp_path / "raw"
+    result = make_http_runner(tmp_path, handler).scrape(
+        date_from="2026-04-01", date_to="2026-07-01", seasons=["2526"]
+    )
+    assert not result.stats.aborted
+    # 4 场 accepted × 2 去重 decklist，均未落盘每场重试 → 8 条 question
+    assert len(result.stats.question) == 8
+    assert all("decks/list" in q["id"] for q in result.stats.question)
+    assert not decklist_path(raw, "28249").exists()
+    assert not decklist_path(raw, "28236").exists()
+    assert is_valid_raw(standings_path(raw, T_NALC))  # standings 正常落盘
+    assert len(result.stats.missing) == 2  # 2 个去重 decklist 应有未有
+
+
+def test_runner_cached_empty_standings_also_questioned(tmp_path):
+    """G6②缓存路径：历史漂移留下的空 standings raw → 断点命中也记 question，
+    不再被 content_hash 有效静默吞掉。"""
+    raw = tmp_path / "raw"
+    write_raw(
+        standings_path(raw, T_NALC),
+        {"tournament_id": T_NALC, "name": "NAIC 2026", "standings": []},
+        source="limitless_site",
+    )
+    scraper = FakeSiteScraper()
+    result = make_runner(tmp_path, scraper).scrape(
+        date_from="2026-04-01", date_to="2026-07-01", seasons=["2526"]
+    )
+    assert not result.stats.aborted
+    questions = result.stats.question
+    assert len(questions) == 1
+    assert f"standings/{T_NALC}" == questions[0]["id"]
+    # 空 standings 赛事不再产生 decklist 抓取；其余 3 场正常
+    standings_calls = [c for c in scraper.calls if c[0] == "standings"]
+    assert T_NALC not in [c[1] for c in standings_calls]  # 缓存命中零请求
+    assert len(standings_calls) == 3
 
 
 # ---- CLI：ptcgdb scrape limitless-site ----

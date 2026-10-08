@@ -15,6 +15,10 @@
 --     stat_scope 不适用忽略；NULL/空 archetype 排除；exclude 口径下「镜像局」
 --     退化为双方同 archetype 的局——与同含 c 判定同构）。
 -- 两种口径数据源不同（逐局 vs 汇总），互不混算、不追求数值相等（PRD v1.25）。
+-- 2026-10-05 code review 修复：①exclude 口径携带判定源收窄至 covered 赛事的
+--   full 卡组（games 双侧卡组必出战于 covered 赛事，语义等价）+ DISTINCT 去重——
+--   旧实现 dg = v_stat_deck_cards 全库扫描 × IN 非等值逐局相乘，大数据量不可行；
+--   ②0 局组（record 0-0-0，赛前 drop）不产生胜率行（分母为零不猜，FR-9.4 ②口径）。
 -- 参数：:as_of :date_from :date_to :scope :division :tiers :include_qual :include_team
 --       :basis('cn'|'intl_aligned'|'jp'|NULL=全部，v1.14)
 --       :mirror('include'|'exclude'，v1.25)
@@ -82,9 +86,11 @@ pairing_records AS (  -- 局 × 组：恰好单侧携带（双侧同含 = 镜像
 		       MAX(CASE WHEN dg.deck_id = g.deck_id_1 THEN 1 ELSE 0 END) AS side1,
 		       MAX(CASE WHEN dg.deck_id = g.deck_id_2 THEN 1 ELSE 0 END) AS side2
 		FROM games g
-		JOIN (  -- 携带判定源：card = 卡组含该 name_group / archetype = 卡组归类名
-			SELECT deck_id, group_key FROM v_stat_deck_cards
+		JOIN (  -- 携带判定源：card = 卡组含该 name_group / archetype = 卡组归类名；
+		        -- 收窄至 covered 赛事（games 双侧卡组必在其中）+ DISTINCT 去重
+			SELECT DISTINCT deck_id, group_key FROM v_stat_deck_cards
 			WHERE :granularity = 'card'
+			  AND tournament_id IN (SELECT tournament_id FROM covered)
 			  AND group_key IS NOT NULL
 			  AND INSTR(',' || :scope || ',', ',' || stat_scope || ',') > 0
 			UNION ALL
@@ -114,10 +120,12 @@ SELECT a.group_key, g.display_name,
 FROM agg a
 JOIN name_groups g ON g.group_key = a.group_key
 WHERE :granularity = 'card'
+  AND (a.wins + a.losses + a.ties) > 0  -- 0 局组（record 0-0-0）不产生胜率行
 UNION ALL
 SELECT a.group_key, a.group_key,
        (CAST(a.wins AS REAL) + 0.5 * a.ties) / (a.wins + a.losses + a.ties),
        a.wins + a.losses + a.ties
 FROM agg a
 WHERE :granularity = 'archetype'
+  AND (a.wins + a.losses + a.ties) > 0
 ORDER BY value DESC, group_key;

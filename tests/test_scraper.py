@@ -348,6 +348,95 @@ def test_circuit_abort_marks_run_aborted(tmp_path):
     engine.dispose()
 
 
+# ---- 2026-10 code review G4：卡牌 runner 顶层异常兜底 ----
+
+
+def test_scrape_sets_product_list_api_error_aborts(tmp_path):
+    """G4 回归：fetch_product_list 业务错误 → aborted 保三清单落盘，不炸穿。"""
+    def handler(request):
+        return httpx.Response(200, json={"code": 10002, "data": None, "msg": "内部错误"})
+
+    result = make_runner(tmp_path, handler).scrape_sets()
+    assert result.stats.aborted is True
+    for name in ("scraped", "question", "missing"):
+        assert (result.lists_path / f"{name}.json").is_file()
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    with Session(engine) as session:
+        row = session.get(ScrapeRun, result.run_id)
+        assert row is not None and row.status == "aborted"
+    engine.dispose()
+
+
+def test_scrape_cards_product_list_api_error_aborts(tmp_path):
+    """G4 回归：scrape_cards 的 ensure_products 业务错误 → aborted 保三清单落盘。"""
+    def handler(request):
+        return httpx.Response(200, json={"code": 10002, "data": None, "msg": "内部错误"})
+
+    result = make_runner(tmp_path, handler).scrape_cards(set_ids=["TEST1"])
+    assert result.stats.aborted is True
+    for name in ("scraped", "question", "missing"):
+        assert (result.lists_path / f"{name}.json").is_file()
+
+
+def test_scrape_sets_transient_error_aborts(tmp_path):
+    """G4：scrape_sets 重试耗尽（TransientHttpError）→ aborted 保三清单落盘。"""
+    def handler(request):
+        return httpx.Response(500, text="boom")
+
+    result = make_runner(tmp_path, handler).scrape_sets()
+    assert result.stats.aborted is True
+    assert (result.lists_path / "scraped.json").is_file()
+
+
+def test_scrape_cards_transient_error_aborts(tmp_path):
+    """G4：scrape_cards 重试耗尽（TransientHttpError）→ aborted 保三清单落盘。"""
+    def handler(request):
+        return httpx.Response(500, text="boom")
+
+    result = make_runner(tmp_path, handler).scrape_cards(set_ids=["TEST1"])
+    assert result.stats.aborted is True
+    assert (result.lists_path / "scraped.json").is_file()
+
+
+def test_scrape_cards_product_detail_api_error_goes_question(tmp_path):
+    """G4 回归：scrape_cards 路径系列详情业务错误 → 记 question 跳过该系列
+    （对齐 scrape_sets 逐系列口径），不炸穿不 aborted。"""
+    def handler(request):
+        if request.url.path == "/api/v3/card/product-list":
+            return httpx.Response(200, json=PRODUCTS)
+        if request.url.path == "/api/v3/card/product-detail":
+            return httpx.Response(200, json={"code": 10002, "data": None, "msg": "内部错误"})
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    result = make_runner(tmp_path, handler).scrape_cards(set_ids=["TEST1"])
+    assert not result.stats.aborted
+    assert len(result.stats.question) == 1
+    assert result.stats.question[0]["id"] == "TEST1"
+    assert not (tmp_path / "raw" / "mikmoe" / "TEST1" / "cards.json").exists()
+
+
+def test_scrape_cards_refetch_api_error_goes_question(tmp_path):
+    """G4：cardsNum 对账触发的重拉业务错误 → 记 question 跳过该系列（不炸穿）。"""
+    calls = [0]
+
+    def handler(request):
+        if request.url.path == "/api/v3/card/product-list":
+            return httpx.Response(200, json=PRODUCTS_WITH_CARDS_NUM)  # cardsNum=5
+        if request.url.path == "/api/v3/card/product-detail":
+            calls[0] += 1
+            if calls[0] == 1:
+                return httpx.Response(200, json=DETAIL_WITH_3_CARDS)  # 3 ≠ 5 → 触发重拉
+            return httpx.Response(200, json={"code": 10002, "data": None, "msg": "内部错误"})
+        raise AssertionError(f"unexpected path {request.url.path}")
+
+    result = make_runner(tmp_path, handler).scrape_cards(set_ids=["TEST1"])
+    assert calls[0] == 2  # 首拉 + 对账重拉
+    assert not result.stats.aborted
+    assert len(result.stats.question) == 1
+    assert result.stats.question[0]["id"] == "TEST1"
+
+
 # ---- Batch 1: 增量采集 cardsNum 对账 ----
 
 PRODUCTS_WITH_CARDS_NUM = {

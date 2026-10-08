@@ -27,7 +27,18 @@ from ptcgdb.normalize.limitless import (
     map_decklist_card,
     parse_standings_entry,
 )
-from ptcgdb.orm import Card, Deck, DeckAppearance, DeckCard, Pairing, Set, Tournament
+from ptcgdb.orm import (
+    Card,
+    CardNameGroup,
+    Deck,
+    DeckAppearance,
+    DeckCard,
+    DeckCardMiss,
+    NameGroup,
+    Pairing,
+    Set,
+    Tournament,
+)
 from ptcgdb.scrapers.raw_store import write_raw
 
 NOW = datetime(2026, 8, 7, 12, 0, 0)
@@ -158,6 +169,13 @@ def build_db(db_path):
             make_card("CSF-006", "CSF", "Boss's Orders", "G", ctype="trainer", subtype="支援者"),
             make_card("CSJ-008", "CSJ", "Milotic ex", "J"),  # J 标：env 交叉校验告警用
         ])
+        # Ultra Ball 三印刷归同一 name_group（真实库全卡单组；无组行兜底=自身会
+        # 被 H2 跨组守卫判 ambiguous）
+        session.add(NameGroup(group_key="Ultra Ball", display_name="Ultra Ball"))
+        session.add_all([
+            CardNameGroup(card_id=cid, group_key="Ultra Ball")
+            for cid in ("CSA-001", "CSB-002", "CSC-003")
+        ])
         session.commit()
     engine.dispose()
 
@@ -173,17 +191,17 @@ def query_all(db_path, model):
 # ---- 映射链单测（cn_name_index 手工构建）----
 
 CN_INDEX = {
-    "Ultra Ball": [
-        CnCandidate("CSA-001", "G", date(2023, 6, 1)),
-        CnCandidate("CSB-002", "H", date(2025, 1, 1)),
-        CnCandidate("CSC-003", "F", date(2026, 1, 1)),
+    "Ultra Ball": [  # 同 name_group 三印刷（同名再版）
+        CnCandidate("CSA-001", "G", date(2023, 6, 1), "Ultra Ball"),
+        CnCandidate("CSB-002", "H", date(2025, 1, 1), "Ultra Ball"),
+        CnCandidate("CSC-003", "F", date(2026, 1, 1), "Ultra Ball"),
     ],
-    "Psychic Energy": [CnCandidate("CSD-004", "G", date(2023, 6, 1))],
-    "Slowpoke": [CnCandidate("CSE-005", "G", date(2024, 1, 1))],
-    "Boss's Orders": [CnCandidate("CSF-006", "G", date(2024, 6, 1))],
+    "Psychic Energy": [CnCandidate("CSD-004", "G", date(2023, 6, 1), "Psychic Energy")],
+    "Slowpoke": [CnCandidate("CSE-005", "G", date(2024, 1, 1), "Slowpoke")],
+    "Boss's Orders": [CnCandidate("CSF-006", "G", date(2024, 6, 1), "Boss's Orders")],
     "Tiepuff": [  # release_date 并列 → card_id 字典序最小者
-        CnCandidate("CSTB-010", "G", date(2024, 1, 1)),
-        CnCandidate("CSTA-009", "G", date(2024, 1, 1)),
+        CnCandidate("CSTB-010", "G", date(2024, 1, 1), "Tiepuff"),
+        CnCandidate("CSTA-009", "G", date(2024, 1, 1), "Tiepuff"),
     ],
 }
 
@@ -250,6 +268,36 @@ def test_map_unmapped(tmp_path):
     assert rule == "unmapped"
 
 
+# ---- H2（2026-10-05）：name_en 多候选先判 name_group，跨组 = 真分歧不猜 ----
+# 实库形态：Espeon → 太阳伊布 / 太阳伊布ex 两个 name_group 共享同一英文名；
+# env_marks=None（赛事日期缺失等）时旧逻辑会把普通 Espeon 卡组误映射到 ex。
+
+CROSS_GROUP_INDEX = {
+    "Espeon": [
+        CnCandidate("CSA-020", "G", date(2023, 6, 1), "Espeon"),
+        CnCandidate("CSJ-014", "J", date(2026, 2, 1), "Espeon ex"),
+    ],
+}
+
+
+def test_map_cross_group_stays_ambiguous(tmp_path):
+    """跨 name_group 多候选 → (None, ...+ambiguous)，不猜（对齐 JP 链先例）。"""
+    _, ptcd_index = load_test_ptcd_index(tmp_path)
+    card_id, rule = map_decklist_card("XXX", "1", "Espeon", ptcd_index, CROSS_GROUP_INDEX, None)
+    assert card_id is None
+    assert rule == "name_fallback+ambiguous"
+
+
+def test_map_cross_group_ambiguous_before_env(tmp_path):
+    """跨组判定先于 env 收窄：env 能收窄到单候选也不许跨组猜。"""
+    _, ptcd_index = load_test_ptcd_index(tmp_path)
+    card_id, rule = map_decklist_card(
+        "XXX", "1", "Espeon", ptcd_index, CROSS_GROUP_INDEX, ("G", "H", "I")
+    )
+    assert card_id is None
+    assert rule == "name_fallback+ambiguous"
+
+
 # ---- paren_strip 回退层（task 028 真实 bug：ptcd 修饰名走 CN 桥失败）----
 # 真实案例：ptcd PAL sv2-172 name = "Boss's Orders (Ghetsis)"，CN name_en 是无修饰的
 # "Boss's Orders" → 精确匹配失败误伤 280 卡组。剥离尾部括号修饰再试桥。
@@ -282,7 +330,7 @@ def test_map_no_paren_strip_when_exact_hits(tmp_path):
     _, ptcd_index = load_test_ptcd_index(tmp_path)
     cn = {
         **CN_INDEX,
-        "Boss's Orders (Ghetsis)": [CnCandidate("CSG-007", "H", date(2025, 1, 1))],
+        "Boss's Orders (Ghetsis)": [CnCandidate("CSG-007", "H", date(2025, 1, 1), "Boss's Orders")],
     }
     card_id, rule = map_decklist_card(
         "PAL", "172", "Boss's Orders", {**ptcd_index, **PAL_172}, cn, ENV_GHI
@@ -630,3 +678,57 @@ def test_ingest_online_open(tmp_path):
     assert result2.tournaments == 1
     assert result2.skipped_not_accepted == 2
     assert len(query_all(db_path, Tournament)) == 1
+
+
+# ---- H2 接线：跨 name_group 候选 → ambiguous miss + NULL 行保真，不猜 ----
+
+
+def test_ingest_cross_group_writes_ambiguous_miss(tmp_path):
+    """name_en 多候选跨 name_group（Espeon vs Espeon ex 型）→ 不映射、落
+    miss_kind=ambiguous（开放字符串，migration 011 预留档）、NULL 行保真。"""
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_ptcd_raw(raw_dir)
+    decklist = make_decklist([
+        ("energy", 56, "SVI", "1", "Basic Psychic Energy"),
+        ("pokemon", 4, "XXX", "1", "Espeon"),  # set 不在 ptcd → name_fallback
+    ])
+    tid_x = "ddddddddddddddddddddddd4"
+    write_limitless_raw(
+        raw_dir,
+        list_entries=[{
+            "game": "PTCG", "name": "Charlotte Regional Championship",
+            "date": "2026-03-15T02:10:00.000Z", "format": "STANDARD",
+            "id": tid_x, "players": 300, "organizerId": "org-1",
+        }],
+        standings={tid_x: [
+            make_standing(1, "alice", {"wins": 9, "losses": 1, "ties": 0},
+                          {"id": "a1", "name": "X", "icons": []}, decklist),
+        ]},
+    )
+    build_db(db_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        session.add(make_card("CSA-020", "CSA", "Espeon", "G"))
+        session.add(make_card("CSJ-014", "CSJ", "Espeon", "J"))
+        session.add(NameGroup(group_key="Espeon", display_name="Espeon"))
+        session.add(NameGroup(group_key="Espeon ex", display_name="Espeon ex"))
+        session.add(CardNameGroup(card_id="CSA-020", group_key="Espeon"))
+        session.add(CardNameGroup(card_id="CSJ-014", group_key="Espeon ex"))
+        session.commit()
+    engine.dispose()
+
+    result = ingest_limitless(raw_dir, db_path)
+    assert result.mapping_rules.get("name_fallback+ambiguous", 0) == 1
+
+    deck_id = make_deck_id(decklist)
+    deck = next(d for d in query_all(db_path, Deck) if d.deck_id == deck_id)
+    assert deck.mapping_status == "partial"
+    assert abs(deck.mapped_ratio - 56 / 60) < 1e-9
+    rows = [r for r in query_all(db_path, DeckCard) if r.deck_id == deck_id]
+    espeon = [r for r in rows if r.raw_name == "Espeon"]
+    assert len(espeon) == 1 and espeon[0].card_id is None and espeon[0].count == 4
+    assert not any(r.card_id in ("CSA-020", "CSJ-014") for r in rows)  # 不猜
+    misses = [m for m in query_all(db_path, DeckCardMiss) if m.deck_id == deck_id]
+    assert len(misses) == 1
+    assert misses[0].miss_kind == "ambiguous"
+    assert misses[0].raw_set == "XXX" and misses[0].resolved_at is None

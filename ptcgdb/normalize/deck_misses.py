@@ -13,7 +13,9 @@ name_en 英文桥 mik raw 自带），remap_decks 据 deck_card_misses 重跑
   **仅 EN 双通道**：JP 通道（pokemon_card_jp，task 037）入库即同步记 miss，
   无任务 032 之前的历史存量需回填。
 - remap_decks：对未解 miss 用当前卡池重跑映射链；命中回写 deck_cards
-  （同 card_id 冲突合并 count）、标 resolved、重算 mapping_status。幂等。
+  （同 card_id 冲突合并 count）、标 resolved、重算 mapping_status（分母 =
+  raw 总张数，H3② 与 ingest 60 张门同真值；raw 不可得回退 DB 合计 +
+  warning）。幂等。
   EN 源走 ptcd+name_en 链（map_decklist_card）；JP 源（task 037）走 name_ja
   名字链（map_ja_card，仅名字级，库内无 JP 印刷级桥），多候选同样不猜。
 """
@@ -255,6 +257,82 @@ class RemapResult:
     warnings: list[str] = field(default_factory=list)
 
 
+def _raw_deck_totals(
+    raw_dir: Path, sources: set[str], result: RemapResult
+) -> dict[str, int]:
+    """按 source 扫 raw 重算内容哈希 → {deck_id: raw 总张数}（remap 分母真值，H3②）。
+
+    与 ingest 的 60 张质量门同口径：site 通道 = 归一化卡条目 count 合计；
+    API 通道 = parse_standings_entry decklist count 合计；JP 通道 = deck confirm
+    total_cards。raw 缺失/hash 无效/解析失败的条目跳过（不猜，调用方回退
+    DB 合计分母——H3① 修复前沿量 DB 合计可能因旧去重丢 count 偏小，
+    已知偏差留痕 code-review-tracker-20261005）。
+    """
+    totals: dict[str, int] = {}
+
+    if "limitless_site" in sources:
+        from ptcgdb.normalize.ingest_limitless_site import make_deck_id  # 避免循环导入
+
+        decklist_dir = raw_dir / "limitless_site" / "decks" / "list"
+        if decklist_dir.is_dir():
+            for path in sorted(decklist_dir.glob("*.json")):
+                doc = read_raw(path)
+                if doc is None:
+                    continue
+                cards_raw = [c for c in (doc.get("cards") or []) if isinstance(c, dict)]
+                deck_id = make_deck_id(cards_raw)
+                total = sum(
+                    c["count"] for c in cards_raw
+                    if isinstance(c.get("count"), int) and c.get("name")
+                )
+                totals.setdefault(deck_id, total)
+
+    if "limitless" in sources:
+        from ptcgdb.normalize.ingest_limitless import make_deck_id  # 避免循环导入
+
+        standings_dir = raw_dir / "limitless" / "tournaments" / "standings"
+        if standings_dir.is_dir():
+            for path in sorted(standings_dir.glob("*.json")):
+                doc = read_raw(path)
+                if doc is None:
+                    continue
+                for e in doc.get("data") or []:
+                    if not isinstance(e, dict):
+                        continue
+                    entry = parse_standings_entry(e)
+                    if not entry.decklist_raw or not entry.decklist:
+                        continue
+                    totals.setdefault(
+                        make_deck_id(entry.decklist_raw),
+                        sum(c.count for c in entry.decklist),
+                    )
+
+    if "pokemon_card_jp" in sources:
+        from ptcgdb.normalize.deck_confirm import (  # 避免循环导入
+            DeckConfirmParseError,
+            parse_deck_confirm,
+        )
+        from ptcgdb.normalize.ingest_jp import make_deck_id  # 避免循环导入
+        from ptcgdb.scrapers.deck_confirm import RAW_SUBDIR as JP_RAW_SUBDIR
+
+        confirm_dir = raw_dir / JP_RAW_SUBDIR / "deck-confirm"
+        if confirm_dir.is_dir():
+            for path in sorted(confirm_dir.glob("*.json")):
+                doc = read_raw(path)
+                if doc is None:
+                    continue
+                try:
+                    page = parse_deck_confirm(doc.get("html") or "")
+                except DeckConfirmParseError:
+                    continue  # 拦截页混入等：跳过不猜（ingest 同口径记 blocked）
+                deck_id = make_deck_id(
+                    [(e.official_card_id, e.count) for e in page.entries]
+                )
+                totals.setdefault(deck_id, page.total_cards)
+
+    return totals
+
+
 def remap_decks(
     raw_dir: str | Path,
     db_path: str | Path,
@@ -315,7 +393,14 @@ def remap_decks(
                     ja_name_index, _ = _build_ja_index(session)
 
                 now = _now()
+                # remap 分母真值（H3②）：raw 总张数懒加载（首轮需要时一次性扫描），
+                # raw 不可得时 _remap_one_deck 回退 DB 合计 + warning
+                raw_totals: dict[str, int] | None = None
                 for deck_id, misses in sorted(by_deck.items()):
+                    if raw_totals is None:
+                        raw_totals = _raw_deck_totals(
+                            raw_dir, set(deck_source.values()), result
+                        )
                     src = deck_source[deck_id]
                     if src in JP_SOURCES:
                         from ptcgdb.normalize.ingest_jp import (  # 避免循环导入
@@ -351,7 +436,7 @@ def remap_decks(
                     upgraded = _remap_one_deck(
                         session, deck_id, misses, deck_source[deck_id],
                         env_calendar, map_fn, card_index,
-                        now, result,
+                        now, result, raw_totals.get(deck_id),
                     )
                     if upgraded:
                         result.decks_upgraded += 1
@@ -389,6 +474,7 @@ def _remap_one_deck(
     card_index: dict[str, tuple[str, str | None, str | None]],
     now: datetime,
     result: RemapResult,
+    raw_total: int | None = None,  # raw 总张数（H3② 分母真值；None = raw 不可得）
 ) -> bool:
     """单 deck 的 miss 重映射；返回 mapping_status 是否升级为 full。"""
     env_marks = _deck_env_marks(session, deck_id, source, env_calendar)
@@ -477,6 +563,13 @@ def _remap_one_deck(
     if deck is None:  # 理论不可达（miss FK 约束）
         return False
     before = deck.mapping_status
-    deck.mapped_ratio = mapped / total if total else 0.0
+    # 分母真值（H3②）：raw 总张数（与 ingest 60 张门同口径）；raw 不可得
+    # （修复前沿量 raw 已清等）→ 回退 DB 合计（修复前口径，已知偏差留痕）
+    if raw_total is None:
+        result.warnings.append(
+            f"remap 分母：raw 不可得，回退 DB 合计: deck={deck_id}"
+        )
+    denominator = raw_total if raw_total is not None else total
+    deck.mapped_ratio = mapped / denominator if denominator else 0.0
     deck.mapping_status = _mapping_status(deck.mapped_ratio)
     return before != "full" and deck.mapping_status == "full"

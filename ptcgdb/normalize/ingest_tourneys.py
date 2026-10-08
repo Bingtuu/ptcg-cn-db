@@ -300,7 +300,9 @@ def _ingest_one_tournament(
                 continue
             # card_id 解析 + stat_scope 派生 + mapped_ratio 计算
             rows: list[DeckCard] = []
-            seen_null: set[tuple[str, str]] = set()  # (deck_id, raw_name) 去重
+            # card_id=NULL 同名条目合并 count（H3 修复：保真全量 60 张，
+            # 与 mapped 行同 card_id 合并口径一致；原为去重丢 count）
+            null_counts: dict[str, int] = {}
             mapped_count = 0
             mapped_marks: list[str] = []  # 已解析卡的赛制标记（env 交叉校验用）
             for card in cards:
@@ -314,22 +316,13 @@ def _ingest_one_tournament(
                             "count": card.count,
                         }
                     )
-                    # card_id 为 NULL 时按 (deck_id, raw_name) 去重（PRD §7.5）
-                    null_key = (card.deck_id, card.raw_name)
-                    if null_key in seen_null:
+                    if card.raw_name in null_counts:
                         result.warnings.append(
-                            f"deck_cards 重复行已跳过: deck={card.deck_id} raw_name={card.raw_name}"
+                            f"同名未映射条目合并 count: "
+                            f"deck={card.deck_id} raw_name={card.raw_name}"
                         )
-                        continue
-                    seen_null.add(null_key)
-                    rows.append(
-                        DeckCard(
-                            deck_id=card.deck_id,
-                            card_id=None,
-                            count=card.count,
-                            raw_name=card.raw_name,
-                            stat_scope="other",
-                        )
+                    null_counts[card.raw_name] = (
+                        null_counts.get(card.raw_name, 0) + card.count
                     )
                 else:
                     mapped_count += card.count
@@ -344,6 +337,16 @@ def _ingest_one_tournament(
                             stat_scope=derive_stat_scope(info[0], info[1]),
                         )
                     )
+            for raw_name, count in null_counts.items():
+                rows.append(
+                    DeckCard(
+                        deck_id=deck_id,
+                        card_id=None,
+                        count=count,
+                        raw_name=raw_name,
+                        stat_scope="other",
+                    )
+                )
             ratio = mapped_count / total
             # env 交叉校验（FR-9.1b）：卡组最大赛制标记 ∈ allowed_marks，不符告警不拒收
             if env_segment is not None and mapped_marks:

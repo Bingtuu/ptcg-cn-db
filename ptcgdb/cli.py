@@ -1403,6 +1403,8 @@ def monitor_l0(
         )
         if unknown_ids:
             typer.echo(f"疑似新机制待人工归类: {', '.join(unknown_ids)}", err=True)
+    for w in result.hook_warnings:
+        typer.echo(f"  ! {w}", err=True)
     if result.blocked:
         raise typer.Exit(code=1)
 
@@ -1527,7 +1529,9 @@ def monitor_tourneys_cmd(
                     )
                     floor = cn_collection_start()
                     handlers["mik"] = {
-                        "scrape": lambda: runner.scrape(),
+                        # runner 默认参数快照绑定（2026-10 review G1）：lambda 晚期绑定
+                        # 共享闭包单元格会让 mik/limitless 错调到最后赋值的 site runner
+                        "scrape": lambda runner=runner: runner.scrape(),
                         # 收集起点底线守卫（2026-09-19 拍板）：退赛前积压 raw 不入库
                         "ingest": lambda: ingest_tourneys(raw_dir, db_path, date_from=floor),
                     }
@@ -1540,7 +1544,7 @@ def monitor_tourneys_cmd(
                         raw_dir, LimitlessScraper(http), db_path
                     )
                     handlers["limitless"] = {
-                        "scrape": lambda date_from, force: runner.scrape(
+                        "scrape": lambda date_from, force, runner=runner: runner.scrape(
                             date_from=date_from.isoformat(), force=force
                         ),
                         "ingest": lambda: ingest_limitless(raw_dir, db_path),
@@ -1554,7 +1558,7 @@ def monitor_tourneys_cmd(
                         raw_dir, LimitlessSiteScraper(http), db_path
                     )
                     handlers["limitless_site"] = {
-                        "scrape": lambda date_from, force: runner.scrape(
+                        "scrape": lambda date_from, force, runner=runner: runner.scrape(
                             date_from=date_from.isoformat(), force=force
                         ),
                         "ingest": lambda: ingest_limitless_site(raw_dir, db_path),
@@ -1583,6 +1587,7 @@ def monitor_tourneys_cmd(
             f"ingest={dict(sorted(report.ingest.items()))} "
             f"blocked={report.blocked}"
             f"{' ABORTED' if report.aborted else ''}"
+            + (f" ERROR: {report.error}" if report.error else "")
         )
         any_blocked = any_blocked or report.blocked > 0
     if any_blocked:
@@ -1590,6 +1595,9 @@ def monitor_tourneys_cmd(
         raise typer.Exit(code=1)
     if any(r.aborted for r in result.reports):
         typer.echo("有源因熔断提前中止，已抓产物已落盘", err=True)
+        raise typer.Exit(code=1)
+    if any(r.error for r in result.reports):
+        typer.echo("有源刷新抛异常（见上 ERROR），其余源已照常执行", err=True)
         raise typer.Exit(code=1)
 
 

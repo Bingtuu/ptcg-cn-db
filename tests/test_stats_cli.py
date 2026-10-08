@@ -164,6 +164,16 @@ def test_init_db_writes_caliber_hashes(tmp_path):
     assert conn
 
 
+def test_stats_wws_k_nonpositive_rejected(db):
+    """--k-a/--k-b 必须为正数（2026-10-05 code review F4：k=0 时 0 局组除零崩溃）。"""
+    for opt in ("--k-a", "--k-b"):
+        result = runner.invoke(
+            cli.app, ["stats", "wws", *WINDOW, opt, "0", "--db-path", str(db)]
+        )
+        assert result.exit_code != 0
+        assert "正数" in result.output
+
+
 def test_stats_matchup_json(tmp_path):
     """stats matchup（v1.25，task 041）：pairings fixture 上的 CLI 输出与 meta 回显。"""
     from tests import test_stats_pairings as tp

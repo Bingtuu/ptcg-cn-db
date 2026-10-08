@@ -6,9 +6,10 @@
 
 口径要点：
 - 同名多印刷是常态（Dipplin 9 张、Boss's Orders 38 张），裁决规则全链确定性：
-  regulation_mark ∈ env.allowed_marks 的子集优先，子集内 set release_date 最新者；
-  env 为空或子集为空 → 全体候选里最新者；release_date 并列 → card_id 字典序最小者
-  （与 effective_text 口径一致）。
+  先判 name_group（跨组 = 真分歧不猜 → miss，2026-10-05 H2 对齐 JP 链先例）；
+  同组内 regulation_mark ∈ env.allowed_marks 的子集优先，子集内 set release_date
+  最新者；env 为空或子集为空 → 全体候选里最新者；release_date 并列 → card_id
+  字典序最小者（与 effective_text 口径一致）。
 - ptcd 定位失败 → 回退直接用 decklist 自带 name（rule 含 "name_fallback"）；
   基本能量：ptcd 用 "Basic Psychic Energy"、CN name_en 用 "Psychic Energy"（SV 代起
   ptcd 加 Basic 前缀）→ 0 命中且名以 "Basic " 开头时去前缀重试
@@ -49,11 +50,17 @@ class PtcdSetMissingError(RuntimeError):
 
 
 class CnCandidate(NamedTuple):
-    """CN 库 name_en 候选卡（多印刷裁决用）。"""
+    """CN 库 name_en 候选卡（多印刷裁决用：group 判定 + env 收窄 + 最新印刷）。
+
+    group_key = cards_name_group 归组；无 group 行（或一卡多组，语义不明）的卡按
+    group_key=自身 card_id 兜底——未知归属不假设同组（跨组 → ambiguous 不猜，
+    与 JP 链 JaCandidate 同口径）。
+    """
 
     card_id: str
     regulation_mark: str | None
     release_date: date | None  # 所属 set 的 release_date
+    group_key: str
 
 
 @dataclass(frozen=True)
@@ -239,8 +246,11 @@ def map_decklist_card(
     2. 英文名 exact match CN name_en；0 命中且以 "Basic " 开头 → 去前缀重试
        （"basic_energy_alias"）；仍 0 命中且名尾带括号修饰 → 剥 " (X)" 重试
        （"paren_strip"，task 028：ptcd 变体名 "Boss's Orders (Ghetsis)" 误伤）；
-    3. 候选裁决：唯一 → "unique"；多候选 → env 子集优先（"env"）+ 最新印刷
-       （"latest"）；release_date 并列 → card_id 字典序最小者（全链确定性）；
+    3. 候选裁决：唯一 → "unique"；多候选先判 name_group——跨组 = 真分歧不猜
+       → (None, "...+ambiguous")（对齐 JP 链先例；实库存在 Espeon→太阳伊布/
+       太阳伊布ex 等跨组同名，env_marks=None 时旧逻辑会误映射）；同组 →
+       env 子集优先（"env"）+ 最新印刷（"latest"）；release_date 并列 →
+       card_id 字典序最小者（全链确定性）；
     4. 0 候选 → (None, "unmapped")。
     """
     stage = "ptcd"
@@ -270,6 +280,9 @@ def map_decklist_card(
         return None, "unmapped"
     if len(candidates) == 1:
         return candidates[0].card_id, "+".join([*rules, "unique"])
+    if len({c.group_key for c in candidates}) > 1:
+        # 跨 name_group = 真分歧（如 Espeon vs Espeon ex），不猜（对齐 JP 链先例）
+        return None, "+".join([*rules, "ambiguous"])
     pool = candidates
     if env_marks:
         subset = [c for c in candidates if c.regulation_mark in env_marks]

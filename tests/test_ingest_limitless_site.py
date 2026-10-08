@@ -5,8 +5,9 @@ test_ingest_limitless.py）。覆盖：
 - migration 010 视图 basis（limitless_site→intl_aligned，原三映射不变，jsonldb 一致）
   ——见 tests/test_tournament_migration.py 010 段；
 - 全流程：一场 regional（standings 35 行 → 截断 32，truncated=3，topcut_slots=
-  截断后实际入库名次数）+ 一场 league_cup（10 行 → 截断 8）+ 一场未知 tier
-  （不截断 + warning，不猜）+ 一场缺索引条目（最小入库）；
+  截断后实际入库名次数）+ 一场 league_cup（10 行 → 截断 8）+ 一场分类未命中
+  （H4：名称可得 tier=None → skipped_not_accepted 拒收跳过，照 API 通道对称）
+  + 一场缺索引条目（最小入库旧路径不回归）；
 - 字段断言：record 三列 NULL、env=GHI、official_url、tier_coef 物化、division NULL、
   deck 内容去重（两人同表 = 1 内容行 + N 出战行）、60 张门、卡组快照缺失拦截、
   映射分档、幂等两遍一致；
@@ -27,7 +28,18 @@ from ptcgdb.normalize.ingest_limitless_site import (
     ingest_limitless_site,
     make_deck_id,
 )
-from ptcgdb.orm import Card, Deck, DeckAppearance, DeckCard, ScrapeRun, Set, Tournament
+from ptcgdb.orm import (
+    Card,
+    CardNameGroup,
+    Deck,
+    DeckAppearance,
+    DeckCard,
+    DeckCardMiss,
+    NameGroup,
+    ScrapeRun,
+    Set,
+    Tournament,
+)
 from ptcgdb.scrapers.raw_store import write_raw
 from ptcgdb.scrapers.runner import RunStats, _new_run_id, finish_run
 from ptcgdb.scrapers.site_rules import load_site_rules
@@ -145,6 +157,13 @@ def build_db(db_path):
             make_card("CSA-005", "CSA", "Slowpoke", "G"),
             make_card("CSJ-008", "CSJ", "Milotic ex", "J"),  # J 标：env 交叉校验告警用
         ])
+        # Ultra Ball 两印刷归同一 name_group（真实库全卡单组；无组行兜底=自身会
+        # 被 H2 跨组守卫判 ambiguous）
+        session.add(NameGroup(group_key="Ultra Ball", display_name="Ultra Ball"))
+        session.add_all([
+            CardNameGroup(card_id=cid, group_key="Ultra Ball")
+            for cid in ("CSA-001", "CSB-002")
+        ])
         session.commit()
     engine.dispose()
 
@@ -232,14 +251,15 @@ def test_ingest_full_flow(tmp_path):
     raw_dir, db_path = build_full_fixture(tmp_path)
     result = ingest_limitless_site(raw_dir, db_path)
 
-    assert result.tournaments == 4
+    assert result.tournaments == 3  # T_MISC 分类拒收跳过（H4，照 API 通道对称）
+    assert result.skipped_not_accepted == 1  # tier=None 且名称可得 → 拒收跳过
     assert result.truncated == 5  # regional 33~35（3）+ league_cup 9~10（2）
     assert result.cut_limits == load_site_rules().cut_limits()  # 截断档位回显
-    assert result.decks == 5  # 内容实体处理次数（同 API 口径）：A/B 各 1 + D×3 场
+    assert result.decks == 4  # 内容实体处理次数：A/B（reg）+ D（cup）+ D（noidx）
     # （DB 唯一内容行 = 3：DECK_A/B/D；DECK_C 60 张门拦截）
     # appearances：regional 30（32 截断内 − dave 60 张门 − erin 快照缺失）
-    # + cup 8 + misc 3 + noidx 1 = 42
-    assert result.appearances == 42
+    # + cup 8 + noidx 1 = 39
+    assert result.appearances == 39
     blocked_reasons = [b["reason"] for b in result.blocked]
     assert len(result.blocked) == 2
     assert any("60 张质量门" in r for r in blocked_reasons)
@@ -261,14 +281,18 @@ def test_ingest_full_flow(tmp_path):
     assert cup.tier == "league_cup"
     assert cup.tier_coef == 1.0
     assert cup.topcut_slots == 8  # league_cup 截断 8
-    misc = tours[f"limitless_site:{T_MISC}"]
-    assert misc.tier is None and misc.tier_coef is None  # 未知 tier 不猜
-    assert misc.topcut_slots == 3  # 不截断（截断代理不适用，如实计数）
-    assert any("tier 归类未命中" in w for w in result.warnings)
-    noidx = tours[f"limitless_site:{T_NOIDX}"]
+    # H4：T_MISC 名称可得但分类未命中 → 拒收跳过，一行不写（照 API 通道对称）
+    assert f"limitless_site:{T_MISC}" not in tours
+    assert any("分类拒收" in w and T_MISC in w for w in result.warnings)
+    assert all(
+        a.tournament_id != f"limitless_site:{T_MISC}"
+        for a in query_all(db_path, DeckAppearance)
+    )
+    noidx = tours[f"limitless_site:{T_NOIDX}"]  # 缺索引条目：最小入库旧路径不回归
     assert noidx.tier is None and noidx.date is None and noidx.participant_count is None
     assert noidx.topcut_slots == 1  # 最小入库照常物化
     assert any("缺索引条目" in w for w in result.warnings)
+    assert any("tier 归类未命中" in w for w in result.warnings)  # noidx 名称缺失不猜
 
     # 内容去重：DECK_A 一行内容，alice/bob + p06~p32 共 29 行出战
     deck_a_id = make_deck_id(DECK_A)
@@ -323,9 +347,10 @@ def test_ingest_idempotent(tmp_path):
     assert counts1 == counts2
     assert result2.tournaments == result1.tournaments
     assert result2.decks == result1.decks
-    assert result2.appearances == result1.appearances == 42
+    assert result2.appearances == result1.appearances == 39
     assert result2.deck_cards == result1.deck_cards
     assert result2.truncated == result1.truncated == 5
+    assert result2.skipped_not_accepted == result1.skipped_not_accepted == 1
     assert result2.mapping_rules == result1.mapping_rules
     # topcut_slots 物化幂等：重跑后 regional 仍 = 30
     tours = {t.tournament_id: t for t in query_all(db_path, Tournament)}
@@ -339,8 +364,8 @@ def test_cli_ingest_limitless_site(tmp_path):
         ["ingest-limitless-site", "--raw-dir", str(raw_dir), "--db-path", str(db_path)],
     )
     assert result.exit_code == 1  # 有质量门拦截 → 非零退出
-    assert "tournaments=4" in result.output
-    assert "appearances=42" in result.output
+    assert "tournaments=3" in result.output
+    assert "appearances=39" in result.output
     assert "truncated=5" in result.output
     assert "blocked=2" in result.output
 
@@ -378,12 +403,12 @@ def build_window_fixture(tmp_path):
         raw_dir,
         index_entries=[
             index_entry(T_REG, "Regional Indianapolis, IN", 1974, "2026-03-30"),
-            index_entry(T_OUT, "SEASAC Cup", 300, "2026-07-15"),
+            index_entry(T_OUT, "Regional Outville, US", 300, "2026-07-15"),
         ],
         standings={
             T_REG: {"tournament_id": T_REG, "name": "Regional Indianapolis, IN",
                     "standings": [make_standing(1, "alice", "28249")]},
-            T_OUT: {"tournament_id": T_OUT, "name": "SEASAC Cup",
+            T_OUT: {"tournament_id": T_OUT, "name": "Regional Outville, US",
                     "standings": [make_standing(1, "outlier", "28300")]},
         },
         decklists={
@@ -415,3 +440,41 @@ def test_window_guard_disabled_ingests(tmp_path):
     assert result.skipped_out_of_window == 0
     ids = {t.tournament_id for t in query_all(db_path, Tournament)}
     assert f"limitless_site:{T_OUT}" in ids  # 守卫关闭后窗口外照入
+
+
+# ---- H3（2026-10-05）：card_id=NULL 同名条目合并 count（保真全量 60 张）----
+
+
+def test_ingest_null_rows_merge_count(tmp_path):
+    """同名未映射条目第二次出现不再整行跳过，合并 count（原为去重丢 count）。"""
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_ptcd_raw(raw_dir)
+    cards = make_cards([
+        (4, "SVI", "057", "Slowpoke", "Pokémon"),
+        (2, "XXX", "998", "Mystery Card Y", "Trainer"),
+        (2, "XXX", "999", "Mystery Card Y", "Trainer"),  # 同名未映射 → 合并
+        (52, "SVI", "1", "Basic Psychic Energy", "Energy"),
+    ])
+    write_site_raw(
+        raw_dir,
+        index_entries=[index_entry(T_REG, "Regional Indianapolis, IN", 1974, "2026-03-30")],
+        standings={
+            T_REG: {"tournament_id": T_REG, "name": "Regional Indianapolis, IN",
+                    "standings": [make_standing(1, "alice", "90001")]},
+        },
+        decklists={"90001": decklist_payload("90001", "A", "alice", cards)},
+    )
+    build_db(db_path)
+    result = ingest_limitless_site(raw_dir, db_path)
+
+    deck_id = make_deck_id(cards)
+    rows = [r for r in query_all(db_path, DeckCard) if r.deck_id == deck_id]
+    null_rows = [r for r in rows if r.card_id is None]
+    assert len(null_rows) == 1 and null_rows[0].raw_name == "Mystery Card Y"
+    assert null_rows[0].count == 4  # 2+2 合并
+    assert sum(r.count for r in rows) == 60  # 保真全量
+    assert any("合并 count" in w and "Mystery Card Y" in w for w in result.warnings)
+    # misses 两条（同 raw_name 但 set/number 不同 → 不同键）
+    misses = [m for m in query_all(db_path, DeckCardMiss) if m.deck_id == deck_id]
+    assert len(misses) == 2
+    assert {m.raw_number for m in misses} == {"998", "999"}

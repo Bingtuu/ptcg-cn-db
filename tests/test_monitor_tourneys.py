@@ -176,3 +176,143 @@ def test_cli_invalid_source():
     )
     assert result.exit_code == 2
     assert "source" in result.output
+
+
+# ---- 2026-10 code review G1：CLI handler lambda 晚期绑定闭包回归 ----
+
+
+def test_cli_source_all_wires_each_scrape_to_own_runner(tmp_path, monkeypatch):
+    """G1 回归：source=all 时 mik/limitless/limitless_site 的 scrape handler 必须各自
+    调到自己的 runner 实例。
+
+    修复前三个 if 块复用局部变量 runner，lambda 共享闭包单元格 → 编排调用时 mik 与
+    limitless 的 handler 实际调到 LimitlessSite runner（mik 从不重抓、site 被抓 3 次）。
+    """
+    calls: dict[str, list] = {"mik": [], "limitless": [], "limitless_site": []}
+
+    class DummyHttp:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    def make_fake_runner(key):
+        class FakeRunner:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def scrape(self, **kwargs):
+                calls[key].append(kwargs)
+                return SimpleNamespace(
+                    stats=SimpleNamespace(scraped=[], aborted=False), run_id=f"r-{key}"
+                )
+
+        return FakeRunner
+
+    monkeypatch.setattr(cli, "HttpClient", DummyHttp)
+    monkeypatch.setattr(cli, "TournamentScrapeRunner", make_fake_runner("mik"))
+    monkeypatch.setattr(cli, "LimitlessScrapeRunner", make_fake_runner("limitless"))
+    monkeypatch.setattr(cli, "LimitlessSiteScrapeRunner", make_fake_runner("limitless_site"))
+
+    def fake_run_monitor_tourneys(*, source, refresh_days, dry_run, handlers):
+        # 与 run_monitor_tourneys 相同的 handler 调用约定
+        handlers["mik"]["scrape"]()
+        handlers["limitless"]["scrape"](date_from=date(2026, 9, 21), force=True)
+        handlers["limitless_site"]["scrape"](date_from=date(2026, 9, 21), force=True)
+        return SimpleNamespace(dry_run=False, reports=[], plan=[], refresh_from=None)
+
+    monkeypatch.setattr(
+        "ptcgdb.monitor.tourneys.run_monitor_tourneys", fake_run_monitor_tourneys
+    )
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "monitor", "tourneys", "--source", "all",
+            "--raw-dir", str(tmp_path / "raw"), "--db-path", str(tmp_path / "t.db"),
+        ],
+    )
+    assert result.exit_code == 0
+    assert calls["mik"] == [{}]  # mik 无参断点续传轮询
+    # EN 双通道：date_from 序列化为 ISO 字符串 + force=True（近 N 天强制重抓）
+    assert calls["limitless"] == [{"date_from": "2026-09-21", "force": True}]
+    assert calls["limitless_site"] == [{"date_from": "2026-09-21", "force": True}]
+
+
+# ---- 2026-10 code review G3：单源硬异常隔离 ----
+
+
+def test_source_scrape_exception_isolated():
+    """G3 回归：单源 handler 抛硬异常（非熔断，如 DB 锁）→ 记 SourceReport.error，
+    其余源照常执行（模块 docstring 承诺「不中断其余源」对全部异常成立）。"""
+    stubs = make_stubs()
+
+    def boom():
+        raise RuntimeError("database is locked")
+
+    handlers = {k: v.as_dict() for k, v in stubs.items()}
+    handlers["mik"] = {"scrape": boom, "ingest": stubs["mik"].ingest}
+    result = run_monitor_tourneys(source="all", today=TODAY, handlers=handlers)
+
+    assert [r.source for r in result.reports] == ["mik", "limitless", "limitless_site"]
+    mik = result.reports[0]
+    assert mik.error is not None and "database is locked" in mik.error
+    assert mik.scraped == {} and mik.ingest == {} and mik.run_id is None
+    for report in result.reports[1:]:
+        assert report.error is None
+        assert report.scraped == {"fetched": 1, "skipped": 1}
+    # 其余两源确实执行了
+    assert stubs["limitless"].calls == [
+        ("scrape", {"date_from": date(2026, 7, 26), "force": True}), ("ingest",),
+    ]
+    assert stubs["limitless_site"].calls != []
+
+
+def test_source_ingest_exception_isolated():
+    """G3：scrape 成功但 ingest 抛异常 → error 留痕且 scrape 计数保留，后续源照常。"""
+    stubs = make_stubs()
+
+    def boom():
+        raise ValueError("ingest blew up")
+
+    handlers = {k: v.as_dict() for k, v in stubs.items()}
+    handlers["limitless"] = {"scrape": stubs["limitless"].scrape, "ingest": boom}
+    result = run_monitor_tourneys(source="all", today=TODAY, handlers=handlers)
+
+    lim = result.reports[1]
+    assert lim.error is not None and "ingest blew up" in lim.error
+    assert lim.scraped == {"fetched": 1, "skipped": 1}  # scrape 部分已计数
+    assert lim.ingest == {}
+    assert result.reports[2].error is None  # limitless_site 照常
+    assert stubs["limitless_site"].calls != []
+
+
+def test_cli_source_error_exit_1(tmp_path, monkeypatch):
+    """G3：任一源 report.error → CLI 汇总非零退出（其余源结果照常回显）。"""
+    from ptcgdb.monitor import tourneys as mt
+
+    def fake_run_monitor_tourneys(**kwargs):
+        return mt.MonitorTourneysResult(
+            reports=[
+                mt.SourceReport(source="mik", error="RuntimeError: database is locked"),
+                mt.SourceReport(
+                    source="limitless", scraped={"fetched": 1}, run_id="r-lim"
+                ),
+            ],
+            refresh_from=date(2026, 9, 21),
+        )
+
+    monkeypatch.setattr(mt, "run_monitor_tourneys", fake_run_monitor_tourneys)
+    result = CliRunner().invoke(
+        cli.app,
+        [
+            "monitor", "tourneys", "--source", "all",
+            "--raw-dir", str(tmp_path / "raw"), "--db-path", str(tmp_path / "t.db"),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "ERROR" in result.output
+    assert "[limitless]" in result.output  # 成功源照常回显

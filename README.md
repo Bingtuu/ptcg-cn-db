@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Status](https://img.shields.io/badge/Status-133系列/12,908张-brightgreen.svg?style=flat-square)](STATUS.md)
 [![PRD](https://img.shields.io/badge/PRD-v1.35-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-1139%20passed-success.svg?style=flat-square)](STATUS.md)
+[![Tests](https://img.shields.io/badge/Tests-1178%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -51,7 +51,7 @@ ptcgdb init-db           # 建库 + 全部迁移（默认 data/ptcg-cn.db）
 开发自检：
 
 ```bash
-python -m pytest -q      # 1139 测试（全量约 5 分钟）
+python -m pytest -q      # 1178 测试（全量约 5 分钟）
 ruff check .
 ```
 
@@ -262,7 +262,7 @@ LEFT JOIN eligible_b eb ON eb.tournament_id = p.tournament_id
 | 收缩后 WR_adj | (0.3370 + 10×0.1649) / (0.7948 + 10) = 0.1840 | |
 | **WWS** | 0.008391 × 0.1840 = **0.001544** | 与 `stats wws` 输出 0.0015441 逐位一致 ✓ |
 
-读数时注意三点口径：①mik 源无逐局对阵，CN 胜率只有 B 层 top-cut 转化率口径（42.4% 的含义 = 出战约 2.4 次转化 1 次上位，不能与逐局胜率直接比）；②k=10 的收缩强度挂钩的是**加权出战份额**而非卡组计数——小众卡（U_w 仅 0.79）会被 12.6:1 的先验大幅拉向赛事基准（42.4%→18.4%），热门卡几乎不受影响，看"实力信号"应读 WR + 钻取的上位记录，WWS 回答的是"贡献份额"；③本例样本多为城市赛，且 mik 源数据时效到 2026-09-09（源侧登记滞后，周末赛事可能延迟数日至数周才登记），跑 `ptcgdb monitor tourneys` 刷新后数值会变。
+读数时注意三点口径：①mik 源无逐局对阵，CN 胜率只有 B 层 top-cut 转化率口径（42.4% 的含义 = 出战约 2.4 次转化 1 次上位，不能与逐局胜率直接比）；②k=10 的收缩强度挂钩的是**加权出战份额**而非卡组计数——小众卡（U_w 仅 0.79）会被 12.6:1 的先验大幅拉向赛事基准（42.4%→18.4%），热门卡几乎不受影响，看"实力信号"应读 WR + 钻取的上位记录，WWS 回答的是"贡献份额"；③本例样本多为城市赛，且 mik 源数据时效到 2026-09-09（CN 赛事全量历史回补采集进行中，跑 `ptcgdb monitor tourneys` 刷新后数值会变）。
 
 ## 🏗️ 架构
 

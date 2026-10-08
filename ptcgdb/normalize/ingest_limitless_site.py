@@ -16,6 +16,9 @@ stat_scope 派生 / env 推导 + 交叉校验告警不拒收 / 幂等 merge upse
   pairings 表，也不做 phase=2 反推）。
 - 赛事信息从 index/{season}/page-*.json 按 tournament_id 反查（name/players/date/
   country）；缺失 → warning + 最小入库（同 API 缺 list 口径）。
+- **分类拒收跳过（H4，2026-10-05，照 API 通道对称）**：名称可得但分类未命中
+  （未命中收侧档位或命中拒侧）→ skipped_not_accepted 计数跳过，不写库不删行，
+  分类判定在窗口守卫之前；缺索引条目（name 缺失）维持最小入库旧路径不猜。
 - decks：archetype_name = 卡组页标题解析的 archetype 字段；archetype_id = standings
   行源侧归类 id（/decks/{id}，可缺）；deck_id = limitless_site:{60 张内容哈希[:16]}
   ——同一内容哈希天然去重（多人同表 = 1 内容行 + N 出战行，同 mik/同 API 口径）。
@@ -82,6 +85,7 @@ class LimitlessSiteIngestResult:
     deck_cards: int = 0
     truncated: int = 0  # 名次截断丢掉的出战条数（placing > cut）
     skipped_out_of_window: int = 0  # 窗口守卫跳过的赛事数（FR-9.8，task 031）
+    skipped_not_accepted: int = 0  # 分类拒收跳过的赛事数（H4，照 API 通道对称）
     cut_limits: dict[str, int] = field(default_factory=lambda: load_site_rules().cut_limits())
     mapping_rules: dict[str, int] = field(default_factory=dict)  # 映射决策 rule → 次数
     blocked: list[dict[str, Any]] = field(default_factory=list)  # 60 张门 / 快照缺失
@@ -210,6 +214,15 @@ def _ingest_one_tournament(
     tier, classify_reason = classify_site_tournament(
         item.get("name") or doc.get("name"), players, item.get("country"), rules=rules
     )
+    if tier is None and (item.get("name") or doc.get("name")):
+        # 分类拒收（名称可得但未命中收侧档位/命中拒侧）→ 不入库不删行
+        # （H4：照 API 通道 skipped_not_accepted 对称，分类在窗口守卫之前）；
+        # 缺索引条目（name 缺失）维持最小入库旧路径不猜
+        result.skipped_not_accepted += 1
+        result.warnings.append(
+            f"赛事分类拒收，跳过入库: {tournament_id} — {classify_reason}"
+        )
+        return
     if tier is None:
         result.warnings.append(
             f"赛事 tier 归类未命中（tier/tier_coef 置空）: {tournament_id} — {classify_reason}"
@@ -358,15 +371,16 @@ def _ingest_one_deck(
     # card_id 解析（决策 rule 计分布）；同 card_id 多条目合并 count（两种印刷同名卡）
     merged: dict[str, int] = {}
     raw_names: dict[str, str] = {}
-    # (raw_name, count, set, number)；set/number 供 deck_card_misses 标识（task 032）
-    unmapped: list[tuple[str, int, str | None, str | None]] = []
+    # (raw_name, count, set, number, rule)；set/number 供 deck_card_misses 标识
+    # （task 032），rule 供歧义 miss_kind 判定（H2）
+    unmapped: list[tuple[str, int, str | None, str | None, str]] = []
     for count, set_code, number, name in cards:
         card_id, rule = map_decklist_card(
             set_code, number, name, ptcd_index, cn_name_index, env_marks
         )
         result.mapping_rules[rule] = result.mapping_rules.get(rule, 0) + 1
         if card_id is None:
-            unmapped.append((name, count, set_code, number))
+            unmapped.append((name, count, set_code, number, rule))
             continue
         if card_id in merged:
             result.warnings.append(
@@ -382,7 +396,7 @@ def _ingest_one_deck(
         info = card_index.get(card_id)
         if info is None:
             # name_en 候选与 card_index 同源构建，理论不可达（防御性兜底）
-            unmapped.append((raw_names[card_id], merged[card_id], None, None))
+            unmapped.append((raw_names[card_id], merged[card_id], None, None, "unmapped"))
             continue
         mapped_count += merged[card_id]
         if info[2]:
@@ -396,24 +410,29 @@ def _ingest_one_deck(
                 stat_scope=derive_stat_scope(info[0], info[1]),
             )
         )
-    seen_null: set[str] = set()  # card_id 为 NULL 时按 (deck_id, raw_name) 去重（PRD §7.5）
+    # card_id 为 NULL 时按 (deck_id, raw_name) 合并 count（H3 修复：保真全量
+    # 60 张，与 mapped 行同 card_id 合并口径一致；原为去重丢 count）
+    null_counts: dict[str, int] = {}
     miss_now = datetime.now(UTC)
-    for raw_name, count, raw_set, raw_number in unmapped:
+    for raw_name, count, raw_set, raw_number, rule in unmapped:
         result.unknown_cards.append(
             {"deck_id": deck_id, "card_id": None, "raw_name": raw_name, "count": count}
         )
         # task 032：映射缺口显性标识（幂等 upsert，已 resolved 不动）
         resolved_name_en, miss_kind = classify_miss(raw_set, raw_number, raw_name, ptcd_index)
+        if rule.endswith("+ambiguous"):
+            # name_en 多候选跨 name_group：真分歧不猜（H2）；miss_kind 开放字符串
+            miss_kind = "ambiguous"
         record_miss(
             session, deck_id, raw_name, raw_set, raw_number,
             resolved_name_en, miss_kind, miss_now,
         )
-        if raw_name in seen_null:
+        if raw_name in null_counts:
             result.warnings.append(
-                f"deck_cards 重复行已跳过: deck={deck_id} raw_name={raw_name}"
+                f"同名未映射条目合并 count: deck={deck_id} raw_name={raw_name}"
             )
-            continue
-        seen_null.add(raw_name)
+        null_counts[raw_name] = null_counts.get(raw_name, 0) + count
+    for raw_name, count in null_counts.items():
         deck_rows.append(
             DeckCard(
                 deck_id=deck_id, card_id=None, count=count,

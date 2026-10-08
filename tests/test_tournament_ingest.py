@@ -550,8 +550,10 @@ DECK_DEDUP = [
 ]  # 合计 60
 
 
-def test_deck_cards_null_card_id_dedup(tmp_path):
-    """同一卡组内 card_id=NULL 的条目按 (deck_id, raw_name) 去重，只保留首条。"""
+def test_deck_cards_null_card_id_merge_count(tmp_path):
+    """同一卡组内 card_id=NULL 的同名条目按 (deck_id, raw_name) 合并 count
+    （H3 修复：保真全量 60 张，与 mapped 行同 card_id 合并口径一致；
+    原为去重丢 count，DB 合计 57 < raw 60）。"""
     raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
     build_db(db_path)
     items = load_fixture("tournament_list.json")["data"]["list"]
@@ -567,17 +569,22 @@ def test_deck_cards_null_card_id_dedup(tmp_path):
     )
     result = ingest_tourneys(raw_dir, db_path)
 
-    # deck_cards 中"不存在卡A"只入库一行（保留首次出现 count=4）
+    # deck_cards 中"不存在卡A"入库一行，count = 4+3 合并
     rows = query(
         db_path,
         select(DeckCard.raw_name, DeckCard.count).where(
             DeckCard.deck_id == "mik_moe:555010", DeckCard.card_id.is_(None)
         ),
     )
-    assert len(rows) == 1
-    assert rows[0] == ("不存在卡A", 4)
-    # 去重警告已记录
-    assert any("重复行已跳过" in w and "不存在卡A" in w for w in result.warnings)
+    assert rows == [("不存在卡A", 7)]
+    # 保真全量 60 张：DB 合计 = raw 合计
+    total = query(
+        db_path,
+        select(DeckCard.count).where(DeckCard.deck_id == "mik_moe:555010"),
+    )
+    assert sum(r[0] for r in total) == 60
+    # 合并警告已记录
+    assert any("合并 count" in w and "不存在卡A" in w for w in result.warnings)
 
 
 # ---- task 034：ingest-tourneys 尾部 topcut_slots 物化钩子 ----

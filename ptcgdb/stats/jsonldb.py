@@ -39,10 +39,12 @@ CREATE TABLE cards_name_group (card_id TEXT, group_key TEXT,
     PRIMARY KEY (card_id, group_key));
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 
+-- 三视图与 migrations 最新定义逐字同步（tests/test_stats_view_sync.py 对拍守卫）。
 CREATE VIEW v_tournament_weights AS
 SELECT tournament_id, name, tier, tier_coef, division, date,
        participant_count, topcut_slots, is_qual, is_team,
-       tier_coef * log10(participant_count) AS static_weight,
+       CASE WHEN participant_count IS NULL THEN tier_coef
+            ELSE tier_coef * log10(participant_count) END AS static_weight,
        CASE source WHEN 'mik_moe' THEN 'cn' WHEN 'limitless' THEN 'intl_aligned'
                    WHEN 'limitless_site' THEN 'intl_aligned'
                    WHEN 'pokemon_card_jp' THEN 'jp' ELSE source END AS basis

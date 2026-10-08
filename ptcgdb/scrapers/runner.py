@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.orm import ScrapeRun
 from ptcgdb.scrapers import mikmoe
-from ptcgdb.scrapers.http import CircuitOpenError
+from ptcgdb.scrapers.http import CircuitOpenError, TransientHttpError
 from ptcgdb.scrapers.mikmoe import MikMoeApiError, MikMoeScraper
 from ptcgdb.scrapers.raw_store import (
     DEFAULT_INDEX_TTL,
@@ -136,6 +136,9 @@ class ScrapeRunner:
                 stats.scraped.append({"id": set_id, "path": str(path), "action": "fetched"})
         except CircuitOpenError:
             stats.aborted = True
+        except (MikMoeApiError, TransientHttpError):
+            # 顶层兜底（2026-10 review G4）：业务错误/重试耗尽不炸穿，保 finish_run 三清单落盘
+            stats.aborted = True
 
         # 对账：product-list 里有、但 cards.json 缺失/无效的系列进 missing
         doc = read_raw(self.products_path())
@@ -170,6 +173,9 @@ class ScrapeRunner:
                 )
         except CircuitOpenError:
             stats.aborted = True
+        except (MikMoeApiError, TransientHttpError):
+            # 顶层兜底（2026-10 review G4）：业务错误/重试耗尽不炸穿，保 finish_run 三清单落盘
+            stats.aborted = True
 
         return self._finish_run(run_id, started_at, stats)
 
@@ -180,7 +186,14 @@ class ScrapeRunner:
         # 系列详情缺失/超 TTL 时先补抓（索引页可变：cardsNum 会随新卡登记增长，
         # task 054 实测 30thP 18→27；cardsNum 对账兜底在下方保留）
         if force or not is_fresh_raw(self.set_cards_path(set_id), self.index_ttl):
-            payload = self.scraper.fetch_product_detail(set_id)
+            try:
+                payload = self.scraper.fetch_product_detail(set_id)
+            except MikMoeApiError as exc:
+                # 业务错误逐系列记 question 跳过（对齐 scrape_sets 口径，2026-10 review G4）
+                stats.question.append(
+                    {"id": set_id, "endpoint": exc.endpoint, "reason": str(exc)}
+                )
+                return
             write_raw(self.set_cards_path(set_id), payload, source=mikmoe.SOURCE, force=True)
         doc = read_raw(self.set_cards_path(set_id))
         if doc is None:
@@ -200,7 +213,14 @@ class ScrapeRunner:
                     logging.warning(
                         f"{set_id}: cardsNum={expected} ≠ cached={cached_count}，重新拉取"
                     )
-                    payload = self.scraper.fetch_product_detail(set_id)
+                    try:
+                        payload = self.scraper.fetch_product_detail(set_id)
+                    except MikMoeApiError as exc:
+                        # 重拉业务错误记 question 跳过该系列（不猜，2026-10 review G4）
+                        stats.question.append(
+                            {"id": set_id, "endpoint": exc.endpoint, "reason": str(exc)}
+                        )
+                        return
                     write_raw(self.set_cards_path(set_id), payload,
                               source=mikmoe.SOURCE, force=True)
                     doc = read_raw(self.set_cards_path(set_id))

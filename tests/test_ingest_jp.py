@@ -646,3 +646,36 @@ def test_group_arbitration_integration(tmp_path):
     assert by_card["CSB-002"].raw_name == "ネストボール"
     assert all(c.card_id is not None for c in rows)  # 无 NULL 保真行
     assert query_all(db_path, DeckCardMiss) == []  # 同组裁决不产生 miss
+
+
+# ---- H3（2026-10-05）：card_id=NULL 同名条目合并 count（保真全量 60 张）----
+
+
+def test_ingest_jp_null_rows_merge_count(tmp_path):
+    """同名未映射条目第二次出现不再整行跳过，合并 count（原为去重丢 count，
+    实库 3 套 JP 卡组 DB 合计 59/58/59 < raw 60）。"""
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    entries = [
+        ("gds", "200", 2, "ネストボール(SV1 060/078)"),  # 库内两候选 → ambiguous miss
+        ("gds", "201", 2, "ネストボール(SV1 060/078)"),  # 同名第二条目 → 合并 count
+        ("ene", "101", 56, "基本超エネルギー"),
+    ]
+    write_deck_raws(raw_dir, {"KKKKKK-KKKKKK-KKKKKK": entries})
+    write_article(
+        raw_dir, "8001", "champions", "2025-06-05", "チャンピオンズリーグ2026 神戸",
+        [("カードショップK（神戸）", [("KKKKKK-KKKKKK-KKKKKK", "優勝")])],
+    )
+    build_db(db_path)
+    result = ingest_jp(raw_dir, db_path)
+
+    deck_id = deck_id_of(entries)
+    rows = [c for c in query_all(db_path, DeckCard) if c.deck_id == deck_id]
+    null_rows = [c for c in rows if c.card_id is None]
+    assert len(null_rows) == 1 and null_rows[0].raw_name == "ネストボール"
+    assert null_rows[0].count == 4  # 2+2 合并
+    assert sum(c.count for c in rows) == 60  # 保真全量
+    assert any("合并 count" in w and "ネストボール" in w for w in result.warnings)
+    assert result.mapping_rules.get("ja_name+ambiguous", 0) == 2
+    # misses：同 (deck_id, raw_name, jp_set, jp_number) 键幂等 upsert → 1 行
+    misses = [m for m in query_all(db_path, DeckCardMiss) if m.deck_id == deck_id]
+    assert len(misses) == 1 and misses[0].miss_kind == "ambiguous_ja_name"

@@ -11,8 +11,9 @@
   → 对应 ingest（窗口守卫 FR-9.8 默认开）；
 - dry_run：只出计划（源 / 重抓窗口）零调用。
 
-限速/熔断由各采集器既有配置保证（FR-9.5）；某源熔断中止只记录不中断其余源
-（不同源不同宿主），由 CLI 汇总退出码。
+限速/熔断由各采集器既有配置保证（FR-9.5）；某源中止/异常只记录不中断其余源
+（不同源不同宿主，熔断中止与 DB 锁等硬异常同口径，2026-10 review G3），
+由 CLI 汇总退出码。
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ class SourceReport:
     run_id: str | None = None
     ingest: dict[str, int] = field(default_factory=dict)
     blocked: int = 0  # 质量门拦截卡组数（FR-9.6）
+    error: str | None = None  # 源级异常留痕（2026-10 review G3；不中断其余源）
 
 
 @dataclass
@@ -117,15 +119,19 @@ def run_monitor_tourneys(
         if handler is None:
             raise ValueError(f"非 dry-run 运行缺 handler: {src}")
         report = SourceReport(source=src)
-        if src == "mik":
-            scrape_res = handler["scrape"]()
-        else:
-            scrape_res = handler["scrape"](date_from=refresh_from, force=True)
-        report.scraped = _count_actions(scrape_res.stats)
-        report.aborted = bool(scrape_res.stats.aborted)
-        report.run_id = scrape_res.run_id
-        ingest_res = handler["ingest"]()
-        report.ingest = _ingest_summary(ingest_res)
-        report.blocked = len(getattr(ingest_res, "blocked", []))
+        try:
+            if src == "mik":
+                scrape_res = handler["scrape"]()
+            else:
+                scrape_res = handler["scrape"](date_from=refresh_from, force=True)
+            report.scraped = _count_actions(scrape_res.stats)
+            report.aborted = bool(scrape_res.stats.aborted)
+            report.run_id = scrape_res.run_id
+            ingest_res = handler["ingest"]()
+            report.ingest = _ingest_summary(ingest_res)
+            report.blocked = len(getattr(ingest_res, "blocked", []))
+        except Exception as exc:
+            # 单源异常（熔断外的硬异常同口径）只留痕不中断其余源（G3）
+            report.error = f"{type(exc).__name__}: {exc}"
         result.reports.append(report)
     return result

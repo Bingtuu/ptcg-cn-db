@@ -6,10 +6,10 @@ mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
   （内容哈希，天然跨选手/跨赛事去重）；同一内容在同一赛事 N 个名次出现 =
   1 行内容 + N 行出战条目（多人同卡组照常多行）。
 - decklist→简中映射走 normalize/limitless.map_decklist 映射链（ptcd 定位 →
-  name_en exact match → env 优先/最新印刷裁决）；每条的决策 rule 计入
-  mapping_rules 分布。同一卡组解析到相同 card_id 的多条目合并 count（两种印刷
-  同名卡，记 warning）；未解析 card_id=None + raw_name 保真（(deck_id, raw_name)
-  去重同 mik），不猜（FR-9.2）。
+  name_en exact match → 先判 name_group 跨组不猜（H2）→ env 优先/最新印刷裁决）；
+  每条的决策 rule 计入 mapping_rules 分布。同一卡组解析到相同 card_id 的多条目
+  合并 count（两种印刷同名卡，记 warning）；未解析 card_id=None + raw_name 保真、
+  同名多条目合并 count（同 mik，H3 修复保真全量 60 张），不猜（FR-9.2）。
 - stat_scope 照 mik 用 cards 表 card_type/trainer_subtype 派生（FR-9.3）；
   mapped_ratio 张数口径；mapping_status full≥0.95（FULL_THRESHOLD 复用）。
 - 60 张质量门（FR-9.6①）：count 合计 != 60 整组拦截（内容与出战条目都不落）。
@@ -66,7 +66,16 @@ from ptcgdb.normalize.limitless import (
     parse_standings_entry,
 )
 from ptcgdb.normalize.tournaments import VOCAB_DIR, load_tier_map
-from ptcgdb.orm import Card, Deck, DeckAppearance, DeckCard, Pairing, Set, Tournament
+from ptcgdb.orm import (
+    Card,
+    CardNameGroup,
+    Deck,
+    DeckAppearance,
+    DeckCard,
+    Pairing,
+    Set,
+    Tournament,
+)
 from ptcgdb.scrapers.limitless import (
     RAW_SUBDIR,
     SOURCE,
@@ -138,9 +147,18 @@ def _load_list_index(base: Path, result: LimitlessIngestResult) -> dict[str, dic
 def _build_cn_index(
     session: Session,
 ) -> tuple[dict[str, list[CnCandidate]], dict[str, tuple[str, str | None, str | None]]]:
-    """CN 库索引：name_en → 候选卡列表（多印刷裁决用）；card_id → stat_scope/env 信息。"""
+    """CN 库索引：name_en → 候选卡列表（多印刷裁决用）；card_id → stat_scope/env 信息。
+
+    候选结构含 name_group（cards_name_group 外联；无 group 行/一卡多组按
+    group_key=自身 card_id 兜底，不假设同组——跨组歧义不猜，同 JP 链口径）。
+    """
     cn_name_index: dict[str, list[CnCandidate]] = {}
     card_index: dict[str, tuple[str, str | None, str | None]] = {}
+    groups: dict[str, set[str]] = {}
+    for cid, gkey in session.execute(
+        select(CardNameGroup.card_id, CardNameGroup.group_key)
+    ):
+        groups.setdefault(cid, set()).add(gkey)
     rows = session.execute(
         select(
             Card.card_id, Card.name_en, Card.regulation_mark, Card.card_type,
@@ -150,8 +168,10 @@ def _build_cn_index(
     for card_id, name_en, mark, card_type, subtype, release in rows:
         card_index[card_id] = (card_type, subtype, mark)
         if name_en:
+            gset = groups.get(card_id) or set()
+            group_key = next(iter(gset)) if len(gset) == 1 else card_id
             cn_name_index.setdefault(name_en, []).append(
-                CnCandidate(card_id, mark, release)
+                CnCandidate(card_id, mark, release, group_key)
             )
     return cn_name_index, card_index
 
@@ -381,15 +401,16 @@ def _ingest_one_deck(
     # card_id 解析（决策 rule 计分布）；同 card_id 多条目合并 count（两种印刷同名卡）
     merged: dict[str, int] = {}
     raw_names: dict[str, str] = {}
-    # (raw_name, count, set, number)；set/number 供 deck_card_misses 标识（task 032）
-    unmapped: list[tuple[str, int, str | None, str | None]] = []
+    # (raw_name, count, set, number, rule)；set/number 供 deck_card_misses 标识（task 032），
+    # rule 供歧义 miss_kind 判定（H2）
+    unmapped: list[tuple[str, int, str | None, str | None, str]] = []
     for card in cards:
         card_id, rule = map_decklist_card(
             card.set_code, card.number, card.name, ptcd_index, cn_name_index, env_marks
         )
         result.mapping_rules[rule] = result.mapping_rules.get(rule, 0) + 1
         if card_id is None:
-            unmapped.append((card.name, card.count, card.set_code, card.number))
+            unmapped.append((card.name, card.count, card.set_code, card.number, rule))
             continue
         if card_id in merged:
             result.warnings.append(
@@ -405,7 +426,7 @@ def _ingest_one_deck(
         info = card_index.get(card_id)
         if info is None:
             # name_en 候选与 card_index 同源构建，理论不可达（防御性兜底）
-            unmapped.append((raw_names[card_id], merged[card_id], None, None))
+            unmapped.append((raw_names[card_id], merged[card_id], None, None, "unmapped"))
             continue
         mapped_count += merged[card_id]
         if info[2]:
@@ -419,24 +440,29 @@ def _ingest_one_deck(
                 stat_scope=derive_stat_scope(info[0], info[1]),
             )
         )
-    seen_null: set[str] = set()  # card_id 为 NULL 时按 (deck_id, raw_name) 去重（PRD §7.5）
+    # card_id 为 NULL 时按 (deck_id, raw_name) 合并 count（H3 修复：保真全量
+    # 60 张，与 mapped 行同 card_id 合并口径一致；原为去重丢 count）
+    null_counts: dict[str, int] = {}
     miss_now = datetime.now(UTC)
-    for raw_name, count, raw_set, raw_number in unmapped:
+    for raw_name, count, raw_set, raw_number, rule in unmapped:
         result.unknown_cards.append(
             {"deck_id": deck_id, "card_id": None, "raw_name": raw_name, "count": count}
         )
         # task 032：映射缺口显性标识（幂等 upsert，已 resolved 不动）
         resolved_name_en, miss_kind = classify_miss(raw_set, raw_number, raw_name, ptcd_index)
+        if rule.endswith("+ambiguous"):
+            # name_en 多候选跨 name_group：真分歧不猜（H2）；miss_kind 开放字符串
+            miss_kind = "ambiguous"
         record_miss(
             session, deck_id, raw_name, raw_set, raw_number,
             resolved_name_en, miss_kind, miss_now,
         )
-        if raw_name in seen_null:
+        if raw_name in null_counts:
             result.warnings.append(
-                f"deck_cards 重复行已跳过: deck={deck_id} raw_name={raw_name}"
+                f"同名未映射条目合并 count: deck={deck_id} raw_name={raw_name}"
             )
-            continue
-        seen_null.add(raw_name)
+        null_counts[raw_name] = null_counts.get(raw_name, 0) + count
+    for raw_name, count in null_counts.items():
         rows.append(
             DeckCard(
                 deck_id=deck_id, card_id=None, count=count,

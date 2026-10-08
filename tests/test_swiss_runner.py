@@ -186,3 +186,42 @@ def test_poll_transient_error_aborts_with_question(tmp_path):
     result = make_runner(tmp_path, FlakySwiss()).poll()
     assert result.stats.aborted
     assert len(result.stats.question) == 1
+
+
+# ---- 2026-10 code review G5：ongoing 探测业务错误兜底 ----
+
+
+def test_poll_series_list_api_error_aborts(tmp_path):
+    """G5 回归：series-list 业务错误（MikMoeApiError）→ 顶层兜底 aborted 保三清单落盘。"""
+
+    class BrokenSeries(FakeTournamentScraper):
+        def fetch_series_list(self, page=1, page_size=100):
+            raise MikMoeApiError("/api/v3/tournament/series-list", 10002, "内部错误")
+
+    runner = SwissPollRunner(
+        tmp_path / "raw", BrokenSeries(), FakeSwissScraper(), tmp_path / "test.db"
+    )
+    result = runner.poll()
+    assert result.stats.aborted
+    assert (result.lists_path / "scraped.json").exists()
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    with Session(engine) as session:
+        row = session.get(ScrapeRun, result.run_id)
+        assert row is not None and row.status == "aborted"
+    engine.dispose()
+
+
+def test_poll_tournament_list_api_error_aborts(tmp_path):
+    """G5 回归：tournament/list 翻页业务错误同样顶层兜底 aborted（不炸穿零清单）。"""
+
+    class BrokenList(FakeTournamentScraper):
+        def fetch_tournament_list(self, series_id, page=1, page_size=100):
+            raise MikMoeApiError("/api/v3/tournament/list", 10002, "内部错误")
+
+    runner = SwissPollRunner(
+        tmp_path / "raw", BrokenList(), FakeSwissScraper(), tmp_path / "test.db"
+    )
+    result = runner.poll()
+    assert result.stats.aborted
+    assert (result.lists_path / "question.json").exists()

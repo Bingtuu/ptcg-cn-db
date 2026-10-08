@@ -171,6 +171,7 @@ class LimitlessSiteScrapeRunner:
             lambda tid=tid: self.scraper.fetch_standings(tid),
             state,
             force=force,
+            validate=_validate_standings_doc,
         )
         # 名次截断（FR-9.1a ②）：standings 为全交表收录，只抓 Top Cut 内卡组页
         cut = self._rules.cut_limit_for(tier) if tier else None
@@ -185,6 +186,7 @@ class LimitlessSiteScrapeRunner:
                 lambda did=did: self.scraper.fetch_decklist(did),
                 state,
                 force=force,
+                validate=_validate_decklist_doc,
             )
 
     # ---- 单文件抓取（断点续传）----
@@ -197,14 +199,26 @@ class LimitlessSiteScrapeRunner:
         state: _State,
         *,
         force: bool,
+        validate: Callable[[dict[str, Any]], str | None] | None = None,
     ) -> dict[str, Any] | None:
         """保证 path 的 raw 可用；存在且 hash 有效即跳过（零请求）。返回 raw 文档。
 
         主站落盘口径 = 解析后 JSON 快照（payload 直接为 dict，不包 "data"）。
+        validate（2026-10 review G6 零结果 fail-fast）：对缓存与新抓 payload 做
+        sanity 校验，返回非 None 理由即记 question 且不写盘（不猜）——防止漂移
+        HTML 解析出的空快照拿到有效 content_hash 后永不重抓。
         """
         if not force and is_valid_raw(path):
+            doc = read_raw(path)
+            if validate is not None and doc is not None:
+                reason = validate(doc)
+                if reason is not None:
+                    state.stats.question.append(
+                        {"id": label, "endpoint": "-", "reason": reason}
+                    )
+                    return None
             state.stats.scraped.append({"id": label, "path": str(path), "action": "skipped"})
-            return read_raw(path)
+            return doc
         try:
             payload = fetch()
         except LimitlessSiteApiError as exc:
@@ -217,6 +231,13 @@ class LimitlessSiteScrapeRunner:
                 {"id": label, "endpoint": "-", "reason": f"重试耗尽（瞬时网络错误）：{exc}"}
             )
             raise  # 顶层兜底置 aborted，保 finish_run
+        if validate is not None:
+            reason = validate(payload)
+            if reason is not None:
+                state.stats.question.append(
+                    {"id": label, "endpoint": "-", "reason": reason}
+                )
+                return None
         write_raw(path, payload, source=SOURCE, force=force)
         state.stats.scraped.append({"id": label, "path": str(path), "action": "fetched"})
         return read_raw(path)
@@ -255,6 +276,23 @@ class _State:
         self.limit_reached = False
         self.seen_tournaments: set[str] = set()
         self.expected: list[tuple[str, str, Path]] = []
+
+
+def _validate_standings_doc(doc: dict[str, Any]) -> str | None:
+    """G6 守卫②：accepted 赛事 standings 解析为空 → 理由（记 question 不落盘不猜）。
+
+    accepted 赛事（已过 ≥32 人门）必有交表名次行；零行 = 漂移 HTML 解析产物。
+    """
+    if not doc.get("standings"):
+        return "accepted 赛事 standings 解析为空（疑似页面改版/解析漂移），不落盘不猜"
+    return None
+
+
+def _validate_decklist_doc(doc: dict[str, Any]) -> str | None:
+    """G6 守卫③：decklist 页 cards 解析为空 → 理由（记 question 不落盘不猜）。"""
+    if not doc.get("cards"):
+        return "decklist 页 cards 解析为空（疑似页面改版/解析漂移），不落盘不猜"
+    return None
 
 
 def _to_date(value: date | str | None) -> date | None:
