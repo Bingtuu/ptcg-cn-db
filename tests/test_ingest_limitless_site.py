@@ -7,7 +7,7 @@ test_ingest_limitless.py）。覆盖：
 - 全流程：一场 regional（standings 35 行 → 截断 32，truncated=3，topcut_slots=
   截断后实际入库名次数）+ 一场 league_cup（10 行 → 截断 8）+ 一场分类未命中
   （H4：名称可得 tier=None → skipped_not_accepted 拒收跳过，照 API 通道对称）
-  + 一场缺索引条目（最小入库旧路径不回归）；
+  + 一场缺索引条目（FR-9.8 v1.36 task 058：拒收跳过 skipped_no_index_entry）；
 - 字段断言：record 三列 NULL、env=GHI、official_url、tier_coef 物化、division NULL、
   deck 内容去重（两人同表 = 1 内容行 + N 出战行）、60 张门、卡组快照缺失拦截、
   映射分档、幂等两遍一致；
@@ -49,7 +49,7 @@ NOW = datetime(2026, 8, 8, 12, 0, 0)
 T_REG = "559"  # regional 1974 人，2026-03-30（EN env GHI）→ 截断 32
 T_CUP = "600"  # league_cup 48 人，2026-03-15 → 截断 8
 T_MISC = "601"  # 未知 tier（非官方名）→ 不截断 + warning
-T_NOIDX = "699"  # 缺索引条目 → 最小入库
+T_NOIDX = "699"  # 缺索引条目 → 拒收跳过（FR-9.8 v1.36）
 
 # ---- ptcd / limitless_site raw 树构建（tmp_path，零网络）----
 
@@ -251,15 +251,16 @@ def test_ingest_full_flow(tmp_path):
     raw_dir, db_path = build_full_fixture(tmp_path)
     result = ingest_limitless_site(raw_dir, db_path)
 
-    assert result.tournaments == 3  # T_MISC 分类拒收跳过（H4，照 API 通道对称）
+    assert result.tournaments == 2  # T_MISC 分类拒收 + T_NOIDX 缺索引条目拒收（v1.36）
     assert result.skipped_not_accepted == 1  # tier=None 且名称可得 → 拒收跳过
+    assert result.skipped_no_index_entry == 1  # 缺索引条目 → 拒收跳过（FR-9.8 v1.36）
     assert result.truncated == 5  # regional 33~35（3）+ league_cup 9~10（2）
     assert result.cut_limits == load_site_rules().cut_limits()  # 截断档位回显
-    assert result.decks == 4  # 内容实体处理次数：A/B（reg）+ D（cup）+ D（noidx）
+    assert result.decks == 3  # 内容实体处理次数：A/B（reg）+ D（cup）
     # （DB 唯一内容行 = 3：DECK_A/B/D；DECK_C 60 张门拦截）
     # appearances：regional 30（32 截断内 − dave 60 张门 − erin 快照缺失）
-    # + cup 8 + noidx 1 = 39
-    assert result.appearances == 39
+    # + cup 8 = 38（noidx 已随赛事拒收不落）
+    assert result.appearances == 38
     blocked_reasons = [b["reason"] for b in result.blocked]
     assert len(result.blocked) == 2
     assert any("60 张质量门" in r for r in blocked_reasons)
@@ -288,11 +289,14 @@ def test_ingest_full_flow(tmp_path):
         a.tournament_id != f"limitless_site:{T_MISC}"
         for a in query_all(db_path, DeckAppearance)
     )
-    noidx = tours[f"limitless_site:{T_NOIDX}"]  # 缺索引条目：最小入库旧路径不回归
-    assert noidx.tier is None and noidx.date is None and noidx.participant_count is None
-    assert noidx.topcut_slots == 1  # 最小入库照常物化
-    assert any("缺索引条目" in w for w in result.warnings)
-    assert any("tier 归类未命中" in w for w in result.warnings)  # noidx 名称缺失不猜
+    # v1.36（task 058）：缺索引条目（元数据不可得，date 恒缺 → 窗口守卫无法执行）
+    # → 拒收入库，一行不写（取代最小入库旧路径）
+    assert f"limitless_site:{T_NOIDX}" not in tours
+    assert any("缺索引条目" in w and "拒收" in w for w in result.warnings)
+    assert all(
+        a.tournament_id != f"limitless_site:{T_NOIDX}"
+        for a in query_all(db_path, DeckAppearance)
+    )
 
     # 内容去重：DECK_A 一行内容，alice/bob + p06~p32 共 29 行出战
     deck_a_id = make_deck_id(DECK_A)
@@ -347,10 +351,11 @@ def test_ingest_idempotent(tmp_path):
     assert counts1 == counts2
     assert result2.tournaments == result1.tournaments
     assert result2.decks == result1.decks
-    assert result2.appearances == result1.appearances == 39
+    assert result2.appearances == result1.appearances == 38
     assert result2.deck_cards == result1.deck_cards
     assert result2.truncated == result1.truncated == 5
     assert result2.skipped_not_accepted == result1.skipped_not_accepted == 1
+    assert result2.skipped_no_index_entry == result1.skipped_no_index_entry == 1
     assert result2.mapping_rules == result1.mapping_rules
     # topcut_slots 物化幂等：重跑后 regional 仍 = 30
     tours = {t.tournament_id: t for t in query_all(db_path, Tournament)}
@@ -364,8 +369,9 @@ def test_cli_ingest_limitless_site(tmp_path):
         ["ingest-limitless-site", "--raw-dir", str(raw_dir), "--db-path", str(db_path)],
     )
     assert result.exit_code == 1  # 有质量门拦截 → 非零退出
-    assert "tournaments=3" in result.output
-    assert "appearances=39" in result.output
+    assert "tournaments=2" in result.output
+    assert "appearances=38" in result.output
+    assert "skipped_no_index_entry=1" in result.output
     assert "truncated=5" in result.output
     assert "blocked=2" in result.output
 

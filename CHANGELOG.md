@@ -45,6 +45,14 @@
 
 ### Fixed
 
+- **task 058 FR-9.8 ingest 窗口守卫缺陷修复（2026-10-17，PRD v1.36，无 schema 迁移）**：缺 list/索引条目（元数据不可得）的 standings raw 拒收入库——Limitless list 索引页经 24h TTL 刷新收窄后旧赛事 ID 永久消失，`ingest_limitless.py` 原「最小入库不猜」分支使 day=None 绕过窗口守卫，task 032 已拍板清除的 3 场窗口外 SEASAC 杯冒烟残留在回补后被全量 ingest 吃回；修复后 API 通道计 `skipped_no_list_entry`、site 通道对称计 `skipped_no_index_entry`（缺索引条目时 date 恒不可得，同型漏洞一并修复；jp/mik 通道元数据自含于内容不可变 raw，排查确认无同型漏洞），warning 留痕、不写库不删既有行；CLI 两命令回显 + `monitor tourneys` ingest 摘要同步计数；断言「最小入库」的既有用例 deliberate 改拒收语义；dist 重导 counts 对平（data_version 维持 v20261003.1——ingest/清退不递增数据版本，仅 L0/legal-apply/recaliber 递增，同 task 051 先例）
+
+### Removed
+
+- **幽灵赛事清退（2026-10-17，3 场窗口外 SEASAC 杯残留 = task 032 拍板清除项的回补吃回）**：tournaments −3（limitless 396→393）/ deck_appearances −282 / pairings −705 / decks −273（全 orphan 共享 0，与 task 032 删除量精确吻合）/ deck_cards −6,873 / deck_card_misses −1,157（全未解）；清退后 tournaments 874 / decks 65,025 / appearances 81,520 / deck_cards 1,888,074 / pairings 140,965；raw 层 append-only 零删除；备份 `.scratch/ptcg-cn-before-task058-ghost-cleanup-20261017.db`
+
+### Fixed
+
 - **code review cli/monitor/scrapers 批（2026-10-05 tracker，1 P0 + 5 P1，TDD 零网络）**：①**P0 `monitor tourneys` handler lambda 晚期绑定闭包**（cli.py，引入于 d4fce0b）——三个 if 块复用局部变量 `runner`，`--source all` 默认模式下 mik/limitless 的 scrape handler 静默错调 LimitlessSite runner（mik 从不重抓、limitless API 从不重抓、site 重复抓 3 次）→ 默认参数快照绑定 `lambda ..., runner=runner:`，补 CLI 真实接线测试（桩三 runner 类断言各 handler 调到正确实例）；②**P1 L0 钩子链失败隔离**（monitor/l0.py）——remap/tag-effects/快照后处理逐个 try/except，失败记 `L0Result.hook_warnings` 留痕不阻断主流程（修复前钩子抛异常时 expected_count 已先行更新、增量信号已消费，钩子永久不补跑）；③**P1 monitor tourneys 单源硬异常隔离**（monitor/tourneys.py）——per-source try/except，异常记 `SourceReport.error`（新字段只加不删）不中断其余源，CLI 回显 ERROR 并汇总非零退出；④**P1 卡牌 ScrapeRunner 顶层异常兜底**（scrapers/runner.py）——scrape_sets/scrape_cards 补 `except (MikMoeApiError, TransientHttpError): aborted=True` 保 finish_run 三清单落盘，`_scrape_set_cards` 两处 fetch_product_detail 捕 MikMoeApiError 记 question 跳过该系列（对齐 scrape_sets 口径）；⑤**P1 SwissPollRunner.poll 兜底缺口**（scrapers/swiss_runner.py）——补 MikMoeApiError 分支置 aborted（ongoing 探测业务错误不再炸穿零清单）；⑥**P1 limitless_site 零结果 fail-fast 三守卫**（scrapers/limitless_site.py + limitless_site_runner.py）——索引页解析零条目且数据表容器缺失抛 LimitlessSiteApiError（照 pokecabook 容器先例）/ accepted 赛事 standings 为空 / decklist 页 cards 为空 → 记 question 不落盘不猜（缓存路径同样校验，防漂移空快照凭有效 content_hash 永不重抓）
 
 ### Fixed

@@ -1077,7 +1077,8 @@ def ingest_limitless_site_cmd(
     topcut_slots = 截断后实际入库名次数；record 三列 NULL（主站无比分，不猜）；
     decklist→简中映射与 API 通道同链；重跑幂等；count 合计 != 60 或卡组快照缺失
     的卡组整组拦截（FR-9.6 质量门）并以非零码退出。
-    窗口守卫（FR-9.8，task 031）：窗口外赛事跳过（不写库不删行），日期缺失照入。
+    窗口守卫（FR-9.8，task 031）：窗口外赛事跳过（不写库不删行）；缺索引条目
+    （元数据不可得）拒收跳过（v1.36，task 058）。
     """
     from ptcgdb.normalize.ingest_limitless_site import ingest_limitless_site
 
@@ -1086,6 +1087,7 @@ def ingest_limitless_site_cmd(
         f"tournaments={result.tournaments} decks={result.decks} appearances={result.appearances} "
         f"deck_cards={result.deck_cards} truncated={result.truncated} "
         f"skipped_out_of_window={result.skipped_out_of_window} "
+        f"skipped_no_index_entry={result.skipped_no_index_entry} "
         f"blocked={len(result.blocked)} "
         f"unknown_cards={len(result.unknown_cards)} warnings={len(result.warnings)}"
     )
@@ -1114,7 +1116,8 @@ def ingest_limitless_cmd(
 
     decklist→简中映射 = ptcd 定位 → name_en exact match → env 优先/最新印刷裁决；
     重跑幂等；count 合计 != 60 的卡组整组拦截（FR-9.6 质量门）并以非零码退出。
-    窗口守卫（FR-9.8，task 031）：窗口外赛事跳过（不写库不删行），日期缺失照入。
+    窗口守卫（FR-9.8，task 031）：窗口外赛事跳过（不写库不删行）；缺 list 条目
+    （元数据不可得）拒收跳过（v1.36，task 058）。
     """
     from ptcgdb.normalize.ingest_limitless import ingest_limitless
 
@@ -1123,6 +1126,7 @@ def ingest_limitless_cmd(
         f"tournaments={result.tournaments} decks={result.decks} appearances={result.appearances} "
         f"deck_cards={result.deck_cards} pairings={result.pairings} "
         f"skipped_out_of_window={result.skipped_out_of_window} "
+        f"skipped_no_list_entry={result.skipped_no_list_entry} "
         f"blocked={len(result.blocked)} "
         f"unknown_cards={len(result.unknown_cards)} warnings={len(result.warnings)}"
     )

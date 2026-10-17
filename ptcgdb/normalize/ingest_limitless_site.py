@@ -15,10 +15,13 @@ stat_scope 派生 / env 推导 + 交叉校验告警不拒收 / 幂等 merge upse
 - **record 三列 = NULL**（主站收录无比分，不猜）；pairings 无主站数据（不动
   pairings 表，也不做 phase=2 反推）。
 - 赛事信息从 index/{season}/page-*.json 按 tournament_id 反查（name/players/date/
-  country）；缺失 → warning + 最小入库（同 API 缺 list 口径）。
+  country）；缺失 → **拒收入库**计 skipped_no_index_entry + warning（v1.36，
+  task 058：缺索引条目时 date 恒不可得，窗口守卫无法执行，入库即绕过质量门；
+  取代 v1.17~v1.35「最小入库不猜」旧路径，与 API 通道 skipped_no_list_entry
+  对称）。
 - **分类拒收跳过（H4，2026-10-05，照 API 通道对称）**：名称可得但分类未命中
   （未命中收侧档位或命中拒侧）→ skipped_not_accepted 计数跳过，不写库不删行，
-  分类判定在窗口守卫之前；缺索引条目（name 缺失）维持最小入库旧路径不猜。
+  分类判定在窗口守卫之前。
 - decks：archetype_name = 卡组页标题解析的 archetype 字段；archetype_id = standings
   行源侧归类 id（/decks/{id}，可缺）；deck_id = limitless_site:{60 张内容哈希[:16]}
   ——同一内容哈希天然去重（多人同表 = 1 内容行 + N 出战行，同 mik/同 API 口径）。
@@ -26,7 +29,8 @@ stat_scope 派生 / env 推导 + 交叉校验告警不拒收 / 幂等 merge upse
   出战条目不落。
 - 窗口守卫（FR-9.8，task 031）：赛事日期不在 EN 对齐窗口（alignment_window，
   与采集端同一事实源）→ skipped_out_of_window 计数跳过，不写库不删既有行；
-  日期缺失照入库（不猜）。enforce_window=False 关闭（调试/特殊补录）。
+  有索引条目但日期缺失照入库（不猜）；缺索引条目拒收（v1.36，见上）。
+  enforce_window=False 关闭（调试/特殊补录）。
 """
 
 from __future__ import annotations
@@ -86,6 +90,7 @@ class LimitlessSiteIngestResult:
     truncated: int = 0  # 名次截断丢掉的出战条数（placing > cut）
     skipped_out_of_window: int = 0  # 窗口守卫跳过的赛事数（FR-9.8，task 031）
     skipped_not_accepted: int = 0  # 分类拒收跳过的赛事数（H4，照 API 通道对称）
+    skipped_no_index_entry: int = 0  # 缺索引条目拒收的赛事数（PRD v1.36，task 058）
     cut_limits: dict[str, int] = field(default_factory=lambda: load_site_rules().cut_limits())
     mapping_rules: dict[str, int] = field(default_factory=dict)  # 映射决策 rule → 次数
     blocked: list[dict[str, Any]] = field(default_factory=list)  # 60 张门 / 快照缺失
@@ -141,7 +146,8 @@ def ingest_limitless_site(
     """扫 raw limitless_site/tournaments/standings → 四表入库。raw 层只读，重跑幂等。
 
     enforce_window（FR-9.8 窗口守卫，默认开）：赛事日期不在 EN 对齐窗口 → 跳过
-    （不写库不删行）；日期缺失照入库（不猜）。
+    （不写库不删行）；有索引条目但日期缺失照入库（不猜）；缺索引条目
+    （元数据不可得）→ 拒收跳过（v1.36，task 058）。
     """
     raw_dir = Path(raw_dir)
     db_path = Path(db_path)
@@ -204,11 +210,14 @@ def _ingest_one_tournament(
     tournament_id = f"{SOURCE}:{tid}"
     item = index_entries.get(tid)
     if item is None:
-        # 缺索引条目：照 API/mik 口径最小入库 + warning
-        item = {"tournament_id": tid, "name": None, "players": None, "date": None}
+        # 缺索引条目（FR-9.8 v1.36，task 058）：date 仅来自索引（standings raw
+        # 只有 name 无 date），元数据不可得 → 窗口守卫无法执行 → 拒收入库
+        # （不写库不删既有行），照 API 通道 skipped_no_list_entry 对称
+        result.skipped_no_index_entry += 1
         result.warnings.append(
-            f"赛事 {tid} 缺索引条目（name/players/date 不可得），按 standings 最小入库"
+            f"赛事 {tid} 缺索引条目（name/players/date 不可得），拒收入库"
         )
+        return
     name = str(item.get("name") or doc.get("name") or "")
     players = item.get("players") if isinstance(item.get("players"), int) else None
     tier, classify_reason = classify_site_tournament(
@@ -217,7 +226,7 @@ def _ingest_one_tournament(
     if tier is None and (item.get("name") or doc.get("name")):
         # 分类拒收（名称可得但未命中收侧档位/命中拒侧）→ 不入库不删行
         # （H4：照 API 通道 skipped_not_accepted 对称，分类在窗口守卫之前）；
-        # 缺索引条目（name 缺失）维持最小入库旧路径不猜
+        # 缺索引条目已在上方拒收（v1.36）
         result.skipped_not_accepted += 1
         result.warnings.append(
             f"赛事分类拒收，跳过入库: {tournament_id} — {classify_reason}"

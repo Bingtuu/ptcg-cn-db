@@ -7,7 +7,7 @@ test_tournament_ingest.py / test_envs.py）。覆盖：
 - 全流程：一场 regional 赛事三卡组（一 full 两人同卡组、一 partial 带 J 标、
   一 59 张被 60 张门拦截）；record 三列/玩家名落库；env=GHI；交叉校验告警；
   tier_coef 物化 regional=1.5；mapping_rules 分布；幂等两遍一致；
-- 缺 list 条目 → 最小入库 + warning（照 mik 口径）。
+- 缺 list 条目 → 拒收入库（skipped_no_list_entry + warning，FR-9.8 v1.36 task 058）。
 """
 
 import json
@@ -532,7 +532,12 @@ def test_ingest_idempotent(tmp_path):
     assert tour.topcut_slots == 3
 
 
-def test_ingest_missing_list_entry_minimal(tmp_path):
+def test_ingest_missing_list_entry_rejected(tmp_path):
+    """缺 list 条目（元数据不可得）→ 拒收入库（FR-9.8 v1.36，task 058）。
+
+    取代 v1.17~v1.35「最小入库不猜」旧路径：索引页 TTL 刷新收窄后旧 ID 永久
+    消失，day=None 使窗口守卫失效，入库即绕过质量门（SEASAC 幽灵赛事教训）。
+    """
     raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
     write_ptcd_raw(raw_dir)
     write_limitless_raw(
@@ -540,18 +545,16 @@ def test_ingest_missing_list_entry_minimal(tmp_path):
     )
     build_db(db_path)
     result = ingest_limitless(raw_dir, db_path)
-    assert result.tournaments == 1
-    assert result.pairings == 0  # 无 pairings raw：不报错（采集层可能只抓 standings）
-    tour = query_all(db_path, Tournament)[0]
-    assert tour.tournament_id == f"limitless:{T_B}"
-    assert tour.tier is None and tour.tier_coef is None
-    assert tour.date is None and tour.env is None and tour.participant_count is None
-    assert tour.topcut_slots is None  # 无 pairings → 不反推，保持 NULL 不猜
-    assert any("缺 list 条目" in w for w in result.warnings)
-    assert any("tier 归类未命中" in w for w in result.warnings)
-    assert any("环境推导未命中" in w for w in result.warnings)
-    # 卡组内容照常入库（同内容 → 同 deck_id）
-    assert make_deck_id(DECK_A) in {d.deck_id for d in query_all(db_path, Deck)}
+    assert result.tournaments == 0
+    assert result.skipped_no_list_entry == 1
+    assert result.decks == 0 and result.appearances == 0
+    assert result.deck_cards == 0 and result.pairings == 0
+    assert any("缺 list 条目" in w and "拒收" in w for w in result.warnings)
+    # 一行不写：四表全空
+    assert query_all(db_path, Tournament) == []
+    assert query_all(db_path, Deck) == []
+    assert query_all(db_path, DeckAppearance) == []
+    assert query_all(db_path, DeckCard) == []
 
 
 def test_cli_ingest_limitless(tmp_path):
@@ -565,6 +568,7 @@ def test_cli_ingest_limitless(tmp_path):
     assert "decks=2" in result.output
     assert "appearances=3" in result.output
     assert "pairings=4" in result.output
+    assert "skipped_no_list_entry=0" in result.output
     assert "blocked=1" in result.output
     assert "映射决策分布" in result.output
 
@@ -615,14 +619,24 @@ def test_window_guard_disabled_ingests(tmp_path):
 
 
 def test_window_guard_missing_date_ingests(tmp_path):
-    # day 缺失（无 list 条目）→ 不猜照入，守卫不拦截
+    # 有 list 条目但 date 缺失 → day=None 不猜照入，守卫不拦截（FR-9.8 保留口径；
+    # 缺 list 条目本身则拒收，见 test_ingest_missing_list_entry_rejected）
     raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
     write_ptcd_raw(raw_dir)
-    write_limitless_raw(raw_dir, standings={T_B: [STANDINGS_A[0]]})
+    write_limitless_raw(
+        raw_dir,
+        list_entries=[{"game": "PTCG", "name": "Regional Championship Undated",
+                       "format": "STANDARD", "id": T_B, "players": 300,
+                       "organizerId": "org-x"}],  # 无 date 键
+        standings={T_B: [STANDINGS_A[0]]},
+    )
     build_db(db_path)
     result = ingest_limitless(raw_dir, db_path)
     assert result.tournaments == 1
     assert result.skipped_out_of_window == 0
+    assert result.skipped_no_list_entry == 0
+    tour = query_all(db_path, Tournament)[0]
+    assert tour.date is None and tour.tier == "regional"
 
 
 # ---- online_open 档收编与拒收（task 057，PRD v1.35）----

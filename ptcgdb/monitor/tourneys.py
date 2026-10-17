@@ -65,6 +65,7 @@ def _count_actions(stats: Any) -> dict[str, int]:
 _INGEST_KEYS = (
     "tournaments", "decks", "appearances", "deck_cards", "pairings",
     "truncated", "skipped_out_of_window",
+    "skipped_no_list_entry", "skipped_no_index_entry",  # v1.36（task 058）
 )
 
 

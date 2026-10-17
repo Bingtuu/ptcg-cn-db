@@ -19,8 +19,12 @@ mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
 - tier：classify_tournament(name, players, day) 重判 → 词表物化 tier_coef
   （FR-9.6 事实完整性）；未命中 → tier/tier_coef None + warning（不猜）。
   **v1.35（task 057）**：分类拒收（含 online_open 档 date_range 超界）的赛事
-  直接跳过入库计 skipped_not_accepted（不删既有行）；缺 list 条目的最小入库
-  旧路径（name 缺失无法分类）维持不变。
+  直接跳过入库计 skipped_not_accepted（不删既有行）。
+  **v1.36（task 058）**：缺 list 条目（元数据不可得：name/players/date 全缺，
+  窗口守卫与分类规则均无法执行）→ 拒收入库计 skipped_no_list_entry +
+  warning（不写库不删既有行），取代 v1.17~v1.35「最小入库不猜」旧分支——
+  索引页 TTL 刷新收窄后旧 ID 永久消失，旧分支会让已清除的窗口外残留每次
+  全量 ingest 吃回（2026-10-17 SEASAC 幽灵赛事教训）。
 - 幂等：tournaments/decks merge upsert；deck_cards 按 deck_id 先删后插；
   出战条目按 (deck_id, tournament_id) 先删后插（同 placing 碰撞后写覆盖）；
   pairings 按 tournament_id 先删后插（PK 同键后写覆盖）。
@@ -30,8 +34,9 @@ mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
   → 不动（保持 NULL，不猜）。
 - 窗口守卫（FR-9.8，task 031）：赛事日期不在 EN 对齐窗口（alignment_window，
   与采集端同一事实源）→ skipped_out_of_window 计数跳过，不写库不删既有行；
-  日期缺失照入库（不猜）。依据：raw append-only，窗口外残留 raw 永存，守卫
-  防重跑 ingest 吃回已清除数据。enforce_window=False 关闭（调试/特殊补录）。
+  有 list 条目但日期缺失照入库（不猜）；缺 list 条目拒收（v1.36，见上）。
+  依据：raw append-only，窗口外残留 raw 永存，守卫防重跑 ingest 吃回已清除
+  数据。enforce_window=False 关闭（调试/特殊补录）。
 """
 
 from __future__ import annotations
@@ -98,6 +103,7 @@ class LimitlessIngestResult:
     pairings: int = 0  # 逐桌对阵行（PRD v1.14）
     skipped_out_of_window: int = 0  # 窗口守卫跳过的赛事数（FR-9.8，task 031）
     skipped_not_accepted: int = 0  # 分类拒收跳过的赛事数（PRD v1.35，task 057）
+    skipped_no_list_entry: int = 0  # 缺 list 条目拒收的赛事数（PRD v1.36，task 058）
     mapping_rules: dict[str, int] = field(default_factory=dict)  # 映射决策 rule → 次数
     blocked: list[dict[str, Any]] = field(default_factory=list)  # 60 张门
     unknown_cards: list[dict[str, Any]] = field(default_factory=list)  # card_id 未解析
@@ -186,7 +192,8 @@ def ingest_limitless(
     """扫 raw limitless/tournaments/standings → 四表入库。raw 层只读，重跑幂等。
 
     enforce_window（FR-9.8 窗口守卫，默认开）：赛事日期不在 EN 对齐窗口 → 跳过
-    （不写库不删行）；日期缺失照入库（不猜）。
+    （不写库不删行）；有 list 条目但日期缺失照入库（不猜）；缺 list 条目
+    （元数据不可得）→ 拒收跳过（v1.36，task 058）。
     """
     raw_dir = Path(raw_dir)
     db_path = Path(db_path)
@@ -252,11 +259,15 @@ def _ingest_one_tournament(
     tournament_id = f"{SOURCE}:{tid}"
     item = list_index.get(tid)
     if item is None:
-        # 缺 list 条目：照 mik 口径最小入库 + warning
-        item = {"id": tid, "name": None, "players": None, "date": None}
+        # 缺 list 条目（FR-9.8 v1.36，task 058）：元数据不可得（name/players/date
+        # 全缺）→ 窗口守卫与分类规则均无法执行，入库即绕过质量门 → 拒收入库
+        # （不写库不删既有行）。索引页 TTL 刷新收窄后旧 ID 永久消失，v1.17~v1.35
+        # 「最小入库不猜」旧分支会让已清除的窗口外残留每次全量 ingest 吃回。
+        result.skipped_no_list_entry += 1
         result.warnings.append(
-            f"赛事 {tid} 缺 list 条目（name/players/date 不可得），按 standings 最小入库"
+            f"赛事 {tid} 缺 list 条目（name/players/date 不可得），拒收入库"
         )
+        return
     name = str(item.get("name") or "")
     players = item.get("players") if isinstance(item.get("players"), int) else None
     day = _parse_day(item.get("date"))
@@ -264,7 +275,7 @@ def _ingest_one_tournament(
     tier, classify_reason = classify_tournament(item.get("name"), players, day=day)
     if tier is None and item.get("name"):
         # 分类拒收（含 online_open 超收编段）→ 不入库不删行（PRD v1.35）；
-        # 缺 list 条目（name 缺失）维持最小入库旧路径不猜
+        # 缺 list 条目已在上方拒收（v1.36），此处 name 恒可得自 list 条目
         result.skipped_not_accepted += 1
         result.warnings.append(
             f"赛事分类拒收，跳过入库: {tournament_id} — {classify_reason}"
