@@ -13,7 +13,7 @@ from pathlib import Path
 MIGRATIONS_DIR = Path(__file__).parent
 _FILENAME_RE = re.compile(r"^(\d+)_.*\.sql$")
 
-SCHEMA_VERSION = "1.0.0"  # 结构版本 SemVer（FR-6.1）；破坏性变更升 major
+SCHEMA_VERSION = "2.0.0"  # 结构版本 SemVer（FR-6.1）；破坏性变更升 major
 
 
 def available_migrations() -> list[tuple[int, Path]]:
@@ -36,12 +36,20 @@ def apply_migrations(db_path: str | Path) -> int:
         for version, path in available_migrations():
             if version <= current:
                 continue
-            conn.executescript(path.read_text(encoding="utf-8"))
-            conn.execute(f"PRAGMA user_version = {version}")
-            conn.commit()
-        # FR-6.1：meta 表写入结构版本（幂等，不覆盖已有值）
+            script = path.read_text(encoding="utf-8")
+            try:
+                conn.executescript(
+                    "BEGIN IMMEDIATE;\n"
+                    + script
+                    + f"\nPRAGMA user_version = {version};\nCOMMIT;"
+                )
+            except Exception:
+                conn.rollback()
+                raise
+        # FR-6.1：新库写入、既有库升级到当前结构版本。
         conn.execute(
-            "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
+            "INSERT INTO meta (key, value) VALUES ('schema_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (SCHEMA_VERSION,),
         )
         conn.commit()

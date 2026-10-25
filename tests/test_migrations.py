@@ -1,6 +1,7 @@
 """迁移测试：连续执行两次幂等、user_version 正确、全部表与索引存在。"""
 
 import sqlite3
+from unittest.mock import patch
 
 from ptcgdb.migrations import apply_migrations, available_migrations
 
@@ -62,3 +63,37 @@ def test_migrations_idempotent(tmp_path):
         assert EXPECTED_INDEXES <= indexes
     finally:
         conn.close()
+
+
+def test_failed_migration_rolls_back_and_existing_meta_upgrades(tmp_path):
+    db_path = tmp_path / "test.db"
+    latest = apply_migrations(db_path)
+    migrations_dir = tmp_path / "migrations"
+    migrations_dir.mkdir()
+    bad_path = migrations_dir / f"{latest + 1:03d}_bad.sql"
+    bad_path.write_text(
+        "CREATE TABLE bad_migration (id INTEGER);\nTHIS IS NOT SQL;\n",
+        encoding="utf-8",
+    )
+
+    with patch("ptcgdb.migrations.MIGRATIONS_DIR", migrations_dir):
+        try:
+            apply_migrations(db_path)
+        except sqlite3.OperationalError:
+            pass
+        else:
+            raise AssertionError("非法迁移必须抛出异常")
+
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == latest
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE name='bad_migration'"
+        ).fetchone() is None
+        assert conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0] == "2.0.0"
+    finally:
+        conn.close()
+
+    assert apply_migrations(db_path) == latest
