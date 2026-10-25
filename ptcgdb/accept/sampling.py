@@ -17,6 +17,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from ptcgdb.normalize.fields import load_owners
 from ptcgdb.orm import Card, CardRelation
 
 DEFAULT_SEED = 20260801
@@ -165,7 +166,7 @@ def _check_union(cards: list[Card], session: Session, res: A3Result) -> None:
 def _check_owner(cards: list[Card], res: A3Result) -> None:
     for c in cards:
         prefix_owner = None
-        for o in ("火箭队", "莉莉艾", "竹兰", "玛俐", "N"):
+        for o in load_owners():
             if c.name_full.startswith(f"{o}的"):
                 prefix_owner = o
                 break

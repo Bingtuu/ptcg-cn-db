@@ -1,12 +1,12 @@
 """验收 runner（task 016，PRD §10 A1~A8，A2/A3 见 task 017 抽样工具）。
 
 一键重跑可自动化验收项并产出 markdown 证据报告：
-- A1 白名单逐卡核对（ptcgdb.legal.audit，真实库只读）
+- A1 系列对账 + 白名单逐卡核对（真实库只读）
 - A4 合法性引擎：两赛制 legal_at 构建 + 妖能量二分 spot check
   （构造用例 ≥12 组以 pytest 套件全绿为证据，报告注明）
 - A5 更新机制：副本库 提案 → apply → 新快照生效 / 旧快照闭合可查询 / 冻结守卫
 - A6 回滚：副本库 脏合入 → rollback → 行数复原
-- A7 导出契约：export_all → 七件套 + checksums 逐一校验 + manifest 双轨版本
+- A7 导出契约：export_all → 十四件套 + checksums 逐一校验 + manifest 双轨版本
 - A8 SDK 契约：open_db vs open_jsonl 同一查询集结果一致
 
 边界：真实库只读；A5/A6 全在 work_dir 副本。单项失败不中断，报告如实记录。
@@ -276,32 +276,39 @@ def _run_a6(db_path: Path, work_dir: Path) -> SectionResult:
 
 
 def _run_a7(db_path: Path, work_dir: Path) -> SectionResult:
-    sec = SectionResult("A7", "导出契约：七件套 + checksums + manifest 双轨版本", True)
-    dist = work_dir / "dist"
-    manifest = export_all(db_path, dist)
-    missing = [f for f in sorted(EXPORT_FILES) if not (dist / f).exists()]
-    if missing:
+    sec = SectionResult("A7", "导出契约：十四件套 + checksums + manifest 双轨版本", True)
+    try:
+        dist = work_dir / "dist"
+        manifest = export_all(db_path, dist)
+        missing = [f for f in sorted(EXPORT_FILES) if not (dist / f).exists()]
+        if missing:
+            sec.passed = False
+            sec.lines.append(f"- ✗ 缺文件: {missing}")
+        else:
+            sec.lines.append(
+                f"- ✓ {len(EXPORT_FILES)} 件产物齐全: {', '.join(sorted(EXPORT_FILES))}"
+            )
+        bad = []
+        for line in (dist / "checksums.sha256").read_text(encoding="utf-8").splitlines():
+            digest, name = line.split("  ", 1)
+            if hashlib.sha256((dist / name).read_bytes()).hexdigest() != digest:
+                bad.append(name)
+        if bad:
+            sec.passed = False
+            sec.lines.append(f"- ✗ checksum 不符: {bad}")
+        else:
+            sec.lines.append("- ✓ checksums.sha256 逐一校验通过")
+        if manifest.get("version") and manifest.get("schema_version"):
+            sec.lines.append(
+                f"- ✓ manifest 双轨版本: data={manifest['version']} "
+                f"schema={manifest['schema_version']}"
+            )
+        else:
+            sec.passed = False
+            sec.lines.append("- ✗ manifest 缺双轨版本号")
+    except Exception as exc:
         sec.passed = False
-        sec.lines.append(f"- ✗ 缺文件: {missing}")
-    else:
-        sec.lines.append(f"- ✓ {len(EXPORT_FILES)} 件产物齐全: {', '.join(sorted(EXPORT_FILES))}")
-    bad = []
-    for line in (dist / "checksums.sha256").read_text(encoding="utf-8").splitlines():
-        digest, name = line.split("  ", 1)
-        if hashlib.sha256((dist / name).read_bytes()).hexdigest() != digest:
-            bad.append(name)
-    if bad:
-        sec.passed = False
-        sec.lines.append(f"- ✗ checksum 不符: {bad}")
-    else:
-        sec.lines.append("- ✓ checksums.sha256 逐一校验通过")
-    if manifest.get("version") and manifest.get("schema_version"):
-        sec.lines.append(
-            f"- ✓ manifest 双轨版本: data={manifest['version']} schema={manifest['schema_version']}"
-        )
-    else:
-        sec.passed = False
-        sec.lines.append("- ✗ manifest 缺双轨版本号")
+        sec.lines.append(f"- ✗ 异常：{type(exc).__name__}: {exc}")
     return sec
 
 

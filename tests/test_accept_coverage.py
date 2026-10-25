@@ -27,6 +27,7 @@ from ptcgdb.accept.runner import (
 )
 from ptcgdb.accept.sampling import (
     A3Result,
+    _check_owner,
     _check_union,
     run_a3_checks,
     write_a2_checklist,
@@ -387,6 +388,15 @@ def test_check_union_checked_count_no_inflate(tmp_path):
     # 4 张 V-UNION 卡 → checked 应为 4，不因连通分量遍历重复计数
     assert res.checked == 4, f"checked={res.checked}, expected 4"
     assert res.passed
+
+
+def test_check_owner_uses_open_vocabulary():
+    card = _mk_card("T1-100", "新主人的喵喵", card_type="pokemon", mark="A")
+    result = A3Result()
+    with patch("ptcgdb.accept.sampling.load_owners", return_value=["新主人"]):
+        _check_owner([card], result)
+    assert not result.passed
+    assert any("新主人" in failure for failure in result.failures)
 
 
 # ── A2: 抽样清单 seed 可复现 ────────────────────────────────────────

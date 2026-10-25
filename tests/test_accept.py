@@ -7,10 +7,12 @@ A5/A6 在 work_dir 副本上操作，源库不被改动（校验源库卡片数�
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+import ptcgdb.accept.runner as accept_runner
 from ptcgdb.accept.runner import run_acceptance
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.orm import Card, Meta, Set
@@ -94,4 +96,23 @@ def test_empty_database_acceptance_is_not_green(tmp_path):
     assert not by_aid["A1"].passed
     assert not by_aid["A4"].passed
     assert not by_aid["A8"].passed
+    assert report.path.exists()
+
+
+def test_a7_failure_does_not_block_a8(tmp_path):
+    db_path = _build_full_db(tmp_path)
+    real_export = accept_runner.export_all
+    calls = [0]
+
+    def flaky_export(*args, **kwargs):
+        calls[0] += 1
+        if calls[0] == 1:
+            raise RuntimeError("boom")
+        return real_export(*args, **kwargs)
+
+    with patch("ptcgdb.accept.runner.export_all", side_effect=flaky_export):
+        report = run_acceptance(db_path, tmp_path / "reports", tmp_path / "work")
+    by_aid = {s.aid: s for s in report.sections}
+    assert not by_aid["A7"].passed
+    assert by_aid["A8"].passed, by_aid["A8"].lines
     assert report.path.exists()
