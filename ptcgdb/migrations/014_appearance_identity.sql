@@ -1,6 +1,6 @@
--- 014：稳定出战身份与旧 deck ID 别名结构（PRD v1.39 §7.5，task 062 Task 1）
--- 仅迁移结构；EN raw 内容合并与别名数据回填由后续 raw 驱动迁移完成。
--- 既有 appearance 使用完整旧行材料和 rowid 生成确定性 legacy 键，不猜源侧身份。
+-- 014：稳定出战身份与旧 deck ID 别名（PRD v1.39 §7.5，task 062）
+-- 本 SQL 重建结构；runner 在同一事务 COMMIT 前执行 EN raw 数据迁移与别名回填。
+-- 既有 appearance 先使用完整旧行材料和 rowid 生成确定性 legacy 键，不猜源侧身份。
 
 DROP VIEW IF EXISTS v_stat_deck_cards;
 DROP VIEW IF EXISTS v_pairing_players;

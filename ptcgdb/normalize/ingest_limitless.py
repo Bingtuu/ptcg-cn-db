@@ -212,7 +212,7 @@ def ingest_limitless(
         result.warnings.append(f"{exc}；映射全部降级为 name_fallback")
         ptcd_index = {}
 
-    apply_migrations(db_path)
+    apply_migrations(db_path, raw_dir=raw_dir)
     engine = create_engine(f"sqlite:///{db_path}")
     try:
         with Session(engine) as session:

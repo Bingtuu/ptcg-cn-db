@@ -137,7 +137,7 @@ def backfill_misses(
         result.warnings.append(f"{exc}；miss_kind 全部记 ptcd_miss")
         ptcd_index = {}
 
-    apply_migrations(db_path)
+    apply_migrations(db_path, raw_dir=raw_dir)
     engine = create_engine(f"sqlite:///{db_path}")
     try:
         with Session(engine) as session:
@@ -360,7 +360,7 @@ def remap_decks(
         ptcd_index = {}
     env_calendar = load_calendar()
 
-    apply_migrations(db_path)
+    apply_migrations(db_path, raw_dir=raw_dir)
     engine = create_engine(f"sqlite:///{db_path}")
     try:
         with warnings.catch_warnings(record=True) as caught:

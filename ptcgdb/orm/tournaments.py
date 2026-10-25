@@ -70,6 +70,13 @@ class Deck(Base):
     cards: Mapped[list[DeckCard]] = relationship(back_populates="deck")
 
 
+class DeckIdAlias(Base):
+    __tablename__ = "deck_id_aliases"
+
+    old_deck_id: Mapped[str] = mapped_column(String, primary_key=True)
+    new_deck_id: Mapped[str] = mapped_column(ForeignKey("decks.deck_id"))
+
+
 class DeckAppearance(Base):
     """deck_appearances 出战条目：稳定源侧身份区分同卡组同名次的多出战。
 

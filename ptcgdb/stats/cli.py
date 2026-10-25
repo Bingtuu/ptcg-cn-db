@@ -362,10 +362,15 @@ def query_cmd(
     _emit({"truncated": truncated, "limit": limit}, rows, fmt)
 
 
-def init_db_with_caliber(db_path: Path) -> int:
+def init_db_with_caliber(
+    db_path: Path,
+    *,
+    raw_dir: Path | None = None,
+    summary: Any | None = None,
+) -> int:
     """init-db 实现：迁移 + 口径 hash 入 meta（FR-9.6），返回 user_version。"""
     from ptcgdb.migrations import apply_migrations
 
-    version = apply_migrations(db_path)
+    version = apply_migrations(db_path, raw_dir=raw_dir, summary=summary)
     write_caliber_hashes(db_path)
     return version
