@@ -172,8 +172,8 @@ D = date(2026, 8, 1)
 class TestInterfaceBehavior:
     def test_schema_version(self, backends):
         db, jl = backends
-        assert db.schema_version == "1.0.0"
-        assert jl.schema_version == "1.0.0"
+        assert db.schema_version == "2.0.0"
+        assert jl.schema_version == "2.0.0"
 
     def test_return_types_are_pydantic(self, backends):
         """返回类型一律 frozen Pydantic，不暴露 ORM。"""

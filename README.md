@@ -8,7 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Status](https://img.shields.io/badge/Status-137系列/13,057张-brightgreen.svg?style=flat-square)](STATUS.md)
 [![PRD](https://img.shields.io/badge/PRD-v1.38-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-1190%20passed-success.svg?style=flat-square)](STATUS.md)
+[![Tests](https://img.shields.io/badge/Tests-1198%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -23,7 +23,7 @@
 ## ✨ 亮点
 
 - **📸 快照化合法性引擎** —— 赛制标记 + 白名单 + 禁卡表 + 视作覆盖 + 能量种类全部按生效日版本化；旧快照永不删除，可回放任意历史环境（`legal_at('2026-08-01', 'standard')`）。当前快照：standard（G/H/I/J，2026-09-16 起生效）/ open
-- **🏆 真实赛事卡组管线（CN/EN/JP 三赛区）** —— dist `v20261025.1` 快照含 874 场赛事 / 65,025 套卡组 / 81,520 条出战记录 / 140,965 桌逐局对阵；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用）；三赛区旋转日历 + 赛事日期自动推导环境标号，CN/EN/JP 样本以 `basis` 口径隔离互不混同；**CN 侧 mik 全量历史回补收官**（55/55 系列 raw，该快照 CN 326 场），EN 侧 Limitless **API + 主站双通道**（官方大赛 Top Cut，含 Worlds 2025 与亚洲联赛）+ **在线公开赛收编**（platform 自办 ≥64 人非休闲场，pre-Mega 段 388 场，tier=online_open coef=0.5），JP 侧聚合站壳 + 官方卡组码卡表解析
+- **🏆 真实赛事卡组管线（CN/EN/JP 三赛区）** —— dist `v20261025.1`（schema 2.0.0）快照含 874 场赛事 / 66,363 套卡组 / 83,653 条出战记录 / 140,965 桌逐局对阵；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用）；三赛区旋转日历 + 赛事日期自动推导环境标号，CN/EN/JP 样本以 `basis` 口径隔离互不混同；**CN 侧 mik 全量历史回补收官**（55/55 系列 raw，该快照 CN 326 场），EN 侧 Limitless **API + 主站双通道**（官方大赛 Top Cut，含 Worlds 2025 与亚洲联赛）+ **在线公开赛收编**（platform 自办 ≥64 人非休闲场，pre-Mega 段 388 场，tier=online_open coef=0.5），JP 侧聚合站壳 + 官方卡组码卡表解析
 - **📊 可复算的统计指标 + 对阵矩阵** —— 加权出场率 WUR / 胜率 WR（逐局战绩与 top-cut 转化率两层口径，支持镜像局剔除）/ 加权胜率 WWS（贝叶斯收缩）/ matchup 对阵矩阵（archetype×archetype 逐局胜率）；**公式只在 canonical SQL 文件里**（单一事实源），权重输入全量落库，任何人都能用 SQL 原样重放每一个数字
 - **🔍 像写 SQL 一样查库** —— `ptcgdb query` 只读 ad-hoc SQL；导出 DB 自带统计物化视图，口径词表 hash 版本化进 meta
 - **🌏 三语卡名映射** —— 简中卡 99.3% 挂英文桥（12,337 张），日文名 11,046 张；映射来源经 `external_ids` 体系逐条可溯，pokemon-card.com 官方抽样核对一致率 100%
@@ -51,13 +51,13 @@ ptcgdb init-db           # 建库 + 全部迁移（默认 data/ptcg-cn.db）
 开发自检：
 
 ```bash
-python -m pytest -q      # 1190 测试（全量约 5 分钟）
+python -m pytest -q      # 1198 测试（全量约 3 分钟）
 ruff check .
 ```
 
 ## 🚀 快速预览
 
-> 卡牌实时库（2026-10-25）：**137 系列 / 13,057 张 active 卡**（三语卡名 EN 12,337+ / JA 11,046+）；合法卡池 **standard 5,850 / open 13,028**（@2026-10-25，赛制 2026-09-16 版）。赛事数据以 dist `v20261025.1` 快照为例：**874 场（CN 326 + EN 442 + JP 106）/ 65,025 套卡组 / 81,520 条出战 / pairings 140,965 桌**；后续轮询的实时计数可能不同，以 `dist/manifest.json` 和 STATUS 为准。
+> 卡牌实时库（2026-10-25）：**137 系列 / 13,057 张 active 卡**（三语卡名 EN 12,337+ / JA 11,046+）；合法卡池 **standard 5,850 / open 13,028**（@2026-10-25，赛制 2026-09-16 版）。dist `v20261025.1` / schema 2.0.0 的赛事快照：**874 场（CN 326 + EN 442 + JP 106）/ 66,363 套卡组 / 83,653 条出战 / pairings 140,965 桌**；后续轮询计数会变化，以 `dist/manifest.json` 和 STATUS 为准。
 
 ### CLI 速查
 

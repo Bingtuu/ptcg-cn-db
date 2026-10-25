@@ -2,28 +2,25 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-10-25；PRD v1.38；实时库 user_version=13 / schema_version=1.0.0。
+> 最近更新：2026-10-25；PRD v1.38；实时库 user_version=13 / schema_version=2.0.0。
 
 ## 当前状态
 
-**task 066 DONE：文档精简与归档。** 原 STATUS 已完整归档，README/STATUS/AGENTS 已精简并校正口径；链接与 diff 检查通过。
-
-**task 060 DOING：迁移事务、原子导出与 schema 2.0.0。** 契约和计划已提交，文档整理完成后恢复实施；工作区 `.worktrees/task060-migration-export`，分支 `task060-migration-export`。真实库和 dist 均未升级，不能提前按 schema 2.0 描述。
+**task 060 DONE：迁移事务、原子导出与 schema 2.0.0。** 迁移失败回滚、dist 失败保留旧件、parquet 行数与陈旧件治理、发布边界防护均已完成；1198 passed、ruff 全净。真实库已备份升级，dist 已重导。下一项为 task 061。
 
 **当前数据（2026-10-25）**：
 
 - 卡牌实时库：137 系列，13,057 active + 8 deprecated = 13,065 行。嗨皮组合 L0 已收编 CSVH6C/CSVH6aC/CSVH6eC/CSVH6pC 共 145 张，另有 SVP +1、30thP +3；效果标签 unknown=0。
 - 合法性：4 份快照，standard 当前 G/H/I/J；2026-10-25 卡池 standard 5,850 / open 13,028。真实验收 A1–A8 全 PASS，见 `reports/acceptance-20261025.md`。
-- dist `v20261025.1`：13,065 cards / 137 sets；赛事快照为 874 tournaments / 65,025 decks / 81,520 appearances / 1,888,074 deck_cards / 140,965 pairings。以 `dist/manifest.json` 为准。
-- **实时赛事库不是上述 dist 快照**：10-25 轮询在 mik 赛事 3710 的 ingest 中止前已提交部分数据，查询为 874 tournaments / 66,363 decks / 83,653 appearances / 1,927,272 deck_cards / 140,965 pairings。该状态待 task 062 修复、重放 ingest 和重导后收尾。
-- 测试基线：task 059 完成后 1190 passed、ruff 全净。task 066 仅文档改动，不重复全量测试。
+- dist `v20261025.1` / schema 2.0.0：13,065 cards / 137 sets；874 tournaments / 66,363 decks / 83,653 appearances / 1,927,272 deck_cards / 140,965 pairings，与实时 SQL 对平。
+- **赛事数据仍待 task 062 收尾**：10-25 轮询在 mik 赛事 3710 中止前已提交部分数据，当前 dist 如实导出该状态；修复后需用本地 raw 重放 ingest 并再次重导。
+- 测试基线：task 060 完成后 1198 passed、ruff 全净。
 
 ## 当前任务队列
 
 | 任务 | 状态 | 范围 |
 |---|---|---|
-| 066 | DONE | 文档精简、事实校正与单份完整历史归档 |
-| 060 | DOING | 迁移单脚本事务、dist 原子替换、parquet 陈旧件治理、schema 2.0.0 |
+| 060 | DONE | 迁移单脚本事务、dist 原子替换、parquet 陈旧件治理、schema 2.0.0 |
 | 061 | TODO | 实库自愈与外部核查：JP 3 套卡组 59/58/59、Brave Bangle、CBB 卡面计数、mik isQual |
 | 062 | TODO | 修复赛事 3710 出战身份冲突；EN deck_id 顺序无关哈希、旧实体迁移、共享 deck env 统一；重放本地 raw ingest |
 | 063 | TODO | 采集与 raw 层韧性：长周期瞬断、HTTP 异常面、采集/写入防护 |
@@ -78,7 +75,6 @@ M0–M12 均已完成：
 ## 当前运维与技术债
 
 - **赛事 3710 唯一约束冲突**：由 task 062 修复并重放本地 raw；EN 双通道本轮已完成。
-- **schema 2.0 契约债**：effect_tags list→dict 的破坏性语义变更需升 schema major；由 task 060 完成，不作豁免。
 - **JP 3 套卡组 59/58/59**：历史 NULL 行合并计数缺陷已修代码，实库待 task 061 重 ingest 自愈为 60。
 - **Brave Bangle**：当前证据为 WHT 80、未解 miss 1,244 行；库内无对应 Brave Bangle/“手镯”卡。外部简中事实未核定，不提前关闭、不猜映射，由 task 061 核查。
 - **CBB 卡面计数**：CBB1C/CBB2C 与实测不符，CBB2C/3C/4C/5C TCGdex 壳有缺口；由 task 061 查 raw 与来源，未核定前不播种。
@@ -93,7 +89,7 @@ M0–M12 均已完成：
 
 - **2026-10-25 task 059 完成**：新增 search/get CLI，修复验收覆盖、快照缺失判定、owner 词表和导出异常隔离；1190 测试全绿，真实 A1–A8 全 PASS。
 - **2026-10-25 嗨皮组合 L0**：active 12,908→13,057，sets 133→137；dist 重导 v20261025.1。
-- **2026-10-25 赛事轮询**：EN 完成；mik 3710 冲突中止，列 task 062，实时库与 dist 数字暂不一致。
-- **2026-10-25 task 060 立项**：PRD v1.38，迁移/导出/schema 2.0 契约与计划完成，实现暂停等待 task 066。
+- **2026-10-25 赛事轮询**：EN 完成；mik 3710 冲突中止，列 task 062；task 060 已按当前部分入库状态重导 dist，修复后仍需重放。
+- **2026-10-25 task 060 完成**：PRD v1.38，迁移事务、原子导出、parquet 契约与 schema 2.0.0 落地；1198 测试全绿。
 - **2026-10-25 task 048 删除**：官方 Q&A 无可得供给，不再保留空任务。
 - **2026-10-17 task 058**：55/55 mik 系列 raw 回补收官，清退 3 场幽灵赛事并修复窗口守卫；细节见归档。

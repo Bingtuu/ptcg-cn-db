@@ -53,6 +53,7 @@
 
 ### Fixed
 
+- task 060 迁移与导出可靠性、schema 2.0.0（2026-10-25，PRD v1.38）：补记 effect_tags list→dict 的破坏性语义升级，旧 list 输入仍由 before-validator 兼容；每个迁移 SQL 与 `PRAGMA user_version` 同事务，异常回滚，既有库 meta 幂等升级；dist 在同级临时目录完整构建后原子替换，故障时旧件逐字节保留；parquet 行数必须等于 cards，连续 parquet→no-parquet 不残留旧文件或 checksum。真实库 user_version=13 不变，DB/manifest/legality/双后端均为 2.0.0。
 - task 059 验收可信度（2026-10-25，PRD v1.37 §10）：A1 增加系列对账并优先使用全库 raw 全局去重口径；A1/A4/A8 缺 standard/open 必需快照不再假绿；A3 owner 校验改读 `owners.yml`；A7 验收十四件套并隔离导出异常，A8 备用导出持续失败也只记 FAIL，不中断整份报告。
 - **task 058 FR-9.8 ingest 窗口守卫缺陷修复（2026-10-17，PRD v1.36，无 schema 迁移）**：缺 list/索引条目（元数据不可得）的 standings raw 拒收入库——Limitless list 索引页经 24h TTL 刷新收窄后旧赛事 ID 永久消失，`ingest_limitless.py` 原「最小入库不猜」分支使 day=None 绕过窗口守卫，task 032 已拍板清除的 3 场窗口外 SEASAC 杯冒烟残留在回补后被全量 ingest 吃回；修复后 API 通道计 `skipped_no_list_entry`、site 通道对称计 `skipped_no_index_entry`（缺索引条目时 date 恒不可得，同型漏洞一并修复；jp/mik 通道元数据自含于内容不可变 raw，排查确认无同型漏洞），warning 留痕、不写库不删既有行；CLI 两命令回显 + `monitor tourneys` ingest 摘要同步计数；断言「最小入库」的既有用例 deliberate 改拒收语义；dist 重导 counts 对平（data_version 维持 v20261003.1——ingest/清退不递增数据版本，仅 L0/legal-apply/recaliber 递增，同 task 051 先例）
 
