@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [v20261025.1] - 2026-10-25
+
+### Changed
+
+- L0 增量合入：系列 SVP, 30thP, CSVH6aC, CSVH6pC, CSVH6eC, CSVH6C
+- 刷新当前快照 latest_text_overrides（standard-2026-09-16, open-2026-09-16）
+- 效果标签打标（L0 tag-effects 钩子，task 040）：changed=687 零命中归类=185 unknown=0
 ## [v20261003.1] - 2026-10-03
 
 ### Added
@@ -181,8 +188,3 @@
 ---
 
 数据版本说明：当前库 meta 尚无 data_version（L0 零增量、从未实际合入），export manifest 显示 fallback `v20260801.0`；自 L0 首次实际合入增量起按日历版本递增。
-
-
-
-
-
