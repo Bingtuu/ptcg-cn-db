@@ -20,6 +20,7 @@ import yaml
 
 from ptcgdb.normalize.identity import appearance_identity
 from ptcgdb.schemas import AppearanceRecord, DeckCardRecord, TournamentRecord
+from ptcgdb.scrapers.raw_store import canonical_json
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
 VOCAB_DIR = CONFIG_DIR / "vocabularies"
@@ -179,14 +180,11 @@ def parse_rank_entry(
 
     名次/积分/选手 = 出战条目级属性；variant 归类是内容级属性（见
     parse_deck_variant），不在此解析。players[].pinCode → player_ref
-    （完整队伍取排序后的首个编号，避免源数组换序制造冲突）。
+    （取已知编号的最小值；全缺时为 None，不补造编号）。
     """
     players = entry.get("players") or []
     pin_codes = [str(player.get("pinCode") or "") for player in players]
-    if players and all(pin_codes):
-        player_ref = min(pin_codes)
-    else:
-        player_ref = players[0].get("pinCode") if players else None
+    player_ref = min((pin for pin in pin_codes if pin), default=None)
     records: list[AppearanceRecord] = []
     for deck in entry.get("decks") or []:
         if deck.get("deckId") is None:
@@ -201,11 +199,7 @@ def parse_rank_entry(
             )
             material = {
                 "deckId": deck["deckId"],
-                "fallback": {
-                    "players": players,
-                    "rank": entry.get("rank"),
-                    "teamName": entry.get("teamName"),
-                },
+                "fallback": {"players": sorted(players, key=canonical_json)},
             }
         appearance_key, appearance_id = appearance_identity(
             SOURCE, tournament_id, material

@@ -167,3 +167,74 @@ def test_mik_team_order_and_name_do_not_change_appearance_identity():
     assert (first.appearance_key, first.appearance_id, first.player_ref) == (
         second.appearance_key, second.appearance_id, second.player_ref
     )
+
+
+def test_mik_partial_pin_team_order_and_name_do_not_change_identity():
+    from datetime import datetime
+
+    import pytest
+
+    from ptcgdb.normalize.tournaments import parse_rank_entry
+
+    entry = {
+        "rank": -1,
+        "points": 0,
+        "teamName": "队伍甲",
+        "players": [
+            {"nickname": "有pin", "pinCode": "P002"},
+            {"nickname": "无pin"},
+        ],
+        "decks": [{"deckId": 688431}],
+    }
+    reordered = {
+        **entry,
+        "teamName": "另一个队名",
+        "players": list(reversed(entry["players"])),
+    }
+    with pytest.warns(UserWarning, match="pinCode"):
+        first = parse_rank_entry(
+            entry, tournament_id="mik_moe:3710", fetched_at=datetime(2026, 1, 1)
+        )[0]
+        second = parse_rank_entry(
+            reordered, tournament_id="mik_moe:3710", fetched_at=datetime(2026, 1, 2)
+        )[0]
+
+    assert (first.appearance_key, first.appearance_id) == (
+        second.appearance_key, second.appearance_id
+    )
+    assert first.player_ref == second.player_ref == "P002"
+    assert first.appearance_key.count('"pinCode"') == 1
+
+
+def test_mik_all_missing_pin_team_order_and_name_do_not_change_identity():
+    from datetime import datetime
+
+    import pytest
+
+    from ptcgdb.normalize.tournaments import parse_rank_entry
+
+    entry = {
+        "rank": -1,
+        "points": 0,
+        "teamName": "队伍甲",
+        "players": [{"nickname": "甲"}, {"nickname": "乙"}],
+        "decks": [{"deckId": 688431}],
+    }
+    reordered = {
+        **entry,
+        "teamName": "另一个队名",
+        "players": list(reversed(entry["players"])),
+    }
+    with pytest.warns(UserWarning, match="pinCode"):
+        first = parse_rank_entry(
+            entry, tournament_id="mik_moe:3710", fetched_at=datetime(2026, 1, 1)
+        )[0]
+        second = parse_rank_entry(
+            reordered, tournament_id="mik_moe:3710", fetched_at=datetime(2026, 1, 2)
+        )[0]
+
+    assert (first.appearance_key, first.appearance_id) == (
+        second.appearance_key, second.appearance_id
+    )
+    assert first.player_ref is second.player_ref is None
+    assert '"pinCode"' not in first.appearance_key
