@@ -68,6 +68,12 @@ def test_migrations_idempotent(tmp_path):
 def test_failed_migration_rolls_back_and_existing_meta_upgrades(tmp_path):
     db_path = tmp_path / "test.db"
     latest = apply_migrations(db_path)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("UPDATE meta SET value='1.0.0' WHERE key='schema_version'")
+        conn.commit()
+    finally:
+        conn.close()
     migrations_dir = tmp_path / "migrations"
     migrations_dir.mkdir()
     bad_path = migrations_dir / f"{latest + 1:03d}_bad.sql"
@@ -92,8 +98,15 @@ def test_failed_migration_rolls_back_and_existing_meta_upgrades(tmp_path):
         ).fetchone() is None
         assert conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
-        ).fetchone()[0] == "2.0.0"
+        ).fetchone()[0] == "1.0.0"
     finally:
         conn.close()
 
     assert apply_migrations(db_path) == latest
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()[0] == "2.0.0"
+    finally:
+        conn.close()

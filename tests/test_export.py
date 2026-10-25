@@ -392,3 +392,84 @@ def test_export_atomic_publish_preserves_old_dist_on_failure(db_path, tmp_path):
     assert after == before
     assert not list(tmp_path.glob(".dist.tmp-*"))
     assert not list(tmp_path.glob(".dist.old-*"))
+
+
+def test_export_rejects_source_db_inside_out_dir(tmp_path):
+    out = tmp_path / "dist"
+    db_path = out / "source.db"
+    apply_migrations(db_path)
+
+    with pytest.raises(ValueError, match="源数据库不能位于导出目录内"):
+        export_all(db_path, out, parquet=False)
+
+    assert db_path.exists()
+
+
+def test_export_publish_restore_success_preserves_old_dist(db_path, tmp_path):
+    import os
+
+    out = tmp_path / "dist"
+    export_all(db_path, out, parquet=False)
+    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
+    real_replace = os.replace
+    calls = 0
+
+    def fail_publish(src, dst):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise PermissionError("publish locked")
+        return real_replace(src, dst)
+
+    with patch("ptcgdb.export.exporter.os.replace", side_effect=fail_publish):
+        with pytest.raises(PermissionError, match="publish locked"):
+            export_all(db_path, out, parquet=False)
+
+    after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
+    assert after == before
+    assert not list(tmp_path.glob(".dist.old-*"))
+
+
+def test_export_restore_failure_reports_backup_path(db_path, tmp_path):
+    import os
+
+    out = tmp_path / "dist"
+    export_all(db_path, out, parquet=False)
+    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
+    real_replace = os.replace
+    calls = 0
+
+    def fail_publish_and_restore(src, dst):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise PermissionError("publish locked")
+        if calls == 3:
+            raise PermissionError("restore locked")
+        return real_replace(src, dst)
+
+    with patch("ptcgdb.export.exporter.os.replace", side_effect=fail_publish_and_restore):
+        with pytest.raises(RuntimeError, match="旧件保留在") as exc_info:
+            export_all(db_path, out, parquet=False)
+
+    backups = list(tmp_path.glob(".dist.old-*"))
+    assert len(backups) == 1
+    assert str(backups[0]) in str(exc_info.value)
+    assert not out.exists()
+    after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in backups[0].iterdir()}
+    assert after == before
+
+
+def test_export_cleanup_failure_does_not_undo_successful_publish(db_path, tmp_path):
+    out = tmp_path / "dist"
+    export_all(db_path, out, parquet=False)
+
+    with patch(
+        "ptcgdb.export.exporter.shutil.rmtree",
+        side_effect=PermissionError("cleanup locked"),
+    ):
+        manifest = export_all(db_path, out, parquet=False)
+
+    assert manifest["counts"]["cards"] == 2
+    assert (out / "manifest.json").exists()
+    assert len(list(tmp_path.glob(".dist.old-*"))) == 1

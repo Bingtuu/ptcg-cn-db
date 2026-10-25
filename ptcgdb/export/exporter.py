@@ -319,9 +319,16 @@ def _export_all_to_dir(db_path: Path, out_dir: Path, *, parquet: bool = True) ->
 def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
     """在同级临时目录完整构建后原子替换 out_dir。"""
     db_path, out_dir = Path(db_path), Path(out_dir)
+    try:
+        db_path.resolve().relative_to(out_dir.resolve())
+    except ValueError:
+        pass
+    else:
+        raise ValueError("源数据库不能位于导出目录内")
     out_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.tmp-", dir=out_dir.parent))
     backup = out_dir.with_name(f".{out_dir.name}.old-{uuid.uuid4().hex}")
+    logger = logging.getLogger(__name__)
     try:
         manifest = _export_all_to_dir(db_path, staging, parquet=parquet)
         existed = out_dir.exists()
@@ -329,13 +336,25 @@ def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
             os.replace(out_dir, backup)
         try:
             os.replace(staging, out_dir)
-        except Exception:
+        except Exception as publish_error:
             if existed:
-                os.replace(backup, out_dir)
-            raise
+                try:
+                    os.replace(backup, out_dir)
+                except Exception as restore_error:
+                    raise RuntimeError(
+                        f"导出发布失败且旧目录恢复失败；旧件保留在 {backup}: "
+                        f"{restore_error}"
+                    ) from restore_error
+            raise publish_error
         if existed:
-            shutil.rmtree(backup)
+            try:
+                shutil.rmtree(backup)
+            except OSError as exc:
+                logger.warning("导出已发布，旧目录清理失败，保留在 %s: %s", backup, exc)
         return manifest
     finally:
         if staging.exists():
-            shutil.rmtree(staging)
+            try:
+                shutil.rmtree(staging)
+            except OSError as exc:
+                logger.warning("临时导出目录清理失败，保留在 %s: %s", staging, exc)
