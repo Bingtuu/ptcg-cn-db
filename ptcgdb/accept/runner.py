@@ -102,7 +102,8 @@ def _run_a1(db_path: Path, today: date) -> SectionResult:
                 sec.passed = False
     engine.dispose()
 
-    results = run_validations(db_path, raw_dir=None)
+    raw_dir = db_path.parent / "raw"
+    results = run_validations(db_path, raw_dir=raw_dir if raw_dir.is_dir() else None)
     reconciliation = next(r for r in results if r.rule == "系列对账")
     if reconciliation.checked == 0:
         sec.passed = False

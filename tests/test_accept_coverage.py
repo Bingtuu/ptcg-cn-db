@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -126,6 +127,32 @@ def test_run_a1_reconciliation_failure(tmp_path):
     assert not sec.passed
     assert any("系列对账" in line for line in sec.lines)
     assert any("T1" in line for line in sec.lines)
+
+
+def test_run_a1_uses_sibling_raw_for_global_deduplication(tmp_path):
+    db_path = _db_with_snapshots(
+        tmp_path, standard_snapshot=_std_snapshot(),
+        open_snapshot=_open_snapshot(energies=["草"]),
+    )
+    raw_set = tmp_path / "raw" / "mikmoe" / "T1"
+    raw_set.mkdir(parents=True)
+    entries = [
+        {"setCode": "T1", "cardIndex": "001"},
+        {"setCode": "T1", "cardIndex": "002"},
+        {"setCode": "T1", "cardIndex": "E1"},
+    ]
+    (raw_set / "cards.json").write_text(
+        json.dumps({"data": {"cards": entries}}), encoding="utf-8")
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        session.get(Set, "T1").expected_count = 99
+        session.commit()
+    engine.dispose()
+
+    sec = _run_a1(db_path, date(2026, 8, 1))
+
+    assert sec.passed, sec.lines
+    assert any("系列对账 1 个系列全部通过" in line for line in sec.lines)
 
 
 # ── A4: 妖能量二分 ──────────────────────────────────────────────────
