@@ -171,26 +171,32 @@ def test_migration_014_backfills_deterministic_legacy_identity_without_losing_ro
     second_db = tmp_path / "second.db"
     _seed_v13_appearances(first_db)
     _seed_v13_appearances(second_db)
-
-    assert apply_migrations(first_db) == 14
-    assert apply_migrations(second_db) == 14
+    old_columns = (
+        "deck_id, tournament_id, rank, points, player_ref, "
+        "record_wins, record_losses, record_ties, source, fetched_at"
+    )
 
     conn = sqlite3.connect(first_db)
     other = sqlite3.connect(second_db)
+    old_query = f"SELECT {old_columns} FROM deck_appearances ORDER BY rowid"
     try:
+        before = other.execute(old_query).fetchall()
+        assert apply_migrations(first_db) == 14
+        after = conn.execute(old_query).fetchall()
+        assert after == before
+
         rows = conn.execute(
             "SELECT rank, appearance_key, appearance_id FROM deck_appearances ORDER BY rowid"
         ).fetchall()
-        assert len(rows) == 2
         assert [row[1] for row in rows] == [
             'legacy:["mik_moe:deck-a","mik_moe:tournament",-1,null,1]',
             'legacy:["mik_moe:deck-a","mik_moe:tournament",1,"player-b",2]',
         ]
         assert len({row[2] for row in rows}) == 2
+        assert apply_migrations(second_db) == 14
         assert rows == other.execute(
             "SELECT rank, appearance_key, appearance_id FROM deck_appearances ORDER BY rowid"
         ).fetchall()
-        assert conn.execute("SELECT count(*) FROM deck_appearances").fetchone()[0] == 2
         assert {
             row[0] for row in conn.execute("SELECT appearance_id FROM v_stat_deck_cards")
         } == {row[2] for row in rows}
@@ -208,6 +214,10 @@ def test_migration_014_enforces_identity_and_alias_constraints(tmp_path):
         assert conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()[0] == "3.0.0"
+        indexes = {
+            row[1] for row in conn.execute("PRAGMA index_list('deck_appearances')")
+        }
+        assert "ix_deck_appearances_deck_id" in indexes
         conn.execute(
             "INSERT INTO tournaments (tournament_id, source, name) VALUES ('t', 'mik_moe', '赛')"
         )

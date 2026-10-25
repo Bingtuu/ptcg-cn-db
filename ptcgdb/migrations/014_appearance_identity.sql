@@ -48,6 +48,8 @@ ALTER TABLE deck_appearances_new RENAME TO deck_appearances;
 
 CREATE INDEX ix_deck_appearances_tournament_id
 	ON deck_appearances (tournament_id);
+CREATE INDEX ix_deck_appearances_deck_id
+	ON deck_appearances (deck_id);
 
 CREATE TABLE deck_id_aliases (
 	old_deck_id TEXT NOT NULL PRIMARY KEY,
