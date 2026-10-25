@@ -23,7 +23,7 @@ def _build_full_db(tmp_path: Path) -> Path:
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         session.add(Set(set_id="T1", name_zh="测试", era="测试", release_date=None,
-                        regulation_mark="A", expected_count=None,
+                        regulation_mark="A", expected_count=4,
                         expected_secret_count=None, source="manual", fetched_at=""))
         session.add(_mk_card("T1-001", "标记卡", mark="A"))
         session.add(_mk_card("T1-002", "测试道具"))
@@ -83,3 +83,15 @@ def test_run_acceptance_report_records_failure(tmp_path):
     assert by_aid["A6"].passed  # 其余节不受影响
     text = report.path.read_text(encoding="utf-8")
     assert "FAIL" in text
+
+
+def test_empty_database_acceptance_is_not_green(tmp_path):
+    db_path = tmp_path / "empty.db"
+    apply_migrations(db_path)
+    report = run_acceptance(db_path, tmp_path / "reports", tmp_path / "work")
+    by_aid = {s.aid: s for s in report.sections}
+    assert not report.passed
+    assert not by_aid["A1"].passed
+    assert not by_aid["A4"].passed
+    assert not by_aid["A8"].passed
+    assert report.path.exists()

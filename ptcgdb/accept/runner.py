@@ -36,6 +36,7 @@ from ptcgdb.legal.versions import (
 )
 from ptcgdb.orm import Card, LegalitySnapshot
 from ptcgdb.sdk import open_db, open_jsonl
+from ptcgdb.validate import run_validations
 
 FORMATS = ("standard", "open")
 FAR_FUTURE = date(2099, 1, 1)  # A5/A6 提案生效日：保证晚于任何当前快照
@@ -80,12 +81,13 @@ def _current_snapshot(session: Session, fmt: str) -> LegalitySnapshot | None:
 
 
 def _run_a1(db_path: Path, today: date) -> SectionResult:
-    sec = SectionResult("A1", "覆盖完整：白名单/能量分赛制逐卡核对", True)
+    sec = SectionResult("A1", "覆盖完整：系列对账 + 白名单/能量分赛制逐卡核对", True)
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         for fmt in FORMATS:
             if _current_snapshot(session, fmt) is None:
-                sec.lines.append(f"- {fmt}：无当前快照，跳过")
+                sec.passed = False
+                sec.lines.append(f"- {fmt}：✗ 无当前快照（必需）")
                 continue
             result = audit_format(session, fmt, today)
             bad = [e for e in result.entries if not e.ok]
@@ -99,6 +101,19 @@ def _run_a1(db_path: Path, today: date) -> SectionResult:
             if not result.passed:
                 sec.passed = False
     engine.dispose()
+
+    results = run_validations(db_path, raw_dir=None)
+    reconciliation = next(r for r in results if r.rule == "系列对账")
+    if reconciliation.checked == 0:
+        sec.passed = False
+        sec.lines.append("- ✗ 系列对账：无系列可对账")
+    elif reconciliation.failures:
+        sec.passed = False
+        sec.lines.append(f"- ✗ 系列对账：{len(reconciliation.failures)} 项失败")
+        for failure in reconciliation.failures[:10]:
+            sec.lines.append(f"  - ✗ {failure}")
+    else:
+        sec.lines.append(f"- ✓ 系列对账 {reconciliation.checked} 个系列全部通过")
     return sec
 
 
@@ -113,7 +128,8 @@ def _run_a4(db_path: Path, today: date) -> SectionResult:
         pools = {}
         for fmt in FORMATS:
             if _current_snapshot(session, fmt) is None:
-                sec.lines.append(f"- {fmt}：无当前快照，跳过")
+                sec.passed = False
+                sec.lines.append(f"- {fmt}：✗ 无当前快照（必需）")
                 continue
             pools[fmt] = legal_at(session, today, fmt)
             sec.lines.append(
@@ -322,7 +338,9 @@ def _run_a8(db_path: Path, work_dir: Path, today: date) -> SectionResult:
                 try:
                     pool_db = db.legal_at(today, fmt)
                     pool_js = js.legal_at(today, fmt)
-                except LookupError:
+                except LookupError as exc:
+                    sec.passed = False
+                    sec.lines.append(f"- ✗ legal_at({fmt}) 缺必需快照或数据：{exc}")
                     continue
                 if pool_db.card_ids != pool_js.card_ids:
                     sec.passed = False

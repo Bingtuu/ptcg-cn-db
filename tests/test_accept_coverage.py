@@ -52,7 +52,7 @@ def _db_with_snapshots(
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         session.add(Set(set_id="T1", name_zh="测试", era="测试", release_date=None,
-                        regulation_mark="A", expected_count=None,
+                        regulation_mark="A", expected_count=3 + len(extra_cards or []),
                         expected_secret_count=None, source="manual", fetched_at=""))
         session.add(_mk_card("T1-001", "标记卡", mark="A"))
         session.add(_mk_card("T1-002", "测试道具"))
@@ -73,24 +73,25 @@ def _db_with_snapshots(
 
 def _std_snapshot(whitelist=None, energies=None) -> LegalitySnapshot:
     return _snapshot("standard", marks=["A"],
-                     whitelist=whitelist or ["测试道具"],
-                     energies=energies or ["草"])
+                     whitelist=["测试道具"] if whitelist is None else whitelist,
+                     energies=["草"] if energies is None else energies)
 
 
 def _open_snapshot(whitelist=None, energies=None) -> LegalitySnapshot:
     return _snapshot("open", marks=["A"],
-                     whitelist=whitelist or ["测试道具"],
-                     energies=energies or ["草", "妖"])
+                     whitelist=["测试道具"] if whitelist is None else whitelist,
+                     energies=["草", "妖"] if energies is None else energies)
 
 
 # ── A1: 白名单逐卡核对 ─────────────────────────────────────────────
 
 
 def test_run_a1_whitelist_pass(tmp_path):
-    """白名单卡在库且有合法印刷 → A1 通过。"""
-    db_path = _db_with_snapshots(tmp_path, standard_snapshot=_std_snapshot())
+    """白名单与系列对账均通过 → A1 通过。"""
+    db_path = _db_with_snapshots(tmp_path, standard_snapshot=_std_snapshot(),
+                                 open_snapshot=_open_snapshot(energies=["草"]))
     sec = _run_a1(db_path, date(2026, 8, 1))
-    assert sec.passed
+    assert sec.passed, sec.lines
     assert any("standard" in line for line in sec.lines)
 
 
@@ -99,18 +100,31 @@ def test_run_a1_empty_whitelist(tmp_path):
     db_path = _db_with_snapshots(
         tmp_path,
         standard_snapshot=_std_snapshot(whitelist=[]),
+        open_snapshot=_open_snapshot(whitelist=[], energies=["草"]),
     )
     sec = _run_a1(db_path, date(2026, 8, 1))
-    assert sec.passed
+    assert sec.passed, sec.lines
 
 
-def test_run_a1_no_snapshot_skips(tmp_path):
-    """某赛制无当前快照 → 跳过该赛制，不影响整体通过。"""
+def test_run_a1_no_snapshot_fails(tmp_path):
     db_path = _db_with_snapshots(tmp_path, standard_snapshot=_std_snapshot())
     sec = _run_a1(db_path, date(2026, 8, 1))
-    assert sec.passed
-    # open 无快照 → 应出现"无当前快照，跳过"
-    assert any("open" in line and "跳过" in line for line in sec.lines)
+    assert not sec.passed
+    assert any("open" in line and "无当前快照" in line for line in sec.lines)
+
+
+def test_run_a1_reconciliation_failure(tmp_path):
+    db_path = _db_with_snapshots(tmp_path, standard_snapshot=_std_snapshot(),
+                                 open_snapshot=_open_snapshot())
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        session.get(Set, "T1").expected_count = 99
+        session.commit()
+    engine.dispose()
+    sec = _run_a1(db_path, date(2026, 8, 1))
+    assert not sec.passed
+    assert any("系列对账" in line for line in sec.lines)
+    assert any("T1" in line for line in sec.lines)
 
 
 # ── A4: 妖能量二分 ──────────────────────────────────────────────────
@@ -144,6 +158,13 @@ def test_run_a4_fairy_in_standard_fails(tmp_path):
     sec = _run_a4(db_path, date(2026, 8, 1))
     assert not sec.passed
     assert any("妖能量出现在标准池" in line for line in sec.lines)
+
+
+def test_run_a4_missing_required_snapshot_fails(tmp_path):
+    db_path = _db_with_snapshots(tmp_path, standard_snapshot=_std_snapshot())
+    sec = _run_a4(db_path, date(2026, 8, 1))
+    assert not sec.passed
+    assert any("open" in line and "无当前快照" in line for line in sec.lines)
 
 
 # ── A5: 冻结守卫 + old_id=None 不假过 ──────────────────────────────
@@ -249,6 +270,32 @@ def test_run_a8_dual_backend_equality(tmp_path):
     assert sec.passed, sec.lines
     assert any("schema_version 一致" in line for line in sec.lines)
     assert any("get_card" in line and "一致" in line for line in sec.lines)
+
+
+def test_run_a8_missing_snapshot_fails_but_other_format_runs(tmp_path):
+    db_path = _db_with_snapshots(tmp_path, standard_snapshot=_std_snapshot(),
+                                 open_snapshot=_open_snapshot())
+    work_dir = tmp_path / "work"
+    dist = work_dir / "dist"
+    dist.mkdir(parents=True, exist_ok=True)
+    (dist / "manifest.json").write_text(
+        '{"version":"v1","schema_version":"1.0.0"}', encoding="utf-8")
+    cm = _mock_backend()
+    backend = cm.__enter__.return_value
+    pool = backend.legal_at.return_value
+
+    def legal_at(_today, fmt):
+        if fmt == "open":
+            raise LookupError("missing")
+        return pool
+
+    backend.legal_at.side_effect = legal_at
+    with patch("ptcgdb.accept.runner.open_db", return_value=cm), \
+         patch("ptcgdb.accept.runner.open_jsonl", return_value=cm):
+        sec = _run_a8(db_path, work_dir, date(2026, 8, 1))
+    assert not sec.passed
+    formats = [call.args[1] for call in backend.legal_at.call_args_list]
+    assert "standard" in formats and "open" in formats
 
 
 def test_run_a8_sdk_exception_contract_failure(tmp_path):
