@@ -33,7 +33,7 @@ class TournamentRecord(BaseModel):
     regulation_mark: str | None  # 赛制标记区间（GHI…）
     format_end: str | None  # 截止系列（CSV10C）
     env: str | None = None  # 赛制标记集合（GHI…），日期∩日历段推导；未命中 None（FR-9.1b）
-    is_qual: bool | None  # 预赛场次
+    is_qual: bool | None  # 独立预选赛/资格赛场次，不含大赛内部预赛阶段
     is_team: bool | None  # 双卡组/团体赛制
     official_url: str | None  # 官方公告链接（交叉核对）
     fetched_at: datetime | None
