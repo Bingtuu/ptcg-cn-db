@@ -14,8 +14,11 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import sqlite3
+import tempfile
+import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -202,12 +205,8 @@ def _checkpoint_and_copy(db_path: Path, out_dir: Path) -> None:
         conn2.close()
 
 
-def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
-    """导出全部文件，返回 manifest dict。重跑幂等（覆盖写）。
-
-    parquet=False（CLI --no-parquet）：跳过 cards.parquet（不 import pyarrow，
-    精简环境豁免），checksums 不登记、manifest counts.cards_parquet 记 NULL。
-    """
+def _export_all_to_dir(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
+    """在空目录构建完整导出件，返回 manifest dict。"""
     db_path, out_dir = Path(db_path), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -313,3 +312,28 @@ def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
         lines.append(f"{_sha256(out_dir / name)}  {name}")
     (out_dir / "checksums.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return manifest
+
+
+def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
+    """在同级临时目录完整构建后原子替换 out_dir。"""
+    db_path, out_dir = Path(db_path), Path(out_dir)
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.tmp-", dir=out_dir.parent))
+    backup = out_dir.with_name(f".{out_dir.name}.old-{uuid.uuid4().hex}")
+    try:
+        manifest = _export_all_to_dir(db_path, staging, parquet=parquet)
+        existed = out_dir.exists()
+        if existed:
+            os.replace(out_dir, backup)
+        try:
+            os.replace(staging, out_dir)
+        except Exception:
+            if existed:
+                os.replace(backup, out_dir)
+            raise
+        if existed:
+            shutil.rmtree(backup)
+        return manifest
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)

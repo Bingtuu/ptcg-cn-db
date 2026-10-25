@@ -88,7 +88,7 @@ def test_all_files_present(dist):
 def test_manifest(dist):
     m = json.loads((dist / "manifest.json").read_text(encoding="utf-8"))
     assert m["version"] == "v20260801.1"
-    assert m["schema_version"] == "1.0.0"
+    assert m["schema_version"] == "2.0.0"
     assert m["built_at"]
     assert len(m["db_sha256"]) == 64
     assert m["counts"]["cards"] == 2
@@ -133,7 +133,7 @@ def test_sets_and_relations_jsonl(dist):
 def test_legality_json_structure(dist):
     data = json.loads((dist / "legality.json").read_text(encoding="utf-8"))
     assert set(data) == {"meta", "data"}
-    assert data["meta"]["schema_version"] == "1.0.0"
+    assert data["meta"]["schema_version"] == "2.0.0"
     assert set(data["data"]) == {"snapshots", "errata"}
     snaps = data["data"]["snapshots"]
     assert len(snaps) == 1
@@ -351,3 +351,21 @@ def test_integrity_check_fails_raises(db_path, tmp_path):
     ), patch("ptcgdb.export.exporter.shutil.copy2"):
         with pytest.raises(RuntimeError, match="integrity_check"):
             _checkpoint_and_copy(db_path, out_dir)
+
+
+def test_export_atomic_publish_preserves_old_dist_on_failure(db_path, tmp_path):
+    out = tmp_path / "dist"
+    export_all(db_path, out)
+    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
+
+    with patch(
+        "ptcgdb.export.exporter._checkpoint_and_copy",
+        side_effect=RuntimeError("boom"),
+    ):
+        with pytest.raises(RuntimeError, match="boom"):
+            export_all(db_path, out)
+
+    after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
+    assert after == before
+    assert not list(tmp_path.glob(".dist.tmp-*"))
+    assert not list(tmp_path.glob(".dist.old-*"))
