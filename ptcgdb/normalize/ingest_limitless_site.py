@@ -3,7 +3,7 @@
 与 API 通道（ingest_limitless.py）并列的双通道之一：DB source="limitless_site"
 （tournament_id = limitless_site:{数字id}，内容与 API 通道各自独立不合并）。
 口径照 API 通道（60 张质量门 / FULL_THRESHOLD=0.95 / map_decklist_card 映射链 /
-stat_scope 派生 / env 推导 + 交叉校验告警不拒收 / 幂等 merge upsert + 先删后插），
+stat_scope 派生 / env 推导 + 交叉校验告警不拒收 / 稳定 appearance 幂等），
 主站特有口径：
 
 - **名次截断**（FR-9.1a ② 与主站全收录实测的调和）：standings 是全交表选手
@@ -35,7 +35,6 @@ stat_scope 派生 / env 推导 + 交叉校验告警不拒收 / 幂等 merge upse
 
 from __future__ import annotations
 
-import hashlib
 import warnings
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -46,7 +45,7 @@ from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
-from ptcgdb.normalize.deck_misses import classify_miss, record_miss
+from ptcgdb.normalize.deck_misses import _deck_env_marks, classify_miss, record_miss
 from ptcgdb.normalize.envs import (
     SOURCE_REGION,
     EnvSegment,
@@ -54,6 +53,7 @@ from ptcgdb.normalize.envs import (
     derive_env,
     load_calendar,
 )
+from ptcgdb.normalize.identity import appearance_identity, deck_content_id, upsert_appearance
 from ptcgdb.normalize.ingest_limitless import _build_cn_index, _fetched_at
 from ptcgdb.normalize.ingest_tourneys import DECK_SIZE, _mapping_status, derive_stat_scope
 from ptcgdb.normalize.limitless import (
@@ -70,7 +70,7 @@ from ptcgdb.scrapers.limitless_site import (
     TOURNAMENTS_DIR,
     classify_site_tournament,
 )
-from ptcgdb.scrapers.raw_store import canonical_json, read_raw
+from ptcgdb.scrapers.raw_store import read_raw
 from ptcgdb.scrapers.site_rules import load_site_rules
 
 OFFICIAL_URL_TEMPLATE = "https://limitlesstcg.com/tournaments/{}"
@@ -99,12 +99,8 @@ class LimitlessSiteIngestResult:
 
 
 def make_deck_id(cards: Any) -> str:
-    """内容哈希 deck_id：limitless_site:{sha256(canonical_json(cards))[:16]}。
-
-    同一套 60 张清单跨选手/跨赛事同一 deck_id（天然去重，mik deckId 同语义）。
-    """
-    digest = hashlib.sha256(canonical_json(cards).encode("utf-8")).hexdigest()
-    return f"{SOURCE}:{digest[:16]}"
+    """(name,set,number) 聚合排序后的内容哈希 deck_id。"""
+    return deck_content_id(SOURCE, cards)
 
 
 def _parse_day(raw: Any) -> date | None:
@@ -330,7 +326,7 @@ def _ingest_one_tournament(
             did = deck_representative[deck_id]
             ingested_ranks += _ingest_one_deck(
                 session, deck_id, did, deck_docs[did], rows, tournament_id, env_segment,
-                env_marks, cn_name_index, card_index, ptcd_index, result,
+                env_marks, env_calendar, cn_name_index, card_index, ptcd_index, result,
             )
         # topcut_slots 物化 = 截断后实际入库名次数（60 张门拦截不计）
         tournament = session.get(Tournament, tournament_id)
@@ -348,6 +344,7 @@ def _ingest_one_deck(
     tournament_id: str,
     env_segment: EnvSegment | None,
     env_marks: tuple[str, ...] | None,
+    env_calendar: dict[str, Any],
     cn_name_index: dict[str, list[CnCandidate]],
     card_index: dict[str, tuple[str, str | None, str | None]],
     ptcd_index: dict[tuple[str, str], dict[str, Any]],
@@ -377,6 +374,19 @@ def _ingest_one_deck(
             }
         )
         return 0
+    current_appearance_ids = [
+        appearance_identity(
+            SOURCE,
+            tournament_id,
+            {"player": row.get("player"), "decklist_id": row["decklist_id"]},
+        )[1]
+        for row in rows
+    ]
+    env_marks = _deck_env_marks(
+        session, deck_id, SOURCE, env_calendar,
+        current_tournament_id=tournament_id,
+        current_appearance_ids=current_appearance_ids,
+    )
     # card_id 解析（决策 rule 计分布）；同 card_id 多条目合并 count（两种印刷同名卡）
     merged: dict[str, int] = {}
     raw_names: dict[str, str] = {}
@@ -474,31 +484,31 @@ def _ingest_one_deck(
     session.add_all(deck_rows)
     result.decks += 1
     result.deck_cards += len(deck_rows)
-    # 出战条目：按 (deck_id, tournament_id) 先删后插；同 placing 碰撞后写覆盖
-    session.execute(
-        delete(DeckAppearance).where(
-            DeckAppearance.deck_id == deck_id,
-            DeckAppearance.tournament_id == tournament_id,
-        )
-    )
-    by_rank: dict[int, dict[str, Any]] = {}
+    seen_appearances: set[str] = set()
     for row in rows:
-        by_rank[row["placing"]] = row  # 同 placing 碰撞：后写覆盖
-    for rank in sorted(by_rank):
-        row = by_rank[rank]
-        session.add(
+        appearance_key, appearance_id = appearance_identity(
+            SOURCE,
+            tournament_id,
+            {"player": row.get("player"), "decklist_id": row["decklist_id"]},
+        )
+        upsert_appearance(
+            session,
             DeckAppearance(
+                appearance_id=appearance_id,
+                appearance_key=appearance_key,
                 deck_id=deck_id,
                 tournament_id=tournament_id,
-                rank=rank,
+                rank=row["placing"],
                 points=None,
-                player_ref=row.get("player"),  # 主站公开选手名
-                record_wins=None,  # 主站收录无比分（不猜）
+                player_ref=row.get("player"),
+                record_wins=None,
                 record_losses=None,
                 record_ties=None,
                 source=SOURCE,
                 fetched_at=fetched_at,
-            )
+            ),
         )
-        result.appearances += 1
-    return len(by_rank)
+        if appearance_id not in seen_appearances:
+            seen_appearances.add(appearance_id)
+            result.appearances += 1
+    return len(seen_appearances)

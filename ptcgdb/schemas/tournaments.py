@@ -65,6 +65,8 @@ class AppearanceRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    appearance_id: str | None = None
+    appearance_key: str | None = None
     deck_id: str  # mik_moe:{deckId}
     tournament_id: str
     rank: int

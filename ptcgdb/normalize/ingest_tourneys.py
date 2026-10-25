@@ -13,7 +13,7 @@ task 027。口径（PRD FR-9.1/9.2/9.3/9.6 + §7.5 v1.10 续）：
 - 60 张质量门（FR-9.6 ①）：count 合计 != 60 的卡组整组不入库（内容与出战条目
   都不落），记 blocked 报告。
 - 幂等：tournaments/decks merge upsert；deck_cards 按 deck_id 先删后插；
-  出战条目按 (deck_id, tournament_id) 先删后插。
+  出战条目按稳定 appearance_id 去重，同 key 事实冲突拒收。
 - tier_coef 在解析层已从词表物化（FR-9.6 事实完整性），这里原样落库。
 - env 推导（FR-9.1b）：赛事日期 ∩ 赛区旋转日历段（config/tournament_envs.yml）；
   未命中 → env=NULL + 记异常（不猜）；落库后以卡组内卡牌最大赛制标记 ∈
@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.envs import SOURCE_REGION, EnvSegment, derive_env, load_calendar
+from ptcgdb.normalize.identity import upsert_appearance
 from ptcgdb.normalize.topcut import derive_topcut_slots
 from ptcgdb.normalize.tournaments import (
     VOCAB_DIR,
@@ -375,17 +376,13 @@ def _ingest_one_tournament(
             session.add_all(rows)
             result.decks += 1
             result.deck_cards += len(rows)
-            # 出战条目：按 (deck_id, tournament_id) 先删后插
-            session.execute(
-                delete(DeckAppearance).where(
-                    DeckAppearance.deck_id == deck_id,
-                    DeckAppearance.tournament_id == record.tournament_id,
-                )
-            )
-            for app in apps:
+            seen_appearances: set[str] = set()
+            for app in sorted(apps, key=lambda item: item.appearance_id or ""):
                 if app.rank is None:
                     result.warnings.append(f"出战条目缺 rank，跳过: {app.deck_id}")
                     continue
-                session.add(DeckAppearance(**app.model_dump()))
-                result.appearances += 1
+                upsert_appearance(session, DeckAppearance(**app.model_dump()))
+                if app.appearance_id not in seen_appearances:
+                    seen_appearances.add(app.appearance_id)
+                    result.appearances += 1
         session.commit()

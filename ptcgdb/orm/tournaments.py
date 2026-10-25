@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ptcgdb.orm.base import Base
@@ -71,18 +71,21 @@ class Deck(Base):
 
 
 class DeckAppearance(Base):
-    """deck_appearances 出战条目：一套内容在一次赛事取得的一个名次。
+    """deck_appearances 出战条目：稳定源侧身份区分同卡组同名次的多出战。
 
     统计"卡组数"的口径单元（FR-9.4）；player_ref 只存官方选手编号（隐私最小化）。
     """
 
     __tablename__ = "deck_appearances"
+    __table_args__ = (UniqueConstraint("tournament_id", "appearance_key"),)
 
-    deck_id: Mapped[str] = mapped_column(ForeignKey("decks.deck_id"), primary_key=True)
+    appearance_id: Mapped[str] = mapped_column(String, primary_key=True)
+    appearance_key: Mapped[str] = mapped_column(String)
+    deck_id: Mapped[str] = mapped_column(ForeignKey("decks.deck_id"), index=True)
     tournament_id: Mapped[str] = mapped_column(
-        ForeignKey("tournaments.tournament_id"), primary_key=True, index=True
+        ForeignKey("tournaments.tournament_id"), index=True
     )
-    rank: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rank: Mapped[int] = mapped_column(Integer)
     points: Mapped[float | None] = mapped_column(Float)
     player_ref: Mapped[str | None] = mapped_column(String)  # pinCode
     record_wins: Mapped[int | None] = mapped_column(Integer)  # A 层逐局战绩（Limitless）

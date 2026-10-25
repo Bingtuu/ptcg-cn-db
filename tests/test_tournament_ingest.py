@@ -615,3 +615,64 @@ def test_ingest_hook_materializes_topcut_slots(env):
         ),
     )
     assert rows == [(16,)]
+
+
+def test_3710_shared_deck_same_rank_keeps_both_teams_and_is_idempotent(tmp_path):
+    from ptcgdb.normalize.identity import appearance_identity
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "3710.db"
+    build_db(db_path)
+    items = load_fixture("tournament_list.json")["data"]["list"]
+    item = dict(next(e for e in items if e["id"] == 3211)) | {"id": 3710}
+    detail = dict(load_fixture("tournament_detail.json")["data"]) | {"id": 3710}
+    team_a = rank_entry(-1, 0, "P002", [688431])
+    team_a["players"] = [{"pinCode": "P002"}, {"pinCode": "P001"}]
+    team_a["teamName"] = "重泥挽马"
+    team_b = rank_entry(-1, 0, "P003", [688431])
+    team_b["players"] = [{"pinCode": "P003"}, {"pinCode": "P004"}]
+    team_b["teamName"] = "工美老宝儿"
+    write_tournament_raw(
+        raw_dir, series_id=54, item=item, detail=detail,
+        rank_entries=[team_a, team_a.copy(), team_b],
+        decks={688431: deck_payload(688431, DECK_555001)},
+    )
+
+    result = ingest_tourneys(raw_dir, db_path)
+    assert result.decks == 1
+    assert result.appearances == 2
+    apps = [row[0] for row in query(
+        db_path, select(DeckAppearance).order_by(DeckAppearance.appearance_id)
+    )]
+    assert len(apps) == 2
+    assert {app.deck_id for app in apps} == {"mik_moe:688431"}
+    assert {app.rank for app in apps} == {-1}
+    assert len({app.appearance_id for app in apps}) == 2
+    expected_key, _ = appearance_identity(
+        "mik_moe", "mik_moe:3710",
+        {"deckId": 688431, "pinCodes": ["P001", "P002"]},
+    )
+    assert expected_key in {app.appearance_key for app in apps}
+
+    ingest_tourneys(raw_dir, db_path)
+    assert len(query(db_path, select(DeckAppearance))) == 2
+
+
+def test_mik_same_team_key_with_different_facts_aborts_tournament(tmp_path):
+    from ptcgdb.normalize.identity import AppearanceConflictError
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "conflict.db"
+    build_db(db_path)
+    items = load_fixture("tournament_list.json")["data"]["list"]
+    item = next(e for e in items if e["id"] == 3211)
+    detail = load_fixture("tournament_detail.json")["data"]
+    write_tournament_raw(
+        raw_dir, series_id=54, item=item, detail=detail,
+        rank_entries=[rank_entry(1, 20, "P001", [555001]),
+                      rank_entry(2, 20, "P001", [555001])],
+        decks={555001: deck_payload(555001, DECK_555001)},
+    )
+
+    with pytest.raises(AppearanceConflictError, match="appearance"):
+        ingest_tourneys(raw_dir, db_path)
+    assert query(db_path, select(DeckAppearance)) == []
+    assert query(db_path, select(Tournament)) == []

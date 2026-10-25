@@ -2,8 +2,8 @@
 
 task 028 步骤 4（tournaments/decks/deck_appearances/deck_cards）。口径最大程度复用
 mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
-- **decks = 卡组内容实体**：deck_id = limitless:{sha256(canonical_json(decklist))[:16]}
-  （内容哈希，天然跨选手/跨赛事去重）；同一内容在同一赛事 N 个名次出现 =
+- **decks = 卡组内容实体**：deck_id 取 (name,set,number) 聚合并排序后的内容哈希；
+  同一内容在同一赛事 N 个名次出现 =
   1 行内容 + N 行出战条目（多人同卡组照常多行）。
 - decklist→简中映射走 normalize/limitless.map_decklist 映射链（ptcd 定位 →
   name_en exact match → 先判 name_group 跨组不猜（H2）→ env 优先/最新印刷裁决）；
@@ -26,7 +26,7 @@ mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
   索引页 TTL 刷新收窄后旧 ID 永久消失，旧分支会让已清除的窗口外残留每次
   全量 ingest 吃回（2026-10-17 SEASAC 幽灵赛事教训）。
 - 幂等：tournaments/decks merge upsert；deck_cards 按 deck_id 先删后插；
-  出战条目按 (deck_id, tournament_id) 先删后插（同 placing 碰撞后写覆盖）；
+  出战条目按 tournament+player 派生的稳定 appearance_id 去重，同 key 冲突拒收；
   pairings 按 tournament_id 先删后插（PK 同键后写覆盖）。
 - pairings 落库（PRD v1.14 §7.5）：扫 limitless/tournaments/pairings/{id}.json，
   无 pairings raw 的赛事不报错（采集层可能只抓 standings）；落库后反推
@@ -41,7 +41,6 @@ mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
 
 from __future__ import annotations
 
-import hashlib
 import warnings
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -52,13 +51,18 @@ from sqlalchemy import create_engine, delete, select, update
 from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
-from ptcgdb.normalize.deck_misses import classify_miss, record_miss
+from ptcgdb.normalize.deck_misses import _deck_env_marks, classify_miss, record_miss
 from ptcgdb.normalize.envs import (
     SOURCE_REGION,
     EnvSegment,
     alignment_window,
     derive_env,
     load_calendar,
+)
+from ptcgdb.normalize.identity import (
+    appearance_identity,
+    deck_content_id,
+    upsert_appearance,
 )
 from ptcgdb.normalize.ingest_tourneys import DECK_SIZE, _mapping_status, derive_stat_scope
 from ptcgdb.normalize.limitless import (
@@ -87,7 +91,7 @@ from ptcgdb.scrapers.limitless import (
     TOURNAMENTS_DIR,
     classify_tournament,
 )
-from ptcgdb.scrapers.raw_store import canonical_json, read_raw
+from ptcgdb.scrapers.raw_store import read_raw
 
 OFFICIAL_URL_TEMPLATE = "https://limitlesstcg.com/tournaments/{}"
 
@@ -111,12 +115,8 @@ class LimitlessIngestResult:
 
 
 def make_deck_id(decklist_raw: Any) -> str:
-    """内容哈希 deck_id：limitless:{sha256(canonical_json(decklist))[:16]}。
-
-    同一套 60 张清单跨选手/跨赛事同一 deck_id（天然去重，mik deckId 同语义）。
-    """
-    digest = hashlib.sha256(canonical_json(decklist_raw).encode("utf-8")).hexdigest()
-    return f"{SOURCE}:{digest[:16]}"
+    """(name,set,number) 聚合排序后的内容哈希 deck_id。"""
+    return deck_content_id(SOURCE, decklist_raw)
 
 
 def _fetched_at(doc: dict[str, Any]) -> datetime:
@@ -338,7 +338,7 @@ def _ingest_one_tournament(
         for deck_id, entries in by_deck.items():
             _ingest_one_deck(
                 session, deck_id, entries, tournament_id, fetched_at, env_segment,
-                env_marks, cn_name_index, card_index, ptcd_index, result,
+                env_marks, env_calendar, cn_name_index, card_index, ptcd_index, result,
             )
         if pairings_doc is not None:
             _ingest_pairings(session, tournament_id, pairings_doc, result)
@@ -393,12 +393,13 @@ def _ingest_one_deck(
     fetched_at: datetime,
     env_segment: EnvSegment | None,
     env_marks: tuple[str, ...] | None,
+    env_calendar: dict[str, Any],
     cn_name_index: dict[str, list[CnCandidate]],
     card_index: dict[str, tuple[str, str | None, str | None]],
     ptcd_index: dict[tuple[str, str], dict[str, Any]],
     result: LimitlessIngestResult,
 ) -> None:
-    cards = entries[0].decklist  # 同 deck_id = 同内容（deck_id 哈希自原始 decklist）
+    cards = entries[0].decklist  # 规范哈希相同，任一条目都保留同一聚合计数内容
     total = sum(c.count for c in cards)
     if total != DECK_SIZE:
         result.blocked.append(
@@ -409,6 +410,19 @@ def _ingest_one_deck(
             }
         )
         return
+    raw_tid = tournament_id.split(":", 1)[1]
+    current_appearance_ids = [
+        appearance_identity(
+            SOURCE, tournament_id, {"tournament": raw_tid, "player": entry.player}
+        )[1]
+        for entry in entries
+        if entry.placing is not None
+    ]
+    env_marks = _deck_env_marks(
+        session, deck_id, SOURCE, env_calendar,
+        current_tournament_id=tournament_id,
+        current_appearance_ids=current_appearance_ids,
+    )
     # card_id 解析（决策 rule 计分布）；同 card_id 多条目合并 count（两种印刷同名卡）
     merged: dict[str, int] = {}
     raw_names: dict[str, str] = {}
@@ -507,35 +521,34 @@ def _ingest_one_deck(
     session.add_all(rows)
     result.decks += 1
     result.deck_cards += len(rows)
-    # 出战条目：按 (deck_id, tournament_id) 先删后插；同 placing 碰撞后写覆盖
-    session.execute(
-        delete(DeckAppearance).where(
-            DeckAppearance.deck_id == deck_id,
-            DeckAppearance.tournament_id == tournament_id,
-        )
-    )
-    by_rank: dict[int, StandingEntry] = {}
+    seen_appearances: set[str] = set()
+    raw_tid = tournament_id.split(":", 1)[1]
     for entry in entries:
         if entry.placing is None:
             result.warnings.append(
                 f"出战条目缺 placing，跳过: {deck_id} player={entry.player}"
             )
             continue
-        by_rank[entry.placing] = entry  # 同 placing 碰撞：后写覆盖
-    for rank in sorted(by_rank):
-        entry = by_rank[rank]
-        session.add(
+        appearance_key, appearance_id = appearance_identity(
+            SOURCE, tournament_id, {"tournament": raw_tid, "player": entry.player}
+        )
+        upsert_appearance(
+            session,
             DeckAppearance(
+                appearance_id=appearance_id,
+                appearance_key=appearance_key,
                 deck_id=deck_id,
                 tournament_id=tournament_id,
-                rank=rank,
+                rank=entry.placing,
                 points=None,
-                player_ref=entry.player,  # Limitless 用户名（隐私最小化，同 mik 口径）
+                player_ref=entry.player,
                 record_wins=entry.record_wins,
                 record_losses=entry.record_losses,
                 record_ties=entry.record_ties,
                 source=SOURCE,
                 fetched_at=fetched_at,
-            )
+            ),
         )
-        result.appearances += 1
+        if appearance_id not in seen_appearances:
+            seen_appearances.add(appearance_id)
+            result.appearances += 1
