@@ -811,3 +811,47 @@ def test_api_later_discovered_earlier_tournament_remaps_shared_deck(tmp_path):
         if c.deck_id == deck_id and c.raw_name == "Ultra Ball"
     )
     assert ultra_ball.card_id == "CSA-001"
+
+
+def test_api_none_and_zero_extra_counts_have_distinct_stable_decks(tmp_path):
+    from copy import deepcopy
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "counts.db"
+    write_ptcd_raw(raw_dir)
+    deck_none = deepcopy(DECK_A)
+    deck_zero = deepcopy(DECK_A)
+    deck_none["trainer"].append(
+        {"count": None, "set": "XXX", "number": "998", "name": "Milotic ex"}
+    )
+    deck_zero["trainer"].append(
+        {"count": 0, "set": "XXX", "number": "998", "name": "Milotic ex"}
+    )
+    none_id = make_deck_id(deck_none)
+    zero_id = make_deck_id(deck_zero)
+    assert none_id != zero_id
+    write_limitless_raw(
+        raw_dir, list_entries=LIST_A,
+        standings={T_A: [
+            make_standing(1, "none", None, {"id": "a", "name": "A"}, deck_none),
+            make_standing(2, "zero", None, {"id": "a", "name": "A"}, deck_zero),
+        ]},
+    )
+    build_db(db_path)
+
+    result = ingest_limitless(raw_dir, db_path)
+    assert result.decks == 2
+    assert result.appearances == 2
+    cards = query_all(db_path, DeckCard)
+    assert not any(c.deck_id == none_id and c.raw_name == "Milotic ex" for c in cards)
+    zero_extra = next(c for c in cards if c.deck_id == zero_id and c.raw_name == "Milotic ex")
+    assert zero_extra.count == 0
+    assert zero_extra.card_id == "CSJ-008"
+    snapshot = sorted(
+        (c.deck_id, c.card_id, c.raw_name, c.count) for c in cards
+    )
+
+    ingest_limitless(raw_dir, db_path)
+    assert sorted(
+        (c.deck_id, c.card_id, c.raw_name, c.count)
+        for c in query_all(db_path, DeckCard)
+    ) == snapshot

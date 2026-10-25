@@ -238,3 +238,24 @@ def test_mik_all_missing_pin_team_order_and_name_do_not_change_identity():
     )
     assert first.player_ref is second.player_ref is None
     assert '"pinCode"' not in first.appearance_key
+
+
+def test_en_count_normalization_matches_channel_parsers():
+    from ptcgdb.normalize.identity import normalize_en_entries
+
+    cards = [
+        {"name": "None", "set": "SVI", "number": "1", "count": None},
+        {"name": "Missing", "set": "SVI", "number": "2"},
+        {"name": "Zero", "set": "SVI", "number": "3", "count": 0},
+    ]
+    expected = [("Zero", "SVI", "3", 0)]
+    assert normalize_en_entries(cards) == expected
+    assert normalize_en_entries(cards, source="limitless_site") == expected
+
+    numeric_string = [{"name": "String", "set": "SVI", "number": "4", "count": "2"}]
+    assert normalize_en_entries(numeric_string) == [("String", "SVI", "4", 2)]
+    assert normalize_en_entries(numeric_string, source="limitless_site") == []
+
+    invalid = [{"name": "Invalid", "set": "SVI", "number": "5", "count": "bad"}]
+    assert normalize_en_entries(invalid) == []
+    assert normalize_en_entries(invalid, source="limitless_site") == []

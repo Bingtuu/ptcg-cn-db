@@ -556,3 +556,52 @@ def test_site_later_discovered_earlier_tournament_remaps_shared_deck(tmp_path):
         if c.deck_id == deck_id and c.raw_name == "Ultra Ball"
     )
     assert ultra_ball.card_id == "CSA-001"
+
+
+def test_site_none_and_zero_extra_counts_have_distinct_stable_decks(tmp_path):
+    from copy import deepcopy
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "counts.db"
+    write_ptcd_raw(raw_dir)
+    deck_none = deepcopy(DECK_D)
+    deck_zero = deepcopy(DECK_D)
+    deck_none.append(
+        {"count": None, "set": "XXX", "number": "998", "name": "Milotic ex"}
+    )
+    deck_zero.append(
+        {"count": 0, "set": "XXX", "number": "998", "name": "Milotic ex"}
+    )
+    none_id = make_deck_id(deck_none)
+    zero_id = make_deck_id(deck_zero)
+    assert none_id != zero_id
+    write_site_raw(
+        raw_dir,
+        index_entries=[index_entry(T_REG, "Regional Indianapolis, IN", 100, "2026-03-30")],
+        standings={T_REG: {"tournament_id": T_REG, "standings": [
+            make_standing(1, "none", "none-count"),
+            make_standing(2, "zero", "zero-count"),
+        ]}},
+        decklists={
+            "none-count": decklist_payload("none-count", "A", "none", deck_none),
+            "zero-count": decklist_payload("zero-count", "A", "zero", deck_zero),
+        },
+    )
+    build_db(db_path)
+
+    result = ingest_limitless_site(raw_dir, db_path)
+    assert result.decks == 2
+    assert result.appearances == 2
+    cards = query_all(db_path, DeckCard)
+    assert not any(c.deck_id == none_id and c.raw_name == "Milotic ex" for c in cards)
+    zero_extra = next(c for c in cards if c.deck_id == zero_id and c.raw_name == "Milotic ex")
+    assert zero_extra.count == 0
+    assert zero_extra.card_id == "CSJ-008"
+    snapshot = sorted(
+        (c.deck_id, c.card_id, c.raw_name, c.count) for c in cards
+    )
+
+    ingest_limitless_site(raw_dir, db_path)
+    assert sorted(
+        (c.deck_id, c.card_id, c.raw_name, c.count)
+        for c in query_all(db_path, DeckCard)
+    ) == snapshot

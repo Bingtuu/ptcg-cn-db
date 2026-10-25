@@ -676,3 +676,51 @@ def test_mik_same_team_key_with_different_facts_aborts_tournament(tmp_path):
         ingest_tourneys(raw_dir, db_path)
     assert query(db_path, select(DeckAppearance)) == []
     assert query(db_path, select(Tournament)) == []
+
+
+def test_mik_duplicate_incomplete_identity_same_snapshot_aborts_tournament(tmp_path):
+    from copy import deepcopy
+
+    from ptcgdb.normalize.identity import AppearanceConflictError
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "ambiguous.db"
+    build_db(db_path)
+    items = load_fixture("tournament_list.json")["data"]["list"]
+    item = next(e for e in items if e["id"] == 3211)
+    detail = load_fixture("tournament_detail.json")["data"]
+    first = rank_entry(-1, 0, "P001", [688431])
+    first["players"] = [{"pinCode": "P001"}, {"nickname": "无pin"}]
+    first["teamName"] = "队伍甲"
+    duplicate = deepcopy(first)
+    duplicate["teamName"] = "同名证据无法区分的另一队"
+    write_tournament_raw(
+        raw_dir, series_id=54, item=item, detail=detail,
+        rank_entries=[first, duplicate],
+        decks={688431: deck_payload(688431, DECK_555001)},
+    )
+
+    with pytest.raises(AppearanceConflictError, match="ambiguous.*缺pin"):
+        ingest_tourneys(raw_dir, db_path)
+    assert query(db_path, select(DeckAppearance)) == []
+    assert query(db_path, select(Deck)) == []
+    assert query(db_path, select(Tournament)) == []
+
+
+def test_mik_single_incomplete_identity_allows_idempotent_reingest(tmp_path):
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "incomplete.db"
+    build_db(db_path)
+    items = load_fixture("tournament_list.json")["data"]["list"]
+    item = next(e for e in items if e["id"] == 3211)
+    detail = load_fixture("tournament_detail.json")["data"]
+    entry = rank_entry(-1, 0, "P001", [688431])
+    entry["players"] = [{"pinCode": "P001"}, {"nickname": "无pin"}]
+    write_tournament_raw(
+        raw_dir, series_id=54, item=item, detail=detail,
+        rank_entries=[entry], decks={688431: deck_payload(688431, DECK_555001)},
+    )
+
+    assert ingest_tourneys(raw_dir, db_path).appearances == 1
+    assert ingest_tourneys(raw_dir, db_path).appearances == 1
+    apps = query(db_path, select(DeckAppearance))
+    assert len(apps) == 1
+    assert apps[0][0].rank == -1

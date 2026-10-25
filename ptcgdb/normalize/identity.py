@@ -15,13 +15,29 @@ class AppearanceConflictError(ValueError):
     pass
 
 
-def normalize_en_entries(entries: Any) -> list[tuple[str, str | None, str | None, int]]:
+def _en_count(raw: Any, source: str) -> int | None:
+    if source == "limitless_site":
+        return int(raw) if isinstance(raw, int) else None
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def normalize_en_entries(
+    entries: Any, *, source: str = "limitless"
+) -> list[tuple[str, str | None, str | None, int]]:
     if isinstance(entries, Mapping):
         raw_entries = [entry for section in entries.values() for entry in section or []]
     else:
         raw_entries = list(entries)
     counts: dict[tuple[str, str | None, str | None], int] = {}
     for entry in raw_entries:
+        count = _en_count(entry.get("count"), source)
+        if count is None:
+            continue
         set_code = entry.get("set")
         number = entry.get("number")
         key = (
@@ -29,7 +45,7 @@ def normalize_en_entries(entries: Any) -> list[tuple[str, str | None, str | None
             str(set_code) if set_code else None,
             str(number) if number not in (None, "") else None,
         )
-        counts[key] = counts.get(key, 0) + int(entry.get("count") or 0)
+        counts[key] = counts.get(key, 0) + count
     ordered = sorted(counts, key=lambda key: (key[0], key[1] or "", key[2] or ""))
     return [(*key, counts[key]) for key in ordered]
 
@@ -40,7 +56,7 @@ def _content_id(source: str, normalized: Any) -> str:
 
 
 def deck_content_id(source: str, entries: Any) -> str:
-    return _content_id(source, normalize_en_entries(entries))
+    return _content_id(source, normalize_en_entries(entries, source=source))
 
 
 def normalize_jp_entries(pairs: Iterable[tuple[Any, Any]]) -> list[tuple[str, int]]:
