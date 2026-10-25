@@ -51,6 +51,12 @@
 - task 054 30周年庆典补充包预扩词表（PRD 9.4，2026-09-11，PRD v1.33，无 schema 迁移）：**mik 已提前收录 30thC「30周年庆典」169 张**（series="30th" 既有映射 → 特典；罕贵度实测 C 45/R 18/RR 10/无标记 68/AR 19/SAR 7/FUR 2 全在词表；card-detail 全量可用：mechanic 仅 ex、regulationMark=J、standard+expanded 双合法）+ MP「超级进化 特典卡」占位（series="Mega" → eras.yml 追加 Mega→特典，用户拍板）；**F-03 再翻案：mik 太晶信号实证存在**——`pokemonAttr.ancientTrait=="Tera"`（raw 全量 158 张 ⊂ task 030 ptcd 判定 166 张，task 030「mik 无太晶信号」注记作废）；`derive_is_tera` 改 ingest 主信号（ancientTrait）∪ mapping 层（ptcd subtypes 补 8 张差集）并集（用户拍板）——30thC 卡 setCodeEn/nameEn 全空无 EN 桥，ancientTrait 为其唯一太晶信号；重 ingest 富化携带语义不变（scratch 库 CSV3C 重 ingest 实测 is_tera 7 张零漂移含 ptcd-only CSV3C-155）
 - task 054 演练段（2026-09-12，PRD v1.33 续，无 schema 迁移）：**scratch 库全链预演（ingest→validate→activate→tag-effects）抓到并清偿 4 个真实缺口**——①`stages.yml` 追加 4 个历代机制复刻 stage 恒等映射（`Level Up`/`LEGEND`/`Mega Evolution`/`BREAK Evolution`，循 VMAX 先例机制名不翻译；均不进 STAGE_RULE_BOX——M沙奈朵EX 系旧时代 2 奖赏 EX，mechanic="EX"→ex 已正确，不可被 mega_ex=3 奖赏覆盖）；②派生映射补 `EX`→ex（旧时代大写 mechanic，30thC-154/155/156）+ label `SP`（30thC-149 叉字蝠G，白金时代 SP 宝可梦无简中译名恒等）/`Mega`（30thC-156）恒等入 LABEL_TAGS；③**FR-2.3 规则 1 源数据缺失豁免扩展至 regulation_mark**（30thC-136~157 历代复刻块 22 张 raw regulationMark 空串=赛制标记时代之前本真无标记，同 text_raw 双空豁免口径记 note 不判失败；raw 有标记 DB 空仍判管线丢失）；④heal 词表补「移除伤害指示物」旧时代治疗措辞两变体（既有库全量 dry-run changed=0 零回归）；另实测发现并强刷 products.json 滞留（write_raw 非 force 跳过有效文件 → 产品清单不自动刷新，本地 129→132：30thC/MP/CBB6C 三条新增）；预演终态：30thC 169/169 + MP 1/1 入库、validate 十规则全过、is_tera 10 张 ancientTrait 逐张 raw 核实、era=特典（30th/MP 均正确）、tag-effects 卡级 unknown=0 / 零命中 38 全归类、句级 311 句未知句 3（甜甜萤弱点×3 / 闪耀时拉比能量计数硬币 / 帕路奇亚LV.X 互相选择备战，均一次性旧机制按不猜原则留 unknown 待人工归类）；新增 2 个 validate 豁免测试（1112 全绿）
 
+- task 062 赛事身份契约与 migration 014 结构骨架（2026-10-25，PRD v1.39，schema 3.0.0 / user_version 14）：`deck_appearances` 增加稳定 `appearance_id/appearance_key` 双唯一约束，`deck_id_aliases` 保留旧 deck ID 到 canonical deck 的映射，`v_stat_deck_cards` 携带 `appearance_id`；既有出战仅以旧行材料和 rowid 生成确定性 legacy 身份。此提交不含 raw 旧实体合并、EN 内容哈希或 ingest 接入，真实库与 dist 未迁移。
+
+### Deprecated
+
+- task 062 预告：旧 EN `deck_id` 将在 schema 3.0.0 的 raw 数据迁移中退役为别名，不再作为独立 canonical deck 实体；`decks.jsonl` 将增加 `legacy_ids`，DB/JSONL `get_deck(old_id)` 解析到 canonical deck，其他列表与统计只返回 canonical 实体。
+
 ### Fixed
 
 - task 061 实库自愈与外部事实核销（2026-10-25，无 schema 迁移）：本地 raw 两次重放 ingest-jp，3 套 59/58/59 卡组全部恢复 60，JP 229/229 合计 13,740 张、full 157 不降级、misses 240 与其他表行数不漂移；Brave Bangle 核定未来简中“英勇手镯”2026-11-06 发售，当前不提前映射；CBB 分母证据不足保持只显分子；isQual 澄清为独立预选赛/资格赛，不含大赛内部预赛阶段。报告 `reports/task061-data-healing-20261025.md`。

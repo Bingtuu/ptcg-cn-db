@@ -47,7 +47,9 @@ DECKS_COLUMNS = [  # 卡组内容实体（同一套 60 张清单全源一行）
     ("fetched_at", 0),
 ]
 
-DECK_APPEARANCES_COLUMNS = [  # 出战条目：一套内容在一次赛事取得的一个名次
+DECK_APPEARANCES_COLUMNS = [  # 出战条目：稳定 appearance 身份 + 原出战事实
+    ("appearance_id", 1),  # migration 014：公开稳定 ID
+    ("appearance_key", 1),  # migration 014：源侧出战键，tournament 内唯一
     ("deck_id", 1),
     ("tournament_id", 1),
     ("rank", 1),
@@ -125,7 +127,7 @@ def test_migration_005_primary_keys_and_foreign_keys(tmp_path):
             for r in conn.execute("PRAGMA table_info(deck_appearances)")
             if r[5]
         }
-        assert pk == {"deck_id", "tournament_id", "rank"}
+        assert pk == {"appearance_id"}
 
         pk = {
             r[1]
@@ -179,9 +181,10 @@ def test_migration_005_idempotent_and_null_card_id(tmp_path):
             ("mik_moe:555001", "full", "mik_moe"),
         )
         conn.execute(
-            "INSERT INTO deck_appearances (deck_id, tournament_id, rank, source)"
-            " VALUES (?, ?, ?, ?)",
-            ("mik_moe:555001", "mik_moe:8801", 1, "mik_moe"),
+            "INSERT INTO deck_appearances "
+            "(appearance_id, appearance_key, deck_id, tournament_id, rank, source)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("appearance-1", "key-1", "mik_moe:555001", "mik_moe:8801", 1, "mik_moe"),
         )
         conn.execute(
             "INSERT INTO deck_cards (deck_id, card_id, count, raw_name, stat_scope)"
@@ -193,11 +196,12 @@ def test_migration_005_idempotent_and_null_card_id(tmp_path):
             "SELECT card_id, raw_name FROM deck_cards WHERE deck_id = 'mik_moe:555001'"
         ).fetchone()
         assert row == (None, "某未映射卡")
-        # 同一内容在同一赛事的另一名次 = 第二条出战条目（复合主键不冲突）
+        # 同一内容在同一赛事的另一名次 = 第二条出战条目
         conn.execute(
-            "INSERT INTO deck_appearances (deck_id, tournament_id, rank, source)"
-            " VALUES (?, ?, ?, ?)",
-            ("mik_moe:555001", "mik_moe:8801", 53, "mik_moe"),
+            "INSERT INTO deck_appearances "
+            "(appearance_id, appearance_key, deck_id, tournament_id, rank, source)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            ("appearance-2", "key-2", "mik_moe:555001", "mik_moe:8801", 53, "mik_moe"),
         )
         conn.commit()
         assert conn.execute(

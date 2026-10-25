@@ -13,7 +13,7 @@ from pathlib import Path
 MIGRATIONS_DIR = Path(__file__).parent
 _FILENAME_RE = re.compile(r"^(\d+)_.*\.sql$")
 
-SCHEMA_VERSION = "2.0.0"  # 结构版本 SemVer（FR-6.1）；破坏性变更升 major
+SCHEMA_VERSION = "3.0.0"  # 结构版本 SemVer（FR-6.1）；破坏性变更升 major
 
 
 def available_migrations() -> list[tuple[int, Path]]:

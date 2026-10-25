@@ -2,7 +2,7 @@
 
 简中 PTCG 标准环境卡牌数据库。本地 SQLite 卡牌库 + 数据管线 + 更新机制，为下游规则引擎、AI 对战模拟和胜率统计提供数据基建。
 
-- **权威设计**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.38）。
+- **权威设计**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.39）。
 - **当前进展**：`STATUS.md`，开始工作前先读；完整旧历史在 `docs/archive/STATUS-2026-10-25.md`。
 - **数据源**：`docs/data-sources.md`。
 - **任务规范**：`tasks/README.md`。
