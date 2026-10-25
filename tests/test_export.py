@@ -269,6 +269,29 @@ def test_export_no_parquet(db_path, tmp_path):
             assert (out / name).is_file(), f"缺 {name}"
 
 
+def test_export_no_parquet_removes_previous_parquet(db_path, tmp_path):
+    out = tmp_path / "dist"
+    export_all(db_path, out, parquet=True)
+    manifest = export_all(db_path, out, parquet=False)
+
+    assert not (out / "cards.parquet").exists()
+    assert "cards.parquet" not in (out / "checksums.sha256").read_text(encoding="utf-8")
+    assert manifest["counts"]["cards_parquet"] is None
+
+
+def test_export_rejects_parquet_row_count_mismatch(db_path, tmp_path):
+    out = tmp_path / "dist"
+    export_all(db_path, out)
+    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
+
+    with patch("ptcgdb.export.exporter._write_cards_parquet", return_value=1):
+        with pytest.raises(RuntimeError, match="行数不符"):
+            export_all(db_path, out)
+
+    after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir()}
+    assert after == before
+
+
 # ---- WAL checkpoint + integrity_check ----
 
 

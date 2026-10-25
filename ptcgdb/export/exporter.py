@@ -260,6 +260,8 @@ def _export_all_to_dir(db_path: Path, out_dir: Path, *, parquet: bool = True) ->
     parquet_rows = (
         _write_cards_parquet(db_path, out_dir / "cards.parquet") if parquet else None
     )
+    if parquet_rows is not None and parquet_rows != len(cards):
+        raise RuntimeError(f"cards.parquet 行数不符: {parquet_rows} != {len(cards)}")
 
     built_at = datetime.now(UTC).isoformat()
     schema_version = meta.get("schema_version", "1.0.0")
