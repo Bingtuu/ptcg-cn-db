@@ -34,6 +34,7 @@
 
 ### Added
 
+- task 059 卡牌查询 CLI（2026-10-25，PRD v1.37 FR-4，无 schema 迁移）：`search` 支持卡名/标记/种类/系列/规则框/太晶与分页筛选，输出 `{meta, data}` JSON；`get` 按 card_id 点查；两者与 SDK 共用查询路径，get 未命中退 1、缺库退 2。
 - 09-16 发售日临场增量收编（2026-09-19，PRD v1.34，无 schema 迁移）：`monitor l0` 实跑——SVP 442→507（+65）/ 30thP 27→31（+4）/ 30thDC「30周年庆典 豪华礼盒」新系列 45 张直接 activate / 30thC 169→176（+7，首跑被新罕贵度 `RGB` 拦截 → `config/vocabularies/rarities.yml` 补 RGB：30thC-B/G/R 三张梦幻 → validate 全过 → activate）；**active 12,795→12,908，sets 132→133**；L0 钩子自动 remap resolved=561 / partial→full 升级 292 / tag-effects changed=583 unknown=0（30thC 阻断钩子，事后手工 `tag-effects --set 30thC` changed=176 unknown=0 unknown_sent=3 与 task 054 预演一致）
 - mik 赛事收集起点底线守卫（2026-09-19，PRD v1.34 FR-9.8 续，无 schema 迁移）：`normalize/envs.py::cn_collection_start()`（赛区旋转日历 cn 段最早 effective_from=2026-07-16，取最早段未来旋转不漂移）+ `monitor/tourneys.py` plan 行回显底线 + mik `ingest-tourneys` handler 自动带 `date_from=floor`——task 051 积压 raw 曾被无底线 ingest 吃回 47 场退赛前赛事（已拍板清退还原），此后结构性拦截
 - task 052 mik 瑞士轮现场采集收官（2026-09-19 拍板，无 schema 迁移）：09-19 `scrape swiss` 命中 13 场 ongoing（tournamentId 3580~3594），888 行 list 项穷举确认字段仅 {rank, points, name, pinCode}（无对阵/卡组/W-L-T）→ **拍板仅 raw 留存不入库**（CN pairings 供给确认不存在）；任务档归档 `tasks/done/052`
@@ -45,6 +46,7 @@
 
 ### Fixed
 
+- task 059 验收可信度（2026-10-25，PRD v1.37 §10）：A1 增加系列对账并优先使用全库 raw 全局去重口径；A1/A4/A8 缺 standard/open 必需快照不再假绿；A3 owner 校验改读 `owners.yml`；A7 验收十四件套并隔离导出异常，A8 备用导出持续失败也只记 FAIL，不中断整份报告。
 - **task 058 FR-9.8 ingest 窗口守卫缺陷修复（2026-10-17，PRD v1.36，无 schema 迁移）**：缺 list/索引条目（元数据不可得）的 standings raw 拒收入库——Limitless list 索引页经 24h TTL 刷新收窄后旧赛事 ID 永久消失，`ingest_limitless.py` 原「最小入库不猜」分支使 day=None 绕过窗口守卫，task 032 已拍板清除的 3 场窗口外 SEASAC 杯冒烟残留在回补后被全量 ingest 吃回；修复后 API 通道计 `skipped_no_list_entry`、site 通道对称计 `skipped_no_index_entry`（缺索引条目时 date 恒不可得，同型漏洞一并修复；jp/mik 通道元数据自含于内容不可变 raw，排查确认无同型漏洞），warning 留痕、不写库不删既有行；CLI 两命令回显 + `monitor tourneys` ingest 摘要同步计数；断言「最小入库」的既有用例 deliberate 改拒收语义；dist 重导 counts 对平（data_version 维持 v20261003.1——ingest/清退不递增数据版本，仅 L0/legal-apply/recaliber 递增，同 task 051 先例）
 
 ### Removed

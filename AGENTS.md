@@ -2,12 +2,13 @@
 
 简中 PTCG 标准环境卡牌数据库。本地 SQLite 卡牌库 + 数据管线 + 更新机制，为下游（规则引擎 / AI 对战模拟 / 胜率统计）提供数据基建。
 
-**权威文档**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.36）——一切设计以它为准。
+**权威文档**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.37）——一切设计以它为准。
 **进展记录**：`STATUS.md`——当前阶段、里程碑、决策日志，开始工作前先读。
 **数据源**：`docs/data-sources.md`——全部数据源的获取方式与端点约定（mik.moe 主源 / 官网赛制页 / TCGdex / ptcd / PokéAPI / pokemon-card.com 抽样核对）。
 
 ## 当前状态
 
+**task 059 ✅（2026-10-25，PRD v1.37，user_version=13 无迁移）**：新增 `search`/`get` 卡牌查询 CLI（SDK 同路径、JSON 输出）；A1 增加 raw 全局去重系列对账，A1/A4/A8 缺必需快照改 FAIL；A3 owner 校验接开放词表；A7 十四件套与导出异常隔离，A8 备用导出异常不中断报告。真实验收 A1–A8 全 PASS；1190 测试全绿 + ruff 全净；任务档 `tasks/done/059`。
 **✅ 回补采集收官 + task 058 幽灵清退（2026-10-17，PRD v1.36，user_version=13 无迁移）**：mik 赛事全量历史回补抓完——raw 全量 55/55 系列，累计新 raw ≈205,427 件（164,223+41,204；退赛前系列仅落 raw 不入库）。入账核对发现 3 场幽灵赛事吃回（task 032 拍板清除的窗口外 SEASAC 杯残留，list 索引页 TTL 收窄后旧 ID 消失 → 「最小入库不猜」分支 day=None 绕过窗口守卫）→ **task 058：PRD v1.36 FR-9.8 改缺 list/索引条目拒收入库**（`skipped_no_list_entry` / site 通道对称 `skipped_no_index_entry`；jp/mik 排查无同型）+ 清退 3 场（appearances −282 / pairings −705 / decks −273 全 orphan / deck_cards −6,873 / misses −1,157）+ 复跑零漂移；终态 **tournaments 874（mik 326 / limitless 393 / site 49 / jp 106）/ decks 65,025 / appearances 81,520 / pairings 140,965**；1178 测试全绿 + ruff 全净；dist 重导 counts 对平（data_version 维持 v20261003.1）；任务档 `tasks/done/058`；详见 STATUS.md。
 **task 057 ✅（2026-10-02 开工，2026-10-03 收官，PRD v1.35，user_version=13 无迁移）——Limitless 在线公开赛收编（online_open，下游 matchup n≥30 门槛达成）**：task 053 TopDeck 供给侧实证关闭（decklist <1%）→ task 056 调研三路证伪后拍板唯一可行路径 → FR-9.1a 定向放宽收编 Limitless 平台自办在线公开赛（pre-Mega 段 2025-04-11~2025-08-31 / ≥64 人 / 非休闲场）；分类规则配置化 `config/api_tournament_rules.yml`（官方四档 + online_open catch-all：min_players=64 / date_range / reject casual）+ `scrapers/api_rules.py` fail-fast loader + `classify_tournament` 改接配置（删硬编码 TIER_PATTERNS）+ ingest 分类拒收 `skipped_not_accepted` + tier 词表 online_open coef=0.5；采集 accepted=392（online_open 388）/ rejected=694 / question=0；入库 **tournaments 283→671 / decks→51,294 / appearances→60,905 / deck_cards→1,480,632 / pairings 479→140,965**；online_open 卡组 full 39,675/partial 1,003（97.5%）；misses 未解 1,271→10,963（54 名全 no_cn_printing，Brave Bangle 等 2024 年卡疑似桥缺口留痕待核查）；零漂移核验通过（mik 123 / site 49 / jp 106 / 官方 limitless 5 场不变）；**matchup n_games_used=99,797、头部格 Gardevoir×RBO n=1,559**；recaliber + dist 重导 v20261003.1 counts 对平；1139 测试全绿（1118+21）+ ruff 全净；报告 `reports/task057-online-open-20261003.md`；任务档 `tasks/done/057`；详见 STATUS.md。
 **2026-09-19 发售日临场增量 + 赛制切换全链落地 ✅（PRD v1.34，user_version=13 无迁移）**：①L0 +121 张（30thDC 新系列 45 + SVP +65 + 30thC +7 [新罕贵度 RGB 词表补入] + 30thP +4 → **active 12,795→12,908**，sets 132→133；钩子 remap resolved=561 / 升级 292 / tag unknown=0）；②赛制页 09-16 版提案核对后 legal-apply：standard **G/H/I/J** 不退标纯新增 / open 商品编号条款拍板 = allowed_marks +J（偏差 MP-001 留痕），legal_at 六点抽查全中、历史回放不漂移；③mik 下架 8 条字段全等双重列示拍板置 **deprecated**（不删行）→ validate 排除 deprecated 修复（TDD）；④monitor tourneys 误收 47 场退赛前赛事拍板清退还原（283 赛/10,760 卡组对平）+ **收集起点底线守卫**（`cn_collection_start()`=2026-07-16，mik ingest 自动 date_from）；⑤**task 052 收官**：swiss ongoing 实测 888 行字段仅 {rank,points,name,pinCode} → 拍板仅 raw 留存不入库；1120 测试全绿（1118+2）+ ruff 全净；dist 重导 v20260919.3 对平；详见 STATUS.md。
@@ -50,6 +51,8 @@ PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe -X utf8 -m pytest -q
 
 # 数据管线（.venv/Scripts/ptcgdb.exe）
 ptcgdb init-db                                  # 建库/迁移
+ptcgdb search [--name X] [--mark G,H]           # 卡牌检索（JSON）
+ptcgdb get <card_id>                            # 卡牌点查（未命中退 1 / 缺库退 2）
 ptcgdb scrape sets | scrape cards [--set X]     # 采集 mik.moe → raw（限速 2s/请求；索引页 products/系列详情 24h TTL 自动刷新，task 055）
 ptcgdb ingest --set <setId>                     # raw → draft 入库
 ptcgdb validate [--set X] / activate            # FR-2.3 校验（含 text_raw 逐字保真）→ active

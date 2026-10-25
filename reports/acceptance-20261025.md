@@ -1,0 +1,43 @@
+# 验收报告（2026-10-25）
+
+- 数据库：`C:\Vibe Project\Pokearena\data\ptcg-cn.db`（卡片 13065 行，验收动作只读；A5/A6 用副本）
+- 结果：**全部 PASS**
+- 生成时间：2026-10-25T07:33:36.560773+00:00
+
+## A1 覆盖完整：系列对账 + 白名单/能量分赛制逐卡核对 — PASS
+
+- standard：37/37 项通过
+- open：43/43 项通过
+- ✓ 系列对账 137 个系列全部通过
+
+## A4 合法性引擎：卡池构建 + 妖能量二分 — PASS
+
+- 构造用例 ≥12 组：以 pytest 套件全绿为证据（tests/test_legal_engine.py）
+- standard：legal_at(2026-10-25) 构建成功，合法卡 5850 张
+- open：legal_at(2026-10-25) 构建成功，合法卡 13028 张
+- 妖能量二分正确：标准池 0 张 / 开放池 5 张
+
+## A5 更新机制：提案 → apply → 新快照生效 + 冻结守卫 — PASS
+
+- ✓ 新快照生效（effective_to=None）
+- ✓ 旧快照闭合且可查询
+- ✓ 冻结守卫拒绝历史快照 override 写入
+
+## A6 回滚：脏合入 → 一键回滚 → 数据无损 — PASS
+
+- 原 13065 行 → 脏合入后 13060 行 → 回滚（ptcg-cn-v20261025.1.db）后 13065 行
+- ✓ 数据无损复原
+
+## A7 导出契约：十四件套 + checksums + manifest 双轨版本 — PASS
+
+- ✓ 14 件产物齐全: cards.jsonl, cards.parquet, checksums.sha256, deck_appearances.jsonl, deck_cards.jsonl, decks.jsonl, legality.json, manifest.json, pairings.jsonl, ptcg-cn.db, relations.jsonl, schema.md, sets.jsonl, tournaments.jsonl
+- ✓ checksums.sha256 逐一校验通过
+- ✓ manifest 双轨版本: data=v20261025.1 schema=1.0.0
+
+## A8 SDK 契约：open_db 与 open_jsonl 双后端一致 — PASS
+
+- ✓ schema_version 一致可读: 1.0.0
+- ✓ get_card 5 张逐一一致
+- ✓ legal_at(standard) 卡池一致（5850 张）
+- ✓ legal_at(open) 卡池一致（13028 张）
+- ✓ effective_text 一致

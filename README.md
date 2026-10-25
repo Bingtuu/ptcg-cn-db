@@ -7,8 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Status](https://img.shields.io/badge/Status-133系列/12,908张-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.36-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-1178%20passed-success.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.37-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-1190%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -99,6 +99,13 @@ cards:
 EOF
 ptcgdb deck-check --file deck.yml                  # 合法退 0 / 有违规退 1 / 输入错误退 2
 ptcgdb deck-check --file deck.yml --format open    # CLI 选项覆盖文件内的 format/date
+```
+
+### 卡牌检索
+
+```bash
+ptcgdb search --name 喵喵 --mark G,H,I,J --limit 20  # 输出 {meta, data} JSON
+ptcgdb get CSV1C-009                               # 输出单卡 JSON；未命中退 1
 ```
 
 ### 统计与查询

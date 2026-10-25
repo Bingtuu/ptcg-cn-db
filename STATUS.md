@@ -1,10 +1,11 @@
 # STATUS.md — 开发进展
 
 > 每次工作会话开始时先读本文件；完成阶段性工作后更新。
-> 最近更新：2026-10-17
+> 最近更新：2026-10-25
 
 ## 当前状态
 
+**task 059 ✅（2026-10-25，PRD v1.37，user_version=13 无迁移）——查询 CLI 与验收可信度**：新增 `search`/`get` 卡牌查询 CLI（SDK 同路径、JSON 输出、get 未命中退 1 / 缺库退 2）；A1 增加系列对账并优先采用全库 raw 全局去重口径，A1/A4/A8 缺 standard/open 必需快照改 FAIL；A3 owner 校验改读 `owners.yml`；A7 覆盖十四件套且导出异常不阻断 A8，A8 备用导出异常同样隔离。真实库 search/get 冒烟通过，A1–A8 全 PASS；1190 测试全绿 + ruff 全净；任务档 `tasks/done/059`，验收报告 `reports/acceptance-20261025.md`。
 **✅ 回补采集收官 + task 058 幽灵清退（2026-10-17，PRD v1.36，user_version=13 无迁移）**：mik 赛事全量历史回补抓完——**raw 全量 55/55 系列**，收官轮 mik fetched=41,204 / skipped=236,283，战役累计新 raw ≈**205,427 件**（164,223+41,204）；库内数据（≥底线 2026-07-16）此前两轮 ingest 已收齐。收官入账核对发现 **3 场幽灵赛事吃回**（task 032 拍板清除的窗口外 SEASAC 杯残留，raw append-only 留存、list 索引页 TTL 收窄后旧 ID 消失 → `ingest_limitless.py`「最小入库不猜」分支 day=None 绕过窗口守卫）→ **task 058：PRD v1.36 拍板缺 list/索引条目拒收入库**（API 通道 `skipped_no_list_entry`、site 通道同型漏洞对称修复 `skipped_no_index_entry`；jp/mik 通道元数据自含于内容不可变 raw，排查无同型）+ 清退 3 场（tournaments −3 / appearances −282 / pairings −705 / decks −273 全 orphan 与 task 032 先例吻合 / deck_cards −6,873 / misses −1,157）+ `ingest-limitless` 真实库复跑 skipped_no_list_entry=3 既有 393 场零漂移；1178 测试全绿 + ruff 全净；dist 重导 counts 对平（data_version 维持 v20261003.1，ingest/清退不递增，同 task 051 先例）；任务档 `tasks/done/058`。终态：**tournaments 874（mik 326 / limitless 393 / site 49 / jp 106）/ decks 65,025 / appearances 81,520 / deck_cards 1,888,074 / pairings 140,965 / misses 未解 12,124**。
 **第二轮 code review 修复收官 ✅（2026-10-05，PRD v1.35 不变，user_version=13 无迁移）**：增量重点 + 逻辑深审（用户拍板），11 个 subagent（逻辑专项 5：统计公式复算/合法性语义/ingest 映射链/幂等与守卫/分类配置化 + 深审 3：mapping/scrapers/stats + 标准审复查 3）全程只读，发现 **P0×3 / P1×14 / P2×30**；P0+P1 共 17 项由 3 个 coder 批次 TDD 修复完毕（P2 入技术债，P1-14 schema major 升版挂起待拍板）：**P0-1 `monitor tourneys` handler lambda 晚期绑定闭包**（cli.py，task 031 引入——mik/limitless 抓取静默错调 LimitlessSite runner，08-09 起 mik 从未真实重抓，「源侧滞后」结论系误判）+ **P0-2 jsonldb `v_tournament_weights` 缺 migration 012 人数中性化**（JSONL 后端 JP WUR 归零，双后端契约分叉）+ **P0-3 ◇ prism_star 误改全局 ≤1 回退**（对齐 PRD FR-3.4 同名 ≤1、不同名共存，用户拍板）；P1 含 mirror=exclude 性能重写（周窗 265s→20s 语义等价实测零差异）、A 层除零崩溃守卫、EN 映射链跨组 ambiguous 不猜守卫、NULL 行合并 count 保真 60 张、site ingest 分类拒收对称、L0 钩子失败隔离、runner 异常兜底×3、limitless_site 解析零结果 fail-fast、WAL checkpoint 失败中止等。**1178 测试全绿（1139+39）+ ruff 全净**；tracker `reports/code-review-tracker-20261005.md`（含逐条修复记录）。
 **task 057 ✅（2026-10-02 开工，2026-10-03 收官，PRD v1.35，user_version=13 无迁移）——Limitless 在线公开赛收编（online_open，pre-Mega 段）**：分类规则配置化 `config/api_tournament_rules.yml`（官方四档 + online_open catch-all：min_players=64 / date_range=2025-04-11~2025-08-31 / reject casual）+ `scrapers/api_rules.py` fail-fast loader + `classify_tournament` 改接配置（删硬编码 TIER_PATTERNS）+ ingest 侧分类拒收 `skipped_not_accepted` + tier 词表 online_open coef=0.5；回溯采集 accepted=392（online_open 388）/ rejected=694 / question=0；入库 **tournaments 283→671 / decks→51,294 / appearances→60,905 / deck_cards→1,480,632 / pairings 479→140,965**（294 倍）；online_open 卡组 full 39,675/partial 1,003（97.5%）；misses 未解 1,271→10,963（54 名全 no_cn_printing，Brave Bangle 等 2024 年卡疑似桥缺口留痕待核查）；零漂移核验通过（mik 123 / site 49 / jp 106 / 官方 limitless 5 场不变）；**下游门槛达成**：matchup n_games_used=99,797、头部格 Gardevoir×RBO n=1,559；recaliber hash→3229fe16c2e2、dist 重导 v20261003.1 counts 对平；1139 测试全绿（1118+21）+ ruff 全净；报告 `reports/task057-online-open-20261003.md`；任务档 `tasks/done/057`。
@@ -18,7 +19,7 @@
 
 | 内容 | 位置 |
 |---|---|
-| 产品需求与技术方案（权威设计） | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.36） |
+| 产品需求与技术方案（权威设计） | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.37） |
 | 工程约定 | `AGENTS.md` |
 | 任务队列（开发标准循环） | `tasks/`（规范见 `tasks/README.md`，归档在 `tasks/done/`） |
 | **数据源与接口文档** | `docs/data-sources.md`（全部数据源获取方式：mik.moe 主源 API / 官网赛制页 / TCGdex / ptcd / PokéAPI / pokemon-card.com 抽样核对） |
