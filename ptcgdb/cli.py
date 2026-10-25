@@ -1,5 +1,6 @@
 """ptcgdb 命令行入口（typer）。"""
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -41,6 +42,7 @@ from ptcgdb.scrapers.pokecardlab_runner import PokecardlabScraper, PokecardlabSh
 from ptcgdb.scrapers.runner import RunResult
 from ptcgdb.scrapers.swiss_runner import SwissPollRunner
 from ptcgdb.scrapers.tournament_runner import TournamentScrapeRunner
+from ptcgdb.sdk import open_db
 from ptcgdb.stats.cli import init_db_with_caliber, query_cmd, stats_app
 from ptcgdb.validate import run_validations, write_report
 
@@ -160,17 +162,54 @@ def activate(
 
 
 @app.command()
-def search() -> None:
-    """检索卡牌（未实现）。"""
-    typer.echo("not implemented", err=True)
-    raise typer.Exit(code=1)
+def search(
+    name: str | None = typer.Option(None, "--name", help="卡名/物种子串"),
+    mark: str | None = typer.Option(None, "--mark", help="赛制标记，逗号分隔"),
+    card_type: str | None = typer.Option(None, "--card-type", help="卡牌种类"),
+    set_ids: str | None = typer.Option(None, "--set", help="系列 ID，逗号分隔"),
+    has_rule_box: bool | None = typer.Option(
+        None, "--has-rule-box/--no-has-rule-box", help="是否有规则框"
+    ),
+    is_tera: bool | None = typer.Option(None, "--is-tera/--no-is-tera", help="是否太晶"),
+    limit: int = typer.Option(100, "--limit", help="本页条数"),
+    offset: int = typer.Option(0, "--offset", help="分页偏移"),
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    """检索卡牌，输出与 SDK 一致的 JSON。"""
+    if not db_path.is_file():
+        raise _db_not_found_exit(db_path)
+    marks = tuple(x.strip() for x in mark.split(",") if x.strip()) if mark else None
+    sets = tuple(x.strip() for x in set_ids.split(",") if x.strip()) if set_ids else None
+    try:
+        with open_db(db_path) as db:
+            cards = db.search_cards(
+                name=name, marks=marks, card_type=card_type,
+                has_rule_box=has_rule_box, is_tera=is_tera,
+                set_ids=sets, limit=limit, offset=offset,
+            )
+    except OperationalError:
+        raise _db_not_found_exit(db_path) from None
+    payload = {
+        "meta": {"limit": limit, "offset": offset, "returned": len(cards)},
+        "data": [c.model_dump(mode="json") for c in cards],
+    }
+    typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 @app.command()
-def get() -> None:
-    """按 card_id 点查（未实现）。"""
-    typer.echo("not implemented", err=True)
-    raise typer.Exit(code=1)
+def get(card_id: str, db_path: Path = DEFAULT_DB_PATH) -> None:
+    """按 card_id 点查，输出单个卡牌 JSON。"""
+    if not db_path.is_file():
+        raise _db_not_found_exit(db_path)
+    try:
+        with open_db(db_path) as db:
+            card = db.get_card(card_id)
+    except OperationalError:
+        raise _db_not_found_exit(db_path) from None
+    if card is None:
+        typer.echo(f"未找到卡牌: {card_id}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(card.model_dump(mode="json"), ensure_ascii=False, indent=2))
 
 
 @app.command("legal-apply")
