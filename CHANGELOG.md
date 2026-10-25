@@ -59,6 +59,7 @@
 
 ### Fixed
 
+- task 062 迁移审查修复：卡组代表按最早日期、tournament_id、迁移后稳定 appearance_id 决胜；全部迁移 miss 重新经现有映射链验证并同步卡行，resolved 不直接沿用旧值，唯一有效旧时间保留，否则记本次迁移时间。
 - task 062 raw 驱动旧 EN 实体迁移：migration 014 结构 SQL 与数据合并在同一事务完成，按 raw 构造 old→new、重挂出战/卡表/misses 并写旧 ID 别名；缺 raw、身份/内容冲突或无法确定重建均整体回滚。`init-db --raw-dir` 输出迁移计数；真实库与 dist 尚未执行迁移。
 - task 061 实库自愈与外部事实核销（2026-10-25，无 schema 迁移）：本地 raw 两次重放 ingest-jp，3 套 59/58/59 卡组全部恢复 60，JP 229/229 合计 13,740 张、full 157 不降级、misses 240 与其他表行数不漂移；Brave Bangle 核定未来简中“英勇手镯”2026-11-06 发售，当前不提前映射；CBB 分母证据不足保持只显分子；isQual 澄清为独立预选赛/资格赛，不含大赛内部预赛阶段。报告 `reports/task061-data-healing-20261025.md`。
 - task 060 迁移与导出可靠性、schema 2.0.0（2026-10-25，PRD v1.38）：补记 effect_tags list→dict 的破坏性语义升级，旧 list 输入仍由 before-validator 兼容；每个迁移 SQL 与 `PRAGMA user_version` 同事务，异常回滚，既有库 meta 幂等升级；dist 在同级临时目录完整构建后原子替换，故障时旧件逐字节保留；parquet 行数必须等于 cards，连续 parquet→no-parquet 不残留旧文件或 checksum。真实库 user_version=13 不变，DB/manifest/legality/双后端均为 2.0.0。

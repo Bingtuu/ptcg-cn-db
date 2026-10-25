@@ -82,6 +82,28 @@ def _seed_v13(db_path, decks, appearances, cards, misses=(), source="limitless")
         conn.close()
 
 
+def _seed_cn_slowpoke(db_path, card_id="CN-SLOWPOKE"):
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO sets (set_id, name_zh, era, release_date, regulation_mark, "
+            "source, fetched_at) VALUES ('TEST', '测试', 'SV', '2026-01-01', 'G', "
+            "'test', '2026-01-01')"
+        )
+        conn.execute(
+            "INSERT INTO cards (card_id, set_id, number, number_display, name_full, "
+            "card_type, regulation_mark, rarity, has_rule_box, is_tera, prize_cards, "
+            "deck_limit, is_ace_spec, is_basic_energy, text_raw, name_en, source, "
+            "fetched_at, status) VALUES (?, 'TEST', '1', '1', '呆呆兽', "
+            "'pokemon', 'G', 'U', 0, 0, 1, 4, 0, 0, '', 'Slowpoke', 'test', "
+            "'2026-01-01', 'active')",
+            (card_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _assert_rolled_back_to_v13(db_path, old_ids):
     conn = sqlite3.connect(db_path)
     try:
@@ -124,6 +146,7 @@ def test_en_fan_in_migrates_all_references_aliases_and_earliest_metadata(tmp_pat
             (old_late, "CN-LATE", "2026-01-03 00:00:00"),
         ],
     )
+    _seed_cn_slowpoke(db_path)
     summary = IdentityMigrationSummary()
 
     assert apply_migrations(db_path, raw_dir=raw_dir, summary=summary) == 14
@@ -147,14 +170,17 @@ def test_en_fan_in_migrates_all_references_aliases_and_earliest_metadata(tmp_pat
         )[1]
         assert appearances == [(early_id, "alice", 1), (late_id, "bob", 2)]
         assert conn.execute(
-            "SELECT count, raw_name FROM deck_cards"
-        ).fetchall() == [(4, "Slowpoke")]
+            "SELECT card_id, count, raw_name FROM deck_cards"
+        ).fetchall() == [("CN-SLOWPOKE", 4, "Slowpoke")]
         assert set(conn.execute("SELECT old_deck_id, new_deck_id FROM deck_id_aliases")) == {
             (old_early, new_id), (old_late, new_id)
         }
-        assert conn.execute(
+        resolved_id, resolved_at = conn.execute(
             "SELECT resolved_card_id, resolved_at FROM deck_card_misses"
-        ).fetchone() == (None, None)
+        ).fetchone()
+        assert resolved_id == "CN-SLOWPOKE"
+        assert resolved_at is not None
+        assert resolved_at not in {"2026-01-02 00:00:00", "2026-01-03 00:00:00"}
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         assert summary.old_decks == 2
         assert summary.canonical_decks == 1
@@ -425,5 +451,87 @@ def test_raw_rebuild_maps_cards_and_aggregates_null_rows_without_adding_counts(t
         assert conn.execute(
             "SELECT COUNT(*) FROM deck_card_misses WHERE deck_id = ?", (new_id,)
         ).fetchone()[0] == 2
+        assert conn.execute(
+            "SELECT DISTINCT resolved_card_id, resolved_at FROM deck_card_misses"
+        ).fetchall() == [(None, None)]
+    finally:
+        conn.close()
+
+
+def test_same_day_metadata_uses_stable_appearance_id_not_legacy_order(tmp_path):
+    db_path = tmp_path / "same-day-metadata.db"
+    raw_dir = tmp_path / "raw"
+    forward = {"pokemon": [{"name": "Slowpoke", "count": 4}]}
+    reverse = {"trainer": [], "pokemon": [{"count": 4, "name": "Slowpoke"}]}
+    old_alice = _legacy_id("limitless", forward)
+    old_bob = _legacy_id("limitless", reverse)
+    _write_api_raw(raw_dir, "early", [
+        _entry("alice", 1, forward, "alice"),
+        _entry("bob", 2, reverse, "bob"),
+    ])
+    _seed_v13(
+        db_path,
+        [(old_alice, "alice", "Alice"), (old_bob, "bob", "Bob")],
+        [
+            (old_alice, "2026-01-02", 1, "alice"),
+            (old_bob, "2026-01-02", 2, "bob"),
+        ],
+        [(old_alice, 4, "Slowpoke"), (old_bob, 4, "Slowpoke")],
+    )
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE deck_appearances SET tournament_id='limitless:early' "
+            "WHERE deck_id=?", (old_bob,)
+        )
+        conn.execute("DELETE FROM tournaments WHERE tournament_id='limitless:late'")
+        conn.commit()
+    finally:
+        conn.close()
+    alice_id = appearance_identity(
+        "limitless", "limitless:early", {"tournament": "early", "player": "alice"}
+    )[1]
+    bob_id = appearance_identity(
+        "limitless", "limitless:early", {"tournament": "early", "player": "bob"}
+    )[1]
+    assert bob_id < alice_id
+    assert old_bob > old_alice
+
+    assert apply_migrations(db_path, raw_dir=raw_dir) == 14
+
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute(
+            "SELECT archetype_id, archetype_name FROM decks"
+        ).fetchone() == ("bob", "Bob")
+    finally:
+        conn.close()
+
+
+def test_valid_resolved_miss_is_revalidated_and_remapped_without_losing_time(tmp_path):
+    db_path = tmp_path / "valid-resolved.db"
+    raw_dir = tmp_path / "raw"
+    decklist = {"pokemon": [{"name": "Slowpoke", "set": "SVI", "number": "057", "count": 4}]}
+    old_id = _legacy_id("limitless", decklist)
+    new_id = deck_content_id("limitless", decklist)
+    resolved_at = "2026-01-02 03:04:05"
+    _write_api_raw(raw_dir, "one", [_entry("alice", 1, decklist)])
+    _seed_v13(
+        db_path,
+        [(old_id, None, None)], [], [(old_id, 4, "Slowpoke")],
+        [(old_id, "CN-SLOWPOKE", resolved_at)],
+    )
+    _seed_cn_slowpoke(db_path)
+
+    assert apply_migrations(db_path, raw_dir=raw_dir) == 14
+
+    conn = sqlite3.connect(db_path)
+    try:
+        assert conn.execute(
+            "SELECT card_id, count FROM deck_cards WHERE deck_id=?", (new_id,)
+        ).fetchall() == [("CN-SLOWPOKE", 4)]
+        assert conn.execute(
+            "SELECT resolved_card_id, resolved_at FROM deck_card_misses"
+        ).fetchone() == ("CN-SLOWPOKE", resolved_at)
     finally:
         conn.close()

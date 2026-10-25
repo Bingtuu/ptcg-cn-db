@@ -331,7 +331,8 @@ def _migrate_metadata(conn: sqlite3.Connection) -> None:
                    ) AS position
             FROM _identity_deck_map m
             JOIN decks d ON d.deck_id = m.old_deck_id
-            LEFT JOIN deck_appearances a ON a.deck_id = m.old_deck_id
+            LEFT JOIN _identity_appearance_sources s ON s.old_deck_id = m.old_deck_id
+            LEFT JOIN _identity_appearances a ON a.appearance_id = s.appearance_id
             LEFT JOIN tournaments t ON t.tournament_id = a.tournament_id
         )
         SELECT new_deck_id, archetype_id, archetype_name, deck_code,
@@ -373,7 +374,7 @@ def _migrate_metadata(conn: sqlite3.Connection) -> None:
 
 def _appearance_tuples(
     conn: sqlite3.Connection, raw: RawIndex
-) -> list[tuple[Any, ...]]:
+) -> tuple[list[tuple[Any, ...]], list[tuple[str, str]]]:
     rows = conn.execute(
         """
         SELECT a.appearance_id, a.appearance_key, m.old_deck_id, m.new_deck_id,
@@ -385,9 +386,10 @@ def _appearance_tuples(
     ).fetchall()
     merged: dict[str, tuple[Any, ...]] = {}
     identities: dict[str, str] = {}
+    sources: list[tuple[str, str]] = []
     for row in rows:
         (
-            _old_appearance_id, _old_key, _old_deck_id, new_deck_id,
+            _old_appearance_id, _old_key, old_deck_id, new_deck_id,
             tournament_id, rank, points, player_ref, wins, losses, ties,
             source, fetched_at,
         ) = row
@@ -415,6 +417,7 @@ def _appearance_tuples(
                 f"appearance_id digest 冲突: {candidate.appearance_id}"
             )
         identities[candidate.appearance_id] = candidate.appearance_key
+        sources.append((candidate.appearance_id, old_deck_id))
         output = (
             candidate.appearance_id, candidate.appearance_key, new_deck_id,
             tournament_id, rank, points, player_ref, wins, losses, ties,
@@ -428,11 +431,13 @@ def _appearance_tuples(
                 )
             continue
         merged[candidate.appearance_id] = output
-    return list(merged.values())
+    return list(merged.values()), sources
 
 
 def _replace_appearances(
-    conn: sqlite3.Connection, appearances: list[tuple[Any, ...]]
+    conn: sqlite3.Connection,
+    appearances: list[tuple[Any, ...]],
+    sources: list[tuple[str, str]],
 ) -> None:
     conn.execute(
         """
@@ -448,6 +453,14 @@ def _replace_appearances(
     conn.executemany(
         "INSERT INTO _identity_appearances VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         appearances,
+    )
+    conn.execute(
+        "CREATE TEMP TABLE _identity_appearance_sources ("
+        "appearance_id TEXT NOT NULL, old_deck_id TEXT NOT NULL, "
+        "PRIMARY KEY (appearance_id, old_deck_id))"
+    )
+    conn.executemany(
+        "INSERT OR IGNORE INTO _identity_appearance_sources VALUES (?, ?)", sources
     )
     conn.execute(
         "DELETE FROM deck_appearances WHERE deck_id IN "
@@ -592,6 +605,194 @@ def _rebuild_decks(
     return cards, misses, metadata
 
 
+def _reconcile_misses(
+    conn: sqlite3.Connection, raw_dir: Path, raw: RawIndex
+) -> None:
+    from datetime import UTC, date, datetime
+
+    from ptcgdb.normalize.deck_misses import classify_miss
+    from ptcgdb.normalize.envs import SOURCE_REGION, derive_env, load_calendar
+    from ptcgdb.normalize.ingest_tourneys import _mapping_status, derive_stat_scope
+    from ptcgdb.normalize.limitless import (
+        PtcdSetMissingError,
+        load_ptcd_index,
+        map_decklist_card,
+    )
+
+    misses = conn.execute(
+        "SELECT deck_id, raw_name, raw_set, raw_number FROM deck_card_misses "
+        "WHERE deck_id IN (SELECT new_deck_id FROM _identity_deck_map)"
+    ).fetchall()
+    if not misses:
+        return
+    old_states: dict[tuple[str, str, str, str], set[tuple[str | None, str | None]]] = (
+        defaultdict(set)
+    )
+    for deck_id, name, set_code, number, card_id, resolved_at in conn.execute(
+        "SELECT * FROM _identity_miss_candidates"
+    ):
+        old_states[(deck_id, name, set_code, number)].add((card_id, resolved_at))
+    earliest_dates = dict(
+        conn.execute(
+            """
+            SELECT m.new_deck_id, MIN(t.date)
+            FROM _identity_deck_map m
+            JOIN _identity_appearances a ON a.deck_id = m.new_deck_id
+            JOIN tournaments t ON t.tournament_id = a.tournament_id
+            GROUP BY m.new_deck_id
+            """
+        )
+    )
+    try:
+        _set_map, ptcd_index = load_ptcd_index(raw_dir)
+    except PtcdSetMissingError:
+        ptcd_index = {}
+    cn_name_index, card_index = _load_mapping_indexes(conn)
+    calendar = load_calendar()
+    migration_time = datetime.now(UTC).isoformat()
+    plans: list[tuple[Any, ...]] = []
+    for deck_id, name, set_code, number in misses:
+        day_value = earliest_dates.get(deck_id)
+        day = date.fromisoformat(day_value) if day_value else None
+        segment = derive_env(
+            SOURCE_REGION.get(deck_id.split(":", 1)[0]), day, calendar
+        )
+        env_marks = segment.allowed_marks if segment is not None else None
+        card_id, _rule = map_decklist_card(
+            set_code or None, number or None, name,
+            ptcd_index, cn_name_index, env_marks,
+        )
+        if card_id not in card_index:
+            card_id = None
+        resolved_at = None
+        if card_id is not None:
+            states = old_states.get((deck_id, name, set_code, number), set())
+            resolved_at = migration_time
+            if len(states) == 1:
+                old_card_id, old_resolved_at = next(iter(states))
+                if old_card_id == card_id and old_resolved_at is not None:
+                    resolved_at = old_resolved_at
+        resolved_name_en, miss_kind = classify_miss(
+            set_code or None, number or None, name, ptcd_index
+        )
+        plans.append(
+            (
+                deck_id, name, set_code, number, card_id, resolved_at,
+                resolved_name_en, miss_kind,
+            )
+        )
+
+    conn.execute(
+        """
+        CREATE TEMP TABLE _identity_miss_plan (
+            deck_id TEXT NOT NULL, raw_name TEXT NOT NULL,
+            raw_set TEXT NOT NULL, raw_number TEXT NOT NULL,
+            resolved_card_id TEXT, resolved_at DATETIME,
+            resolved_name_en TEXT, miss_kind TEXT NOT NULL,
+            PRIMARY KEY (deck_id, raw_name, raw_set, raw_number)
+        )
+        """
+    )
+    conn.executemany(
+        "INSERT INTO _identity_miss_plan VALUES (?, ?, ?, ?, ?, ?, ?, ?)", plans
+    )
+    card_rows = conn.execute(
+        """
+        SELECT DISTINCT dc.rowid, dc.deck_id, dc.card_id, dc.count,
+               dc.raw_name, dc.stat_scope
+        FROM deck_cards dc
+        JOIN _identity_miss_plan p ON p.deck_id = dc.deck_id
+        WHERE dc.raw_name = p.raw_name OR dc.card_id = p.resolved_card_id
+        """
+    ).fetchall()
+    by_name: dict[tuple[str, str], list[tuple[Any, ...]]] = defaultdict(list)
+    by_card: dict[tuple[str, str], list[tuple[Any, ...]]] = defaultdict(list)
+    for row in card_rows:
+        by_name[(row[1], row[4])].append(row)
+        if row[2] is not None:
+            by_card[(row[1], row[2])].append(row)
+
+    grouped_plans: dict[tuple[str, str], list[tuple[Any, ...]]] = defaultdict(list)
+    for plan in plans:
+        grouped_plans[(plan[0], plan[1])].append(plan)
+    delete_rowids: set[int] = set()
+    count_adds: dict[int, int] = defaultdict(int)
+    inserts: dict[tuple[str, str, str], tuple[Any, ...]] = {}
+    affected_decks: set[str] = set()
+    for (deck_id, raw_name), group in grouped_plans.items():
+        desired_ids = {plan[4] for plan in group if plan[4] is not None}
+        if len(desired_ids) > 1:
+            raise IdentityMigrationError(
+                f"miss remap 同 deck/raw_name 对应多个 card_id: {deck_id} {raw_name}"
+            )
+        if not desired_ids:
+            continue
+        card_id = next(iter(desired_ids))
+        rows = by_name.get((deck_id, raw_name), [])
+        null_rows = [row for row in rows if row[2] is None]
+        targets = by_card.get((deck_id, card_id), [])
+        if not null_rows and targets:
+            continue
+        if not rows:
+            raise IdentityMigrationError(
+                f"miss 对应 deck_cards 行不存在: {deck_id} {raw_name}"
+            )
+        affected_decks.add(deck_id)
+        moved_count = sum(row[3] for row in null_rows) if null_rows else sum(
+            row[3] for row in rows
+        )
+        rows_to_delete = null_rows or rows
+        delete_rowids.update(row[0] for row in rows_to_delete)
+        if targets:
+            count_adds[targets[0][0]] += moved_count
+        else:
+            card_type, subtype, _mark = card_index[card_id]
+            inserts[(deck_id, card_id, raw_name)] = (
+                deck_id, card_id, moved_count, raw_name,
+                derive_stat_scope(card_type, subtype),
+            )
+    conn.executemany(
+        "DELETE FROM deck_cards WHERE rowid = ?",
+        [(rowid,) for rowid in delete_rowids],
+    )
+    conn.executemany(
+        "UPDATE deck_cards SET count = count + ? WHERE rowid = ?",
+        [(count, rowid) for rowid, count in count_adds.items()],
+    )
+    conn.executemany(
+        "INSERT INTO deck_cards VALUES (?, ?, ?, ?, ?)", list(inserts.values())
+    )
+    conn.executemany(
+        """
+        UPDATE deck_card_misses SET resolved_card_id = ?, resolved_at = ?,
+            resolved_name_en = ?, miss_kind = ?
+        WHERE deck_id = ? AND raw_name = ? AND raw_set = ? AND raw_number = ?
+        """,
+        [
+            (
+                plan[4], plan[5], plan[6], plan[7],
+                plan[0], plan[1], plan[2], plan[3],
+            )
+            for plan in plans
+        ],
+    )
+    metadata = []
+    for deck_id in affected_decks:
+        mapped, total = conn.execute(
+            "SELECT COALESCE(SUM(CASE WHEN card_id IS NOT NULL THEN count ELSE 0 END), 0), "
+            "COALESCE(SUM(count), 0) FROM deck_cards WHERE deck_id = ?",
+            (deck_id,),
+        ).fetchone()
+        raw_deck = raw.deck_by_new[deck_id]
+        denominator = sum(entry[3] for entry in raw_deck.entries) or total
+        ratio = mapped / denominator if denominator else 0.0
+        metadata.append((_mapping_status(ratio), ratio, deck_id))
+    conn.executemany(
+        "UPDATE decks SET mapping_status = ?, mapped_ratio = ? WHERE deck_id = ?",
+        metadata,
+    )
+
+
 def _replace_cards_and_misses(
     conn: sqlite3.Connection,
     raw_dir: Path,
@@ -609,19 +810,22 @@ def _replace_cards_and_misses(
     )
     conn.execute(
         """
+        CREATE TEMP TABLE _identity_miss_candidates AS
+        SELECT m.new_deck_id AS deck_id, d.raw_name, d.raw_set, d.raw_number,
+               d.resolved_card_id, d.resolved_at
+        FROM deck_card_misses d
+        JOIN _identity_deck_map m ON m.old_deck_id = d.deck_id
+        """
+    )
+    conn.execute(
+        """
         CREATE TEMP TABLE _identity_misses AS
         SELECT m.new_deck_id AS deck_id, d.raw_name, d.raw_set, d.raw_number,
                MIN(d.resolved_name_en) AS resolved_name_en, MIN(d.miss_kind) AS miss_kind,
-               CASE WHEN COUNT(DISTINCT IFNULL(d.resolved_card_id, '')) <= 1
-                         AND COUNT(DISTINCT IFNULL(d.resolved_at, '')) <= 1
-                    THEN MIN(d.resolved_card_id) ELSE NULL END AS resolved_card_id,
-               MIN(d.first_seen_at) AS first_seen_at,
-               CASE WHEN COUNT(DISTINCT IFNULL(d.resolved_card_id, '')) <= 1
-                         AND COUNT(DISTINCT IFNULL(d.resolved_at, '')) <= 1
-                    THEN MIN(d.resolved_at) ELSE NULL END AS resolved_at
+               NULL AS resolved_card_id, MIN(d.first_seen_at) AS first_seen_at,
+               NULL AS resolved_at
         FROM deck_card_misses d
         JOIN _identity_deck_map m ON m.old_deck_id = d.deck_id
-        WHERE m.new_deck_id NOT IN (SELECT new_deck_id FROM _identity_rebuild)
         GROUP BY m.new_deck_id, d.raw_name, d.raw_set, d.raw_number
         """
     )
@@ -643,7 +847,7 @@ def _replace_cards_and_misses(
     )
     conn.execute("INSERT INTO deck_card_misses SELECT * FROM _identity_misses")
     conn.executemany(
-        "INSERT INTO deck_card_misses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO deck_card_misses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         rebuilt_misses,
     )
     conn.execute(
@@ -658,6 +862,7 @@ def _replace_cards_and_misses(
         "UPDATE decks SET mapping_status = ?, mapped_ratio = ? WHERE deck_id = ?",
         rebuilt_metadata,
     )
+    _reconcile_misses(conn, raw_dir, raw)
     card_count = conn.execute(
         "SELECT COUNT(*) FROM deck_cards WHERE deck_id IN "
         "(SELECT new_deck_id FROM _identity_deck_map)"
@@ -691,9 +896,9 @@ def migrate_identity_data(
     summary.aliases = summary.old_decks
 
     rebuild_ids = _find_rebuild_decks(conn)
+    appearances, appearance_sources = _appearance_tuples(conn, raw)
+    _replace_appearances(conn, appearances, appearance_sources)
     _migrate_metadata(conn)
-    appearances = _appearance_tuples(conn, raw)
-    _replace_appearances(conn, appearances)
     summary.appearances = len(appearances)
     summary.rebuilt_decks = len(rebuild_ids)
     summary.deck_cards, summary.misses = _replace_cards_and_misses(
