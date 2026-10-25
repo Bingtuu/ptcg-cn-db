@@ -319,10 +319,10 @@ def _run_a7(db_path: Path, work_dir: Path) -> SectionResult:
 def _run_a8(db_path: Path, work_dir: Path, today: date) -> SectionResult:
     sec = SectionResult("A8", "SDK 契约：open_db 与 open_jsonl 双后端一致", True)
     dist = work_dir / "dist"
-    if not (dist / "manifest.json").exists():
-        dist = work_dir / "dist-a8"
-        export_all(db_path, dist)
     try:
+        if not (dist / "manifest.json").exists():
+            dist = work_dir / "dist-a8"
+            export_all(db_path, dist)
         with open_db(db_path) as db, open_jsonl(dist) as js:
             if db.schema_version != js.schema_version:
                 sec.passed = False

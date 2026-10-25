@@ -116,3 +116,14 @@ def test_a7_failure_does_not_block_a8(tmp_path):
     assert not by_aid["A7"].passed
     assert by_aid["A8"].passed, by_aid["A8"].lines
     assert report.path.exists()
+
+
+def test_persistent_export_failure_isolated_to_a7_and_a8(tmp_path):
+    db_path = _build_full_db(tmp_path)
+    with patch("ptcgdb.accept.runner.export_all", side_effect=RuntimeError("boom")):
+        report = run_acceptance(db_path, tmp_path / "reports", tmp_path / "work")
+    by_aid = {s.aid: s for s in report.sections}
+    assert not by_aid["A7"].passed
+    assert not by_aid["A8"].passed
+    assert by_aid["A6"].passed
+    assert report.path.exists()
