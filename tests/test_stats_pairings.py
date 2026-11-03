@@ -103,13 +103,13 @@ def build_pairings_db(db_path: Path) -> Path:
             ("limitless:E2", TL1, 6, "Eve", 1, 5, 0),   # Eve 第二条 → 防御剔除
             ("limitless:F1", TL2, 1, "Frank", 6, 0, 0),
         ]
-        for did, tid, rank, pref, w, lo, t in appearances:
+        for i, (did, tid, rank, pref, w, lo, t) in enumerate(appearances):
             conn.execute(
-                "INSERT INTO deck_appearances (deck_id, tournament_id, rank, points, "
-                "player_ref, record_wins, record_losses, record_ties, source, "
-                "fetched_at) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'limitless', "
-                "'2025-07-01')",
-                (did, tid, rank, pref, w, lo, t),
+                "INSERT INTO deck_appearances (appearance_id, appearance_key, deck_id,"
+                " tournament_id, rank, points, player_ref, record_wins, record_losses,"
+                " record_ties, source, fetched_at)"
+                " VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 'limitless', '2025-07-01')",
+                (f"pair-app-{i}", f"pair-key-{i}", did, tid, rank, pref, w, lo, t),
             )
 
         deck_cards = [
@@ -192,8 +192,8 @@ def test_view_exists_and_resolves_games(db):
 def test_migration_013_idempotent(tmp_path):
     """重复 apply_migrations 无副作用；013 脚本自身重复执行亦幂等（IF NOT EXISTS）。"""
     db = tmp_path / "m.db"
-    assert apply_migrations(db) == 13
-    assert apply_migrations(db) == 13  # user_version 机制跳过
+    assert apply_migrations(db) == 14  # 最新版本（task 062 后 014）
+    assert apply_migrations(db) == 14  # user_version 机制跳过
     sql = (Path(__file__).parent.parent
            / "ptcgdb/migrations/013_pairing_players.sql").read_text(encoding="utf-8")
     conn = sqlite3.connect(db)

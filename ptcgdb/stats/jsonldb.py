@@ -23,10 +23,10 @@ CREATE TABLE decks (
 	deck_code TEXT, mapping_status TEXT, mapped_ratio REAL, source TEXT,
 	fetched_at TEXT);
 CREATE TABLE deck_appearances (
-	deck_id TEXT, tournament_id TEXT, rank INTEGER, points REAL, player_ref TEXT,
+	appearance_id TEXT PRIMARY KEY, deck_id TEXT, tournament_id TEXT,
+	rank INTEGER, points REAL, player_ref TEXT,
 	record_wins INTEGER, record_losses INTEGER, record_ties INTEGER,
-	source TEXT, fetched_at TEXT,
-	PRIMARY KEY (deck_id, tournament_id, rank));
+	source TEXT, fetched_at TEXT, appearance_key TEXT);
 CREATE TABLE deck_cards (
 	deck_id TEXT, card_id TEXT, count INTEGER, raw_name TEXT, stat_scope TEXT,
 	group_key TEXT, PRIMARY KEY (deck_id, card_id, raw_name));
@@ -51,13 +51,23 @@ SELECT tournament_id, name, tier, tier_coef, division, date,
 FROM tournaments;
 
 CREATE VIEW v_stat_deck_cards AS
-SELECT a.tournament_id, a.deck_id, a.rank, a.points,
-       a.record_wins, a.record_losses, a.record_ties,
-       dc.card_id, dc.count, dc.raw_name, dc.stat_scope,
-       cng.group_key,
-       CASE a.source WHEN 'mik_moe' THEN 'cn' WHEN 'limitless' THEN 'intl_aligned'
-                     WHEN 'limitless_site' THEN 'intl_aligned'
-                     WHEN 'pokemon_card_jp' THEN 'jp' ELSE a.source END AS basis
+SELECT
+	a.appearance_id,
+	a.tournament_id,
+	a.deck_id,
+	a.rank,
+	a.points,
+	a.record_wins,
+	a.record_losses,
+	a.record_ties,
+	dc.card_id,
+	dc.count,
+	dc.raw_name,
+	dc.stat_scope,
+	cng.group_key,
+	CASE a.source WHEN 'mik_moe' THEN 'cn' WHEN 'limitless' THEN 'intl_aligned'
+              WHEN 'limitless_site' THEN 'intl_aligned'
+              WHEN 'pokemon_card_jp' THEN 'jp' ELSE a.source END AS basis
 FROM deck_cards dc
 JOIN decks d ON d.deck_id = dc.deck_id AND d.mapping_status = 'full'
 JOIN deck_appearances a ON a.deck_id = dc.deck_id
@@ -105,8 +115,8 @@ _COLUMNS = {
         "mapped_ratio, source, fetched_at"
     ),
     "deck_appearances": (
-        "deck_id, tournament_id, rank, points, player_ref, record_wins, "
-        "record_losses, record_ties, source, fetched_at"
+        "appearance_id, deck_id, tournament_id, rank, points, player_ref, "
+        "record_wins, record_losses, record_ties, source, fetched_at"
     ),
     "deck_cards": "deck_id, card_id, count, raw_name, stat_scope, group_key",
 }
@@ -140,9 +150,16 @@ def build_stats_conn(dist_dir: str | Path) -> sqlite3.Connection:
     for table, cols in _COLUMNS.items():
         names = [c.strip() for c in cols.split(",")]
         placeholders = ", ".join("?" for _ in names)
-        rows = [
-            [r.get(c) for c in names] for r in _read_jsonl(dist_dir / f"{table}.jsonl")
-        ]
+        raw_rows = _read_jsonl(dist_dir / f"{table}.jsonl")
+        if table == "deck_appearances":
+            for r in raw_rows:
+                if not r.get("appearance_id"):
+                    # 旧 dist（schema<3.0.0）缺 appearance_id：按旧复合键合成，
+                    # 保持 (deck_id,tournament_id,rank) 连接语义（可空兼容）
+                    r["appearance_id"] = (
+                        f"legacy|{r['deck_id']}|{r['tournament_id']}|{r['rank']}"
+                    )
+        rows = [[r.get(c) for c in names] for r in raw_rows]
         conn.executemany(
             f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", rows
         )

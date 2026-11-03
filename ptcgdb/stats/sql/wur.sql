@@ -29,7 +29,7 @@ WITH eligible AS (
 	  AND static_weight IS NOT NULL
 ),
 app AS (
-	SELECT a.tournament_id, a.deck_id, a.rank,
+	SELECT a.tournament_id, a.appearance_id, a.deck_id, a.rank,
 	       CASE WHEN a.points IS NOT NULL AND a.points > 0 THEN a.points
 	            ELSE 1.0 / a.rank END AS w_d
 	FROM deck_appearances a
@@ -37,24 +37,24 @@ app AS (
 	WHERE a.tournament_id IN (SELECT tournament_id FROM eligible)
 ),
 norm AS (
-	SELECT tournament_id, deck_id, rank,
+	SELECT tournament_id, appearance_id, deck_id, rank,
 	       w_d / SUM(w_d) OVER (PARTITION BY tournament_id) AS w_share
 	FROM app
 ),
 per_app AS (  -- card 粒度：每组 × 出战条目携带一次（decks）或按张数（copies）
-	SELECT v.group_key, v.tournament_id, v.deck_id, v.rank,
+	SELECT v.group_key, v.tournament_id, v.appearance_id, v.deck_id, MAX(v.rank) AS rank,
 	       (CASE WHEN :usage_basis = 'copies' THEN CAST(SUM(v.count) AS REAL)
 	             ELSE 1.0 END) * MAX(n.w_share) AS carry
 	FROM v_stat_deck_cards v
-	JOIN norm n ON n.tournament_id = v.tournament_id
-	           AND n.deck_id = v.deck_id AND n.rank = v.rank
+	JOIN norm n ON n.appearance_id = v.appearance_id
 	WHERE :granularity = 'card'
 	  AND INSTR(',' || :scope || ',', ',' || v.stat_scope || ',') > 0
 	  AND v.group_key IS NOT NULL
-	GROUP BY v.group_key, v.tournament_id, v.deck_id, v.rank
+	GROUP BY v.group_key, v.tournament_id, v.appearance_id, v.deck_id
 ),
 per_app_arch AS (  -- archetype 粒度：每出战条目一行（一卡组一归类，去重天然成立）
-	SELECT d.archetype_name AS group_key, n.tournament_id, n.deck_id, n.rank,
+	SELECT d.archetype_name AS group_key, n.tournament_id, n.appearance_id, n.deck_id,
+	       n.rank AS rank,
 	       n.w_share AS carry
 	FROM norm n
 	JOIN decks d ON d.deck_id = n.deck_id

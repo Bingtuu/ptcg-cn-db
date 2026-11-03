@@ -111,13 +111,14 @@ def build_arch_db(db_path: Path) -> Path:
             ("mik_moe:D6", T1, 6, None, None, None, None),
             ("pokemon_card_jp:DJP", TJ, 1, None, None, None, None),
         ]
-        for did, tid, rank, pts, w, lo, t in appearances:
+        for i, (did, tid, rank, pts, w, lo, t) in enumerate(appearances):
             src = "pokemon_card_jp" if tid == TJ else "mik_moe"
             conn.execute(
-                "INSERT INTO deck_appearances (deck_id, tournament_id, rank, points, "
-                "player_ref, record_wins, record_losses, record_ties, source, "
-                "fetched_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, '2026-08-01')",
-                (did, tid, rank, pts, w, lo, t, src),
+                "INSERT INTO deck_appearances (appearance_id, appearance_key, deck_id,"
+                " tournament_id, rank, points, player_ref, record_wins, record_losses,"
+                " record_ties, source, fetched_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, '2026-08-01')",
+                (f"gran-app-{i}", f"gran-key-{i}", did, tid, rank, pts, w, lo, t, src),
             )
 
         deck_cards = [
