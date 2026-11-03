@@ -32,6 +32,7 @@ from ptcgdb.orm import (
     Deck,
     DeckAppearance,
     DeckCard,
+    DeckIdAlias,
     Errata,
     LegalitySnapshot,
     Meta,
@@ -230,9 +231,22 @@ def _export_all_to_dir(db_path: Path, out_dir: Path, *, parquet: bool = True) ->
         tournaments = [
             _dump(TournamentSchema, t) for t in session.scalars(select(Tournament)).all()
         ]
-        decks = [_dump(DeckRecord, d) for d in session.scalars(select(Deck)).all()]
+        alias_map: dict[str, list[str]] = {}
+        for old_id, new_id in session.execute(
+            select(DeckIdAlias.old_deck_id, DeckIdAlias.new_deck_id)
+        ):
+            alias_map.setdefault(new_id, []).append(old_id)
+        decks = [
+            DeckRecord.model_validate(
+                {**_row_dict(d), "legacy_ids": sorted(alias_map.get(d.deck_id, []))}
+            ).model_dump(mode="json")
+            for d in session.scalars(select(Deck)).all()
+        ]
+        # appearance_key 为库内审计字段（PRD v1.39）：不进导出契约，显式剔除
         appearances = [
-            _dump(AppearanceRecord, a)
+            AppearanceRecord.model_validate(_row_dict(a)).model_dump(
+                mode="json", exclude={"appearance_key"}
+            )
             for a in session.scalars(select(DeckAppearance)).all()
         ]
         group_map = dict(

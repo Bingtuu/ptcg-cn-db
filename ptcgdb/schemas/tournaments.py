@@ -52,6 +52,7 @@ class DeckRecord(BaseModel):
     mapped_ratio: float | None
     source: str
     fetched_at: datetime | None
+    legacy_ids: list[str] = []  # 退役旧 deck_id 别名（task 062），导出时由 deck_id_aliases 汇聚
 
 
 class AppearanceRecord(BaseModel):

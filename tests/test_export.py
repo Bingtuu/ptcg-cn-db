@@ -88,7 +88,7 @@ def test_all_files_present(dist):
 def test_manifest(dist):
     m = json.loads((dist / "manifest.json").read_text(encoding="utf-8"))
     assert m["version"] == "v20260801.1"
-    assert m["schema_version"] == "2.0.0"
+    assert m["schema_version"] == "3.0.0"
     assert m["built_at"]
     assert len(m["db_sha256"]) == 64
     assert m["counts"]["cards"] == 2
@@ -133,7 +133,7 @@ def test_sets_and_relations_jsonl(dist):
 def test_legality_json_structure(dist):
     data = json.loads((dist / "legality.json").read_text(encoding="utf-8"))
     assert set(data) == {"meta", "data"}
-    assert data["meta"]["schema_version"] == "2.0.0"
+    assert data["meta"]["schema_version"] == "3.0.0"
     assert set(data["data"]) == {"snapshots", "errata"}
     snaps = data["data"]["snapshots"]
     assert len(snaps) == 1
@@ -473,3 +473,58 @@ def test_export_cleanup_failure_does_not_undo_successful_publish(db_path, tmp_pa
     assert manifest["counts"]["cards"] == 2
     assert (out / "manifest.json").exists()
     assert len(list(tmp_path.glob(".dist.old-*"))) == 1
+@pytest.fixture()
+def dist_decks(db_path, tmp_path):
+    """1 deck + 2 别名 + 1 出战：legacy_ids 与 appearance_id 导出契约。"""
+    from ptcgdb.orm import (
+        Deck,
+        DeckAppearance,
+        DeckIdAlias,
+        Tournament,
+    )
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as s:
+        s.add(Tournament(
+            tournament_id="mik_moe:100", source="mik_moe", series_id=None,
+            name="测试赛", tier=None, tier_coef=None, division="master",
+            date=date(2026, 7, 20), location=None, participant_count=100,
+            topcut_slots=8, format="standard", regulation_mark=None,
+            format_end=None, env=None, is_qual=False, is_team=False,
+            official_url=None, fetched_at=datetime.now(UTC),
+        ))
+        s.add(Deck(
+            deck_id="limitless:new1", archetype_id=None, archetype_name=None,
+            deck_code=None, mapping_status="full", mapped_ratio=1.0,
+            source="limitless", fetched_at=datetime.now(UTC),
+        ))
+        s.add(DeckIdAlias(old_deck_id="limitless:old1", new_deck_id="limitless:new1"))
+        s.add(DeckIdAlias(old_deck_id="limitless:old2", new_deck_id="limitless:new1"))
+        s.add(DeckAppearance(
+            appearance_id="exp-app-1", appearance_key="exp-key-1",
+            deck_id="limitless:new1", tournament_id="mik_moe:100", rank=1,
+            points=10.0, player_ref=None, record_wins=None, record_losses=None,
+            record_ties=None, source="limitless", fetched_at=datetime.now(UTC),
+        ))
+        s.commit()
+    engine.dispose()
+    out = tmp_path / "dist2"
+    export_all(db_path, out)
+    return out
+
+
+def _read_jsonl(path):
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_decks_jsonl_carries_legacy_ids(dist_decks):
+    rows = _read_jsonl(dist_decks / "decks.jsonl")
+    row = next(r for r in rows if r["deck_id"] == "limitless:new1")
+    assert row["legacy_ids"] == ["limitless:old1", "limitless:old2"]
+
+
+def test_appearances_jsonl_carries_id_without_key(dist_decks):
+    rows = _read_jsonl(dist_decks / "deck_appearances.jsonl")
+    assert rows
+    assert all("appearance_key" not in r for r in rows)  # 审计字段不进导出契约
+    assert rows[0]["appearance_id"] == "exp-app-1"
