@@ -44,6 +44,9 @@ from ptcgdb.orm import (
     DeckCard as DeckCardORM,
 )
 from ptcgdb.orm import (
+    DeckIdAlias as DeckIdAliasORM,
+)
+from ptcgdb.orm import (
     Tournament as TournamentORM,
 )
 from ptcgdb.schemas.models import (
@@ -399,6 +402,7 @@ class DbBackend(CardDatabase):
         cards.sort(key=lambda c: (c.raw_name, c.card_id or ""))
         appearances = [
             DeckAppearance(
+                appearance_id=a.appearance_id,
                 tournament_id=a.tournament_id, rank=a.rank, points=a.points,
                 record_wins=a.record_wins, record_losses=a.record_losses,
                 record_ties=a.record_ties,
@@ -424,6 +428,11 @@ class DbBackend(CardDatabase):
     def get_deck(self, deck_id: str) -> Deck | None:
         with Session(self._engine) as s:
             row = s.get(DeckORM, deck_id)
+            if row is None:
+                # 旧 ID 退役别名（task 062）：先查新 ID，再解析别名
+                alias = s.get(DeckIdAliasORM, deck_id)
+                if alias is not None:
+                    row = s.get(DeckORM, alias.new_deck_id)
             if row is None:
                 return None
             group_key_map = dict(
@@ -607,9 +616,15 @@ class JsonlBackend(CardDatabase):
                 t["tournament_id"]: date.fromisoformat(t["date"]) if t["date"] else None
                 for t in self._read_jsonl(self._dist_dir / "tournaments.jsonl")
             }
+            aliases = {
+                old: d["deck_id"]
+                for d in decks_by_id.values()
+                for old in (d.get("legacy_ids") or [])
+            }
             self._deck_store = {
                 "decks": decks_by_id, "cards": cards_by_deck,
                 "appearances": apps_by_deck, "tournament_dates": tournament_dates,
+                "aliases": aliases,
             }
         return self._deck_store
 
@@ -624,6 +639,7 @@ class JsonlBackend(CardDatabase):
         appearances = sorted(
             (
                 DeckAppearance(
+                    appearance_id=a.appearance_id,
                     tournament_id=a.tournament_id, rank=a.rank, points=a.points,
                     record_wins=a.record_wins, record_losses=a.record_losses,
                     record_ties=a.record_ties,
@@ -641,7 +657,9 @@ class JsonlBackend(CardDatabase):
         )
 
     def get_deck(self, deck_id: str) -> Deck | None:
-        return self._deck_view(deck_id)
+        store = self._decks()
+        # 旧 ID 退役别名（task 062）：legacy_ids 解析（缺字段旧 dist 兼容）
+        return self._deck_view(store["aliases"].get(deck_id, deck_id))
 
     def list_decks(
         self,

@@ -134,7 +134,7 @@ class TestApplySnapshot:
         engine.dispose()
         today = date.today().strftime("%Y%m%d")
         assert meta["data_version"] == f"v{today}.1"
-        assert meta["schema_version"] == "2.0.0"
+        assert meta["schema_version"] == "3.0.0"
         text = changelog.read_text(encoding="utf-8")
         assert f"## [{meta['data_version']}]" in text
         assert "### Added" in text
