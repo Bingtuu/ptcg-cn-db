@@ -480,6 +480,8 @@ def _load_mapping_indexes(
     dict[str, list[Any]],
     dict[str, tuple[str, str | None, str | None]],
 ]:
+    from datetime import date
+
     from ptcgdb.normalize.limitless import CnCandidate
 
     groups: dict[str, set[str]] = defaultdict(set)
@@ -500,8 +502,11 @@ def _load_mapping_indexes(
         if name_en:
             group_values = groups.get(card_id) or set()
             group_key = next(iter(group_values)) if len(group_values) == 1 else card_id
+            # 裸 sqlite3 返回 TEXT，而 ingest_limitless 走 ORM 得到 date 对象；
+            # CnCandidate.release_date 约定为 date | None，需显式解析。
+            release = date.fromisoformat(release_date) if release_date else None
             cn_name_index[name_en].append(
-                CnCandidate(card_id, mark, release_date, group_key)
+                CnCandidate(card_id, mark, release, group_key)
             )
     return cn_name_index, card_index
 
@@ -706,13 +711,21 @@ def _reconcile_misses(
     conn.execute(
         "CREATE INDEX _identity_ix_plan ON _identity_miss_plan (deck_id, raw_name)"
     )
+    # 性能：OR 跨列等值条件让 planner 难走索引（UNION ALL 语义不等价，
+    # 必须 UNION 去重来等价原 SELECT DISTINCT + OR）。
     card_rows = conn.execute(
         """
-        SELECT DISTINCT dc.rowid, dc.deck_id, dc.card_id, dc.count,
+        SELECT dc.rowid, dc.deck_id, dc.card_id, dc.count,
                dc.raw_name, dc.stat_scope
         FROM deck_cards dc
-        JOIN _identity_miss_plan p ON p.deck_id = dc.deck_id
-        WHERE dc.raw_name = p.raw_name OR dc.card_id = p.resolved_card_id
+        JOIN _identity_miss_plan p
+          ON p.deck_id = dc.deck_id AND dc.raw_name = p.raw_name
+        UNION
+        SELECT dc.rowid, dc.deck_id, dc.card_id, dc.count,
+               dc.raw_name, dc.stat_scope
+        FROM deck_cards dc
+        JOIN _identity_miss_plan p
+          ON p.deck_id = dc.deck_id AND dc.card_id = p.resolved_card_id
         """
     ).fetchall()
     by_name: dict[tuple[str, str], list[tuple[Any, ...]]] = defaultdict(list)
@@ -839,16 +852,27 @@ def _replace_cards_and_misses(
         GROUP BY m.new_deck_id, d.raw_name, d.raw_set, d.raw_number
         """
     )
+    # 性能（task 062 真实库实测）：WHERE 里的相关子查询对每行 deck_cards
+    # （1.9M 级）全扫 _identity_deck_map（~42K 行，无 new_deck_id 索引），
+    # 实测 76 分钟未完成。改为预聚合 keep 表再等值连接。
+    conn.execute(
+        "CREATE TEMP TABLE _identity_keep ("
+        "new_deck_id TEXT PRIMARY KEY, keep_old_id TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO _identity_keep "
+        "SELECT new_deck_id, MIN(old_deck_id) "
+        "FROM _identity_deck_map GROUP BY new_deck_id"
+    )
     conn.execute(
         """
         CREATE TEMP TABLE _identity_cards AS
         SELECT m.new_deck_id AS deck_id, d.card_id, d.count, d.raw_name, d.stat_scope
         FROM deck_cards d
         JOIN _identity_deck_map m ON m.old_deck_id = d.deck_id
-        WHERE m.old_deck_id = (
-            SELECT MIN(old_deck_id) FROM _identity_deck_map r
-            WHERE r.new_deck_id = m.new_deck_id
-        ) AND m.new_deck_id NOT IN (SELECT new_deck_id FROM _identity_rebuild)
+        JOIN _identity_keep k ON k.new_deck_id = m.new_deck_id
+        WHERE m.old_deck_id = k.keep_old_id
+          AND m.new_deck_id NOT IN (SELECT new_deck_id FROM _identity_rebuild)
         """
     )
     conn.execute(
