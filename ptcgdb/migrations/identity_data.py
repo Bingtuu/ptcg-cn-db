@@ -341,6 +341,9 @@ def _migrate_metadata(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute(
+        "CREATE INDEX _identity_ix_meta_new ON _identity_deck_metadata (new_deck_id)"
+    )
+    conn.execute(
         """
         INSERT INTO decks (
             deck_id, archetype_id, archetype_name, deck_code, mapping_status,
@@ -625,6 +628,10 @@ def _reconcile_misses(
     ).fetchall()
     if not misses:
         return
+    conn.execute(
+        "CREATE INDEX _identity_ix_candidates ON "
+        "_identity_miss_candidates (deck_id, raw_name)"
+    )
     old_states: dict[tuple[str, str, str, str], set[tuple[str | None, str | None]]] = (
         defaultdict(set)
     )
@@ -695,6 +702,9 @@ def _reconcile_misses(
     )
     conn.executemany(
         "INSERT INTO _identity_miss_plan VALUES (?, ?, ?, ?, ?, ?, ?, ?)", plans
+    )
+    conn.execute(
+        "CREATE INDEX _identity_ix_plan ON _identity_miss_plan (deck_id, raw_name)"
     )
     card_rows = conn.execute(
         """
@@ -887,6 +897,11 @@ def migrate_identity_data(
     if raw_dir is None:
         raise IdentityMigrationError("存在 EN 旧实体，migration 014 必须传 raw_dir")
     raw_dir = Path(raw_dir)
+    # 性能（task 062 真实库演练实测）：deck_cards/deck_card_misses 无 deck_id 索引，
+    # 数据迁移的多处 join/相关子查询在 1.9M 行规模下退化为全表嵌套扫描（实测 >10h）。
+    # 同一事务内建临时命名索引，提交前 DROP——DDL 随事务回滚，成功也不留永久足迹。
+    conn.execute("CREATE INDEX _identity_ix_cards_deck ON deck_cards (deck_id)")
+    conn.execute("CREATE INDEX _identity_ix_misses_deck ON deck_card_misses (deck_id)")
     raw = scan_en_raw(raw_dir)
     summary.raw_decks = len(raw.decks_by_old)
     mapping = _deck_map(conn, raw)
@@ -914,6 +929,8 @@ def migrate_identity_data(
         "DELETE FROM decks WHERE deck_id IN "
         "(SELECT old_deck_id FROM _identity_deck_map WHERE old_deck_id <> new_deck_id)"
     )
+    conn.execute("DROP INDEX _identity_ix_cards_deck")
+    conn.execute("DROP INDEX _identity_ix_misses_deck")
     violations = conn.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
         raise IdentityMigrationError(f"迁移后存在外键孤儿: {violations[:3]!r}")
