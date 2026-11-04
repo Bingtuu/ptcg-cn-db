@@ -64,10 +64,11 @@ def build_basis_db(db_path):
             "('limitless:d1', 'a1', 'EN 原型', NULL, 'full', 1.0, 'limitless', '2026-08-01')"
         )
         conn.execute(
-            "INSERT INTO deck_appearances (deck_id, tournament_id, rank, points, "
-            "player_ref, record_wins, record_losses, record_ties, source, fetched_at) "
-            "VALUES ('limitless:d1', ?, 1, 10.0, 'enplayer', 5, 0, 0, 'limitless', "
-            "'2026-08-01')",
+            "INSERT INTO deck_appearances (appearance_id, appearance_key, deck_id,"
+            " tournament_id, rank, points, player_ref, record_wins, record_losses,"
+            " record_ties, source, fetched_at)"
+            " VALUES ('basis-app-1', 'basis-key-1', 'limitless:d1', ?, 1, 10.0,"
+            " 'enplayer', 5, 0, 0, 'limitless', '2026-08-01')",
             (T7,),
         )
         conn.execute(

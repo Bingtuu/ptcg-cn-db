@@ -22,6 +22,7 @@ from ptcgdb.orm.tournaments import (
     DeckAppearance,
     DeckCard,
     DeckCardMiss,
+    DeckIdAlias,
     Pairing,
     Tournament,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "DeckAppearance",
     "DeckCard",
     "DeckCardMiss",
+    "DeckIdAlias",
     "Errata",
     "ExternalId",
     "LegalitySnapshot",

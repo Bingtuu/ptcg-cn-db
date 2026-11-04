@@ -2,44 +2,46 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-10-31；PRD v1.38；实时库 user_version=13 / schema_version=2.0.0。
+> 最近更新：2026-11-04；PRD v1.39；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
-**task 061 DONE：实库自愈与外部事实核查。** JP 3 套卡组恢复 60，229/229 共 13,740 张，full 157 不降级；Brave Bangle、CBB、isQual 均形成证据结论，报告 `reports/task061-data-healing-20261025.md`。下一项为 task 062。
+**task 062 DONE：赛事身份统一。** migration 014 真实库 43s 完成，EN 旧实体合并（aliases 41,773）、赛事 3710 双出战修复、mik 重放 legacy→canonical 过渡、统计/导出/SDK 贯通，验收 A1/A4–A8 全 PASS（`dist/acceptance-20261104.md`），任务档 `tasks/done/062`。下一项按用户拍板为 task 067（数据版本治理），其后 068（GHIJ 对局级抓取，阻塞于 mik 源停摆）。
 
-**当前数据（2026-10-25）**：
+**当前数据（2026-11-04，task 062 后）**：
 
-- 卡牌实时库：137 系列，13,057 active + 8 deprecated = 13,065 行。嗨皮组合 L0 已收编 CSVH6C/CSVH6aC/CSVH6eC/CSVH6pC 共 145 张，另有 SVP +1、30thP +3；效果标签 unknown=0。
-- 合法性：4 份快照，standard 当前 G/H/I/J；2026-10-25 卡池 standard 5,850 / open 13,028。真实验收 A1–A8 全 PASS，见 `reports/acceptance-20261025.md`。
-- dist `v20261025.1` / schema 2.0.0：13,065 cards / 137 sets；874 tournaments / 66,363 decks / 83,653 appearances / 1,927,272 deck_cards / 140,965 pairings，与实时 SQL 对平。
-- **赛事数据仍待 task 062 收尾**：10-25 轮询在 mik 赛事 3710 中止前已提交部分数据，当前 dist 如实导出该状态；修复后需用本地 raw 重放 ingest 并再次重导。
-- 测试基线：task 060 完成后 1198 passed、ruff 全净。
+- 卡牌实时库：137 系列，13,057 active + 8 deprecated = 13,065 行（与 10-25 一致，卡牌面无变更）。
+- 赛事实时库：918 tournaments / 60,226 decks（limitless 31,408 / limitless_site 1,095 / mik_moe 27,494 / jp 229）/ 88,521 appearances / 1,757,558 deck_cards / 140,965 pairings；mapping_status full 59,045 / partial 1,181；misses 10,477。
+- 合法性：4 份快照，standard 当前 G/H/I/J。真实验收 A1/A4–A8 全 PASS，见 `dist/acceptance-20261104.md`。
+- dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
+- **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队，第 2 页 raw 待 mik 恢复后补，当前不称整场收齐。
+- **mik 源停摆**：2026-10-31 起 tcg.mik.moe 迁移 areazero.gg 且旧 API 404，mik 侧采集按政策停摆（areazero 要求逐请求人工确认，禁止批量）；mik 赛事数据停在停摆前快照 + 本地 raw 可重放。EN/JP 源不受影响。
+- 测试基线：task 062 完成后 1248 passed、ruff 全净。
 
 ## 当前任务队列
 
 | 任务 | 状态 | 范围 |
 |---|---|---|
 | 061 | DONE | JP 自愈与 Brave Bangle/CBB/isQual 外部事实核销 |
-| 062 | DOING | 修复赛事 3710 出战身份冲突；EN deck_id 顺序无关哈希、旧实体迁移、共享 deck env 统一；重放本地 raw ingest |
+| 062 | DONE | 赛事身份统一：appearance 身份、EN 旧实体合并、3710 修复、dist 3.0.0 |
+| 067 | TODO | 数据版本治理：scrape 变更 data_version 递增 + 变更摘要（A2） |
+| 068 | TODO | GHIJ 时代对局级抓取（A1，最高价值；阻塞于 mik 源停摆，含 areazero 探测结论） |
 | 063 | TODO | 采集与 raw 层韧性：长周期瞬断、HTTP 异常面、采集/写入防护 |
 | 064 | TODO | 统计与 SDK 契约：统计边界、双后端一致性和查询接口 |
 | 065 | TODO | 剩余 P2、validate/monitor/accept 与文档收尾 |
 
-061–065 共用设计：`docs/superpowers/specs/2026-10-25-技术债分批清偿-design.md`；实施前分别建立任务档和计划。task 048 官方 Q&A 因无可用供给已于 10-25 删除，不再安排专项或历史回扫。
+061–065 共用设计：`docs/superpowers/specs/2026-10-25-技术债分批清偿-design.md`；067/068 任务档已建于 `tasks/`。task 048 官方 Q&A 因无可用供给已于 10-25 删除，不再安排专项或历史回扫。
 
-### task 062 当前故障证据
+### task 062 运维教训（已清偿）
 
-- 本地 raw：`data/raw/mikmoe/tournaments/rank-individual/3710/page-0001.json`。
-- 错误：`UNIQUE constraint failed: deck_appearances.deck_id, deck_appearances.tournament_id, deck_appearances.rank`。
-- 两队“重泥挽马”“工美老宝儿”共用 `mik_moe:688431`，源名次都为 `rank=-1`，现有 `(deck_id,tournament_id,rank)` 主键无法表达两次出战；raw 无独立 appearance ID。
-- 不得伪造名次、合并丢队或直接跳过。“重新 ingest”指修复后用本地 raw 重放入库，不是重新联网采集；需验证两队出战、共享卡组单实体、幂等、其他计数、FK/integrity 和 dist。
+- `ingest-tourneys` 直连 CLI **不带 `--date-from` 时无收集底线守卫**（底线只在 monitor 编排路径自动注入）：2026-11-04 误将全量历史 mik raw（含 2,880 场退赛前赛事）入库，从备份还原后重跑收口。结构性守卫补进 task 063 范围。
+- migration 014 性能：1.9M 行规模下相关子查询/OR join 会退化为小时级全表扫描，事务内临时索引 + 预聚合表是既定解法（详见 `tasks/done/062`）。
 
 ## 入口
 
 | 内容 | 位置 |
 |---|---|
-| 权威设计 | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.38） |
+| 权威设计 | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.39） |
 | 工程约定 | `AGENTS.md` |
 | 任务队列与规范 | `tasks/`、`tasks/README.md`、`tasks/done/` |
 | 数据源 | `docs/data-sources.md` |
@@ -73,8 +75,7 @@ M0–M12 均已完成：
 
 ## 当前运维与技术债
 
-- **mik 主源迁移暂停采集（2026-10-31 发现）**：tcg.mik.moe 全站 302 → areazero.gg，旧 API（`/api/v1/product-list` 等）新域名 404；新站声明 AI 访问政策（`/ai-access.json`：真实 UA + 逐请求 Agent-Intent + 逐请求人工确认、不鼓励批量）。站方 2026-10-30 公告因网络设施问题服务降级、升级中。L0 探测首轮即熔断中止（dry-run 只读，库无变更）。mik 侧卡牌/CN 赛事轮询全部暂停，待站点恢复后另立任务评估新 API 形态与政策合规的管线改造；EN/JP 赛事源不受影响。
-- **赛事 3710 唯一约束冲突**：由 task 062 修复并重放本地 raw；EN 双通道本轮已完成。
+- **mik 主源迁移暂停采集（2026-10-31 发现）**：tcg.mik.moe 全站 302 → areazero.gg，旧 API（`/api/v1/product-list` 等）新域名 404（11-03 复探仍 404）；新站 AI 访问政策（`/ai-access.json` v1.1：真实 UA + 逐请求 Agent-Intent + 逐请求人工确认、禁止批量）。站方 2026-10-30 公告因网络设施问题服务降级、升级中；L0 探测首轮即熔断中止（dry-run 只读，库无变更），此后 mik 通道降级为只监控不采集。mik 侧卡牌/CN 赛事轮询全部暂停，数据停在停摆前快照、本地 raw 可重放；待站点恢复后另立任务评估新 API 形态与政策合规的管线改造。EN/JP 赛事源不受影响，JP 对齐窗口定向解析（FR-9.5）维持。
 - **Brave Bangle / 英勇手镯**：WHT 80、未解 miss 1,244 行；已公告随“白焰迸涌”2026-11-06 发售。等 mik 正式卡详情后走 L0 + remap-decks，当前不造卡、不 resolve。
 - **CBB 卡面分母（外部证据阻塞）**：CBB1C/CBB2C 仍有实测包冲突，mik 是不同编号多列示而非同号重复；保持只显分子，需新卡面锚或权威逐包清单。isQual 疑点已由 task 061 关闭。
 - **deck_card_misses**：多数为 Mega 时代无简中印刷的预期缺口；简中卡池扩展后通过 remap-decks 刷新，不为提高 full 率猜映射。

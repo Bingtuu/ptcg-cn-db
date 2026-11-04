@@ -746,3 +746,112 @@ def test_ingest_cross_group_writes_ambiguous_miss(tmp_path):
     assert len(misses) == 1
     assert misses[0].miss_kind == "ambiguous"
     assert misses[0].raw_set == "XXX" and misses[0].resolved_at is None
+
+
+def test_api_same_rank_players_get_stable_player_appearance_ids(tmp_path):
+    from ptcgdb.normalize.identity import appearance_identity
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "same-rank.db"
+    write_ptcd_raw(raw_dir)
+    rows = [
+        make_standing(1, "alice", {"wins": 1, "losses": 0, "ties": 0},
+                      {"id": "a", "name": "A"}, DECK_A),
+        make_standing(1, "bob", {"wins": 1, "losses": 0, "ties": 0},
+                      {"id": "a", "name": "A"}, DECK_A),
+        make_standing(1, "alice", {"wins": 1, "losses": 0, "ties": 0},
+                      {"id": "a", "name": "A"}, DECK_A),
+    ]
+    write_limitless_raw(raw_dir, list_entries=LIST_A, standings={T_A: rows})
+    build_db(db_path)
+
+    result = ingest_limitless(raw_dir, db_path)
+    assert result.appearances == 2
+    apps = query_all(db_path, DeckAppearance)
+    assert len(apps) == 2
+    assert len({a.deck_id for a in apps}) == 1
+    assert {a.rank for a in apps} == {1}
+    for app in apps:
+        expected_key, expected_id = appearance_identity(
+            "limitless", f"limitless:{T_A}",
+            {"tournament": T_A, "player": app.player_ref},
+        )
+        assert (app.appearance_key, app.appearance_id) == (expected_key, expected_id)
+
+
+def test_api_later_discovered_earlier_tournament_remaps_shared_deck(tmp_path):
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "env.db"
+    write_ptcd_raw(raw_dir)
+    early = dict(LIST_A[0]) | {"date": "2026-03-15T02:10:00.000Z"}
+    late = dict(LIST_A[0]) | {
+        "id": T_B, "date": "2026-04-10T02:10:00.000Z",
+    }
+    write_limitless_raw(
+        raw_dir, list_entries=[early, late],
+        standings={T_B: [make_standing(1, "late", None, {"id": "a", "name": "A"}, DECK_A)]},
+    )
+    build_db(db_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        session.get(Set, "CSA").release_date = date(2026, 3, 1)
+        session.commit()
+    engine.dispose()
+
+    ingest_limitless(raw_dir, db_path, enforce_window=False)
+    deck_id = make_deck_id(DECK_A)
+    ultra_ball = next(c for c in query_all(db_path, DeckCard) if c.raw_name == "Ultra Ball")
+    assert ultra_ball.card_id == "CSB-002"
+
+    write_limitless_raw(
+        raw_dir,
+        standings={T_A: [make_standing(1, "early", None, {"id": "a", "name": "A"}, DECK_A)]},
+    )
+    ingest_limitless(raw_dir, db_path, enforce_window=False)
+    ultra_ball = next(
+        c for c in query_all(db_path, DeckCard)
+        if c.deck_id == deck_id and c.raw_name == "Ultra Ball"
+    )
+    assert ultra_ball.card_id == "CSA-001"
+
+
+def test_api_none_and_zero_extra_counts_have_distinct_stable_decks(tmp_path):
+    from copy import deepcopy
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "counts.db"
+    write_ptcd_raw(raw_dir)
+    deck_none = deepcopy(DECK_A)
+    deck_zero = deepcopy(DECK_A)
+    deck_none["trainer"].append(
+        {"count": None, "set": "XXX", "number": "998", "name": "Milotic ex"}
+    )
+    deck_zero["trainer"].append(
+        {"count": 0, "set": "XXX", "number": "998", "name": "Milotic ex"}
+    )
+    none_id = make_deck_id(deck_none)
+    zero_id = make_deck_id(deck_zero)
+    assert none_id != zero_id
+    write_limitless_raw(
+        raw_dir, list_entries=LIST_A,
+        standings={T_A: [
+            make_standing(1, "none", None, {"id": "a", "name": "A"}, deck_none),
+            make_standing(2, "zero", None, {"id": "a", "name": "A"}, deck_zero),
+        ]},
+    )
+    build_db(db_path)
+
+    result = ingest_limitless(raw_dir, db_path)
+    assert result.decks == 2
+    assert result.appearances == 2
+    cards = query_all(db_path, DeckCard)
+    assert not any(c.deck_id == none_id and c.raw_name == "Milotic ex" for c in cards)
+    zero_extra = next(c for c in cards if c.deck_id == zero_id and c.raw_name == "Milotic ex")
+    assert zero_extra.count == 0
+    assert zero_extra.card_id == "CSJ-008"
+    snapshot = sorted(
+        (c.deck_id, c.card_id, c.raw_name, c.count) for c in cards
+    )
+
+    ingest_limitless(raw_dir, db_path)
+    assert sorted(
+        (c.deck_id, c.card_id, c.raw_name, c.count)
+        for c in query_all(db_path, DeckCard)
+    ) == snapshot

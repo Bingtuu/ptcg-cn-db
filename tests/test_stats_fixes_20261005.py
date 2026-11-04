@@ -51,10 +51,11 @@ def build_jp_db(db_path):
             "'2026-08-01')"
         )
         conn.execute(
-            "INSERT INTO deck_appearances (deck_id, tournament_id, rank, points, "
-            "player_ref, record_wins, record_losses, record_ties, source, fetched_at) "
-            "VALUES ('pokemon_card_jp:jp1', ?, 1, 10.0, NULL, NULL, NULL, NULL, "
-            "'pokemon_card_jp', '2026-08-01')",
+            "INSERT INTO deck_appearances (appearance_id, appearance_key, deck_id,"
+            " tournament_id, rank, points, player_ref, record_wins, record_losses,"
+            " record_ties, source, fetched_at)"
+            " VALUES ('fix-app-jp1', 'fix-key-jp1', 'pokemon_card_jp:jp1', ?, 1,"
+            " 10.0, NULL, NULL, NULL, NULL, 'pokemon_card_jp', '2026-08-01')",
             (TJP,),
         )
         conn.execute(
@@ -147,10 +148,11 @@ def build_zero_record_db(db_path):
             "('mik_moe:111', '1', '零局原型', NULL, 'full', 1.0, 'mik_moe', '2026-08-01')"
         )
         conn.execute(
-            "INSERT INTO deck_appearances (deck_id, tournament_id, rank, points, "
-            "player_ref, record_wins, record_losses, record_ties, source, fetched_at) "
-            "VALUES ('mik_moe:111', ?, 5, NULL, 'P111', 0, 0, 0, 'mik_moe', "
-            "'2026-08-01')",
+            "INSERT INTO deck_appearances (appearance_id, appearance_key, deck_id,"
+            " tournament_id, rank, points, player_ref, record_wins, record_losses,"
+            " record_ties, source, fetched_at)"
+            " VALUES ('fix-app-111', 'fix-key-111', 'mik_moe:111', ?, 5, NULL,"
+            " 'P111', 0, 0, 0, 'mik_moe', '2026-08-01')",
             (T1,),
         )
         conn.execute(

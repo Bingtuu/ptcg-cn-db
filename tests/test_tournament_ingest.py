@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
@@ -436,6 +436,34 @@ def test_ingest_idempotent(env):
     assert len(query(db_path, select(DeckAppearance))) == 2  # 555003 的名次条目不落
 
 
+def test_ingest_replaces_legacy_transition_identities(env):
+    """task 062：migration 014 给既有 mik 出战合成 legacy 过渡身份（legacy: key）；
+    raw 重放按赛事先删后插，把 legacy 行过渡为 raw 重算的 canonical 身份，
+    不得出现同一源出战新旧双份。"""
+    raw_dir, db_path = env
+    first = ingest_tourneys(raw_dir, db_path)
+    assert first.appearances == 2
+    # 模拟 migration 014 的 legacy 过渡身份：同事实行换成 legacy key/id
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        for row in session.execute(select(DeckAppearance)).scalars():
+            session.execute(
+                update(DeckAppearance)
+                .where(DeckAppearance.appearance_id == row.appearance_id)
+                .values(
+                    appearance_id=f"legacy:{row.appearance_id}",
+                    appearance_key=f"legacy:[{row.tournament_id},{row.deck_id}]",
+                )
+            )
+        session.commit()
+    engine.dispose()
+    second = ingest_tourneys(raw_dir, db_path)
+    assert second.appearances == 2
+    rows = query(db_path, select(DeckAppearance.appearance_key))
+    assert len(rows) == 2
+    assert all(not row[0].startswith("legacy:") for row in rows)
+
+
 def test_ingest_unmapped_deck(tmp_path):
     raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
     build_db(db_path)
@@ -615,3 +643,112 @@ def test_ingest_hook_materializes_topcut_slots(env):
         ),
     )
     assert rows == [(16,)]
+
+
+def test_3710_shared_deck_same_rank_keeps_both_teams_and_is_idempotent(tmp_path):
+    from ptcgdb.normalize.identity import appearance_identity
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "3710.db"
+    build_db(db_path)
+    items = load_fixture("tournament_list.json")["data"]["list"]
+    item = dict(next(e for e in items if e["id"] == 3211)) | {"id": 3710}
+    detail = dict(load_fixture("tournament_detail.json")["data"]) | {"id": 3710}
+    team_a = rank_entry(-1, 0, "P002", [688431])
+    team_a["players"] = [{"pinCode": "P002"}, {"pinCode": "P001"}]
+    team_a["teamName"] = "重泥挽马"
+    team_b = rank_entry(-1, 0, "P003", [688431])
+    team_b["players"] = [{"pinCode": "P003"}, {"pinCode": "P004"}]
+    team_b["teamName"] = "工美老宝儿"
+    write_tournament_raw(
+        raw_dir, series_id=54, item=item, detail=detail,
+        rank_entries=[team_a, team_a.copy(), team_b],
+        decks={688431: deck_payload(688431, DECK_555001)},
+    )
+
+    result = ingest_tourneys(raw_dir, db_path)
+    assert result.decks == 1
+    assert result.appearances == 2
+    apps = [row[0] for row in query(
+        db_path, select(DeckAppearance).order_by(DeckAppearance.appearance_id)
+    )]
+    assert len(apps) == 2
+    assert {app.deck_id for app in apps} == {"mik_moe:688431"}
+    assert {app.rank for app in apps} == {-1}
+    assert len({app.appearance_id for app in apps}) == 2
+    expected_key, _ = appearance_identity(
+        "mik_moe", "mik_moe:3710",
+        {"deckId": 688431, "pinCodes": ["P001", "P002"]},
+    )
+    assert expected_key in {app.appearance_key for app in apps}
+
+    ingest_tourneys(raw_dir, db_path)
+    assert len(query(db_path, select(DeckAppearance))) == 2
+
+
+def test_mik_same_team_key_with_different_facts_aborts_tournament(tmp_path):
+    from ptcgdb.normalize.identity import AppearanceConflictError
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "conflict.db"
+    build_db(db_path)
+    items = load_fixture("tournament_list.json")["data"]["list"]
+    item = next(e for e in items if e["id"] == 3211)
+    detail = load_fixture("tournament_detail.json")["data"]
+    write_tournament_raw(
+        raw_dir, series_id=54, item=item, detail=detail,
+        rank_entries=[rank_entry(1, 20, "P001", [555001]),
+                      rank_entry(2, 20, "P001", [555001])],
+        decks={555001: deck_payload(555001, DECK_555001)},
+    )
+
+    with pytest.raises(AppearanceConflictError, match="appearance"):
+        ingest_tourneys(raw_dir, db_path)
+    assert query(db_path, select(DeckAppearance)) == []
+    assert query(db_path, select(Tournament)) == []
+
+
+def test_mik_duplicate_incomplete_identity_same_snapshot_aborts_tournament(tmp_path):
+    from copy import deepcopy
+
+    from ptcgdb.normalize.identity import AppearanceConflictError
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "ambiguous.db"
+    build_db(db_path)
+    items = load_fixture("tournament_list.json")["data"]["list"]
+    item = next(e for e in items if e["id"] == 3211)
+    detail = load_fixture("tournament_detail.json")["data"]
+    first = rank_entry(-1, 0, "P001", [688431])
+    first["players"] = [{"pinCode": "P001"}, {"nickname": "无pin"}]
+    first["teamName"] = "队伍甲"
+    duplicate = deepcopy(first)
+    duplicate["teamName"] = "同名证据无法区分的另一队"
+    write_tournament_raw(
+        raw_dir, series_id=54, item=item, detail=detail,
+        rank_entries=[first, duplicate],
+        decks={688431: deck_payload(688431, DECK_555001)},
+    )
+
+    with pytest.raises(AppearanceConflictError, match="ambiguous.*缺pin"):
+        ingest_tourneys(raw_dir, db_path)
+    assert query(db_path, select(DeckAppearance)) == []
+    assert query(db_path, select(Deck)) == []
+    assert query(db_path, select(Tournament)) == []
+
+
+def test_mik_single_incomplete_identity_allows_idempotent_reingest(tmp_path):
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "incomplete.db"
+    build_db(db_path)
+    items = load_fixture("tournament_list.json")["data"]["list"]
+    item = next(e for e in items if e["id"] == 3211)
+    detail = load_fixture("tournament_detail.json")["data"]
+    entry = rank_entry(-1, 0, "P001", [688431])
+    entry["players"] = [{"pinCode": "P001"}, {"nickname": "无pin"}]
+    write_tournament_raw(
+        raw_dir, series_id=54, item=item, detail=detail,
+        rank_entries=[entry], decks={688431: deck_payload(688431, DECK_555001)},
+    )
+
+    assert ingest_tourneys(raw_dir, db_path).appearances == 1
+    assert ingest_tourneys(raw_dir, db_path).appearances == 1
+    apps = query(db_path, select(DeckAppearance))
+    assert len(apps) == 1
+    assert apps[0][0].rank == -1

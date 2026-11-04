@@ -19,7 +19,7 @@ WITH eligible AS (
 	  AND static_weight IS NOT NULL
 ),
 app AS (
-	SELECT a.tournament_id, a.deck_id, a.rank,
+	SELECT a.tournament_id, a.appearance_id, a.deck_id, a.rank,
 	       CASE WHEN a.points IS NOT NULL AND a.points > 0 THEN a.points
 	            ELSE 1.0 / a.rank END AS w_d
 	FROM deck_appearances a
@@ -27,28 +27,27 @@ app AS (
 	WHERE a.tournament_id IN (SELECT tournament_id FROM eligible)
 ),
 norm AS (
-	SELECT tournament_id, deck_id, rank,
+	SELECT tournament_id, appearance_id, deck_id, rank,
 	       w_d / SUM(w_d) OVER (PARTITION BY tournament_id) AS w_share
 	FROM app
 ),
 per_app AS (
-	SELECT tournament_id, deck_id, rank, MAX(carry) AS carry
+	SELECT tournament_id, appearance_id, MAX(rank) AS rank, MAX(carry) AS carry
 	FROM (
-		SELECT v.tournament_id, v.deck_id, v.rank, n.w_share AS carry
+		SELECT v.tournament_id, v.appearance_id, v.rank, n.w_share AS carry
 		FROM v_stat_deck_cards v
-		JOIN norm n ON n.tournament_id = v.tournament_id
-		           AND n.deck_id = v.deck_id AND n.rank = v.rank
+		JOIN norm n ON n.appearance_id = v.appearance_id
 		WHERE :granularity = 'card'
 		  AND v.group_key = :group_key
 		  AND INSTR(',' || :scope || ',', ',' || v.stat_scope || ',') > 0
 		UNION ALL
-		SELECT n.tournament_id, n.deck_id, n.rank, n.w_share
+		SELECT n.tournament_id, n.appearance_id, n.rank, n.w_share
 		FROM norm n
 		JOIN decks d ON d.deck_id = n.deck_id
 		WHERE :granularity = 'archetype'
 		  AND d.archetype_name = :group_key
 	)
-	GROUP BY tournament_id, deck_id, rank
+	GROUP BY tournament_id, appearance_id
 )
 SELECT e.tournament_id, e.name AS tournament_name, e.date, e.tier,
        COUNT(*) AS n_decks,

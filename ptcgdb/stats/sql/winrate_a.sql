@@ -50,7 +50,7 @@ records AS (  -- include 口径：card 粒度 = 每组 × 出战条目（有 rec
 	  AND v.tournament_id IN (SELECT tournament_id FROM eligible)
 	  AND INSTR(',' || :scope || ',', ',' || v.stat_scope || ',') > 0
 	  AND v.group_key IS NOT NULL
-	GROUP BY v.group_key, v.tournament_id, v.deck_id, v.rank
+	GROUP BY v.group_key, v.tournament_id, v.appearance_id
 	UNION ALL
 	-- archetype 粒度：每出战条目一行（deck_appearances ⋈ decks 直取，不按卡展开）
 	SELECT d.archetype_name,

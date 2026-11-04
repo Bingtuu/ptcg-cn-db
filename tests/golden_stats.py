@@ -107,12 +107,14 @@ def build_golden_db(db_path: Path) -> Path:
             ("mik_moe:109", "mik_moe:9005", 1, 10.0, None, None, None),
             ("mik_moe:110", "mik_moe:9006", 1, 10.0, None, None, None),
         ]
-        for did, tid, rank, pts, wins, losses, ties in appearances:
+        for i, (did, tid, rank, pts, wins, losses, ties) in enumerate(appearances):
             conn.execute(
-                "INSERT INTO deck_appearances (deck_id, tournament_id, rank, points, "
-                "player_ref, record_wins, record_losses, record_ties, source, fetched_at) "
-                "VALUES (?, ?, ?, ?, 'P001', ?, ?, ?, 'mik_moe', '2026-08-01')",
-                (did, tid, rank, pts, wins, losses, ties),
+                "INSERT INTO deck_appearances (appearance_id, appearance_key, deck_id,"
+                " tournament_id, rank, points, player_ref, record_wins, record_losses,"
+                " record_ties, source, fetched_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, 'P001', ?, ?, ?, 'mik_moe', '2026-08-01')",
+                (f"gold-app-{i}", f"gold-key-{i}", did, tid, rank, pts,
+                 wins, losses, ties),
             )
 
         deck_cards = [

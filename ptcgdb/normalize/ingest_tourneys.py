@@ -13,7 +13,8 @@ task 027。口径（PRD FR-9.1/9.2/9.3/9.6 + §7.5 v1.10 续）：
 - 60 张质量门（FR-9.6 ①）：count 合计 != 60 的卡组整组不入库（内容与出战条目
   都不落），记 blocked 报告。
 - 幂等：tournaments/decks merge upsert；deck_cards 按 deck_id 先删后插；
-  出战条目按 (deck_id, tournament_id) 先删后插。
+  出战条目按稳定 appearance_id 去重，同 key 事实冲突拒收；缺完整 pin 的身份
+  在同次 raw 重复时证据不足，按 ambiguous 拒绝该场（单条重放仍幂等）。
 - tier_coef 在解析层已从词表物化（FR-9.6 事实完整性），这里原样落库。
 - env 推导（FR-9.1b）：赛事日期 ∩ 赛区旋转日历段（config/tournament_envs.yml）；
   未命中 → env=NULL + 记异常（不猜）；落库后以卡组内卡牌最大赛制标记 ∈
@@ -33,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.envs import SOURCE_REGION, EnvSegment, derive_env, load_calendar
+from ptcgdb.normalize.identity import AppearanceConflictError, upsert_appearance
 from ptcgdb.normalize.topcut import derive_topcut_slots
 from ptcgdb.normalize.tournaments import (
     VOCAB_DIR,
@@ -270,6 +272,15 @@ def _ingest_one_tournament(
     with Session(engine) as session:
         session.merge(Tournament(**record.model_dump()))
         result.tournaments += 1
+        # task 062：migration 014 后既有 mik 出战是 legacy 过渡身份（legacy: key），
+        # 与 raw 重算的 canonical 身份不同键不同 id；按赛事先删后插，重放把
+        # legacy 过渡到 canonical，避免同一源出战新旧双份（PRD §7.5 legacy=过渡）。
+        session.execute(
+            delete(DeckAppearance).where(
+                DeckAppearance.tournament_id == record.tournament_id,
+                DeckAppearance.source == "mik_moe",
+            )
+        )
         # 按内容实体聚合出战条目：同一 deckId 可出现于多个名次（v1.10 续实测语义）
         by_deck: dict[str, list[AppearanceRecord]] = {}
         for app in appearance_records:
@@ -375,17 +386,22 @@ def _ingest_one_tournament(
             session.add_all(rows)
             result.decks += 1
             result.deck_cards += len(rows)
-            # 出战条目：按 (deck_id, tournament_id) 先删后插
-            session.execute(
-                delete(DeckAppearance).where(
-                    DeckAppearance.deck_id == deck_id,
-                    DeckAppearance.tournament_id == record.tournament_id,
-                )
-            )
-            for app in apps:
+            seen_appearances: set[str] = set()
+            for app in sorted(apps, key=lambda item: item.appearance_id or ""):
                 if app.rank is None:
                     result.warnings.append(f"出战条目缺 rank，跳过: {app.deck_id}")
                     continue
-                session.add(DeckAppearance(**app.model_dump()))
-                result.appearances += 1
+                if (
+                    app.appearance_id in seen_appearances
+                    and app.appearance_key is not None
+                    and '"fallback"' in app.appearance_key
+                ):
+                    raise AppearanceConflictError(
+                        f"ambiguous 缺pin出战身份在同次raw重复: "
+                        f"tournament={record.tournament_id} deck={deck_id}"
+                    )
+                upsert_appearance(session, DeckAppearance(**app.model_dump()))
+                if app.appearance_id not in seen_appearances:
+                    seen_appearances.add(app.appearance_id)
+                    result.appearances += 1
         session.commit()

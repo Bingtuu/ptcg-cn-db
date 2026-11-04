@@ -23,6 +23,7 @@ name_en 英文桥 mik raw 自带），remap_decks 据 deck_card_misses 重跑
 from __future__ import annotations
 
 import warnings
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.envs import SOURCE_REGION, derive_env, load_calendar
+from ptcgdb.normalize.identity import AppearanceContext, earliest_appearance
 from ptcgdb.normalize.ingest_tourneys import _mapping_status, derive_stat_scope
 from ptcgdb.normalize.limitless import (
     PtcdSetMissingError,
@@ -135,7 +137,7 @@ def backfill_misses(
         result.warnings.append(f"{exc}；miss_kind 全部记 ptcd_miss")
         ptcd_index = {}
 
-    apply_migrations(db_path)
+    apply_migrations(db_path, raw_dir=raw_dir)
     engine = create_engine(f"sqlite:///{db_path}")
     try:
         with Session(engine) as session:
@@ -358,7 +360,7 @@ def remap_decks(
         ptcd_index = {}
     env_calendar = load_calendar()
 
-    apply_migrations(db_path)
+    apply_migrations(db_path, raw_dir=raw_dir)
     engine = create_engine(f"sqlite:///{db_path}")
     try:
         with warnings.catch_warnings(record=True) as caught:
@@ -448,19 +450,31 @@ def remap_decks(
 
 
 def _deck_env_marks(
-    session: Session, deck_id: str, source: str, env_calendar: dict[str, Any]
+    session: Session,
+    deck_id: str,
+    source: str,
+    env_calendar: dict[str, Any],
+    *,
+    current_tournament_id: str | None = None,
+    current_appearance_ids: Iterable[str] = (),
 ) -> tuple[str, ...] | None:
-    """该 deck 最早出战赛事日期 ∩ 赛区日历段 → allowed_marks（无则 None）。"""
-    day = session.execute(
-        select(func.min(Tournament.date)).where(
-            Tournament.tournament_id.in_(
-                select(DeckAppearance.tournament_id).where(
-                    DeckAppearance.deck_id == deck_id
-                )
-            )
+    rows = session.execute(
+        select(Tournament.date, DeckAppearance.tournament_id, DeckAppearance.appearance_id)
+        .join(Tournament, Tournament.tournament_id == DeckAppearance.tournament_id)
+        .where(DeckAppearance.deck_id == deck_id)
+    ).all()
+    contexts = [AppearanceContext(*row) for row in rows]
+    if current_tournament_id is not None:
+        tournament = session.get(Tournament, current_tournament_id)
+        day = tournament.date if tournament is not None else None
+        contexts.extend(
+            AppearanceContext(day, current_tournament_id, appearance_id)
+            for appearance_id in current_appearance_ids
         )
-    ).scalar_one_or_none()
-    segment = derive_env(SOURCE_REGION.get(source), day, env_calendar)
+    earliest = earliest_appearance(contexts)
+    segment = derive_env(
+        SOURCE_REGION.get(source), earliest.date if earliest is not None else None, env_calendar
+    )
     return segment.allowed_marks if segment is not None else None
 
 

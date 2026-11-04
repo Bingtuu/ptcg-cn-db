@@ -65,10 +65,22 @@ def _db_not_found_exit(db_path: Path) -> typer.Exit:
 
 
 @app.command("init-db")
-def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
+def init_db(
+    db_path: Path = DEFAULT_DB_PATH,
+    raw_dir: Path = DEFAULT_RAW_DIR,
+) -> None:
     """建库/迁移：执行全部未应用的迁移 + 口径 hash 入 meta（FR-9.6）。"""
-    version = init_db_with_caliber(db_path)
+    from ptcgdb.migrations.identity_data import IdentityMigrationSummary
+
+    summary = IdentityMigrationSummary()
+    version = init_db_with_caliber(db_path, raw_dir=raw_dir, summary=summary)
     typer.echo(f"OK: {db_path} (user_version={version})")
+    typer.echo(
+        f"migration014: raw_decks={summary.raw_decks} old_decks={summary.old_decks} "
+        f"canonical_decks={summary.canonical_decks} aliases={summary.aliases} "
+        f"appearances={summary.appearances} deck_cards={summary.deck_cards} "
+        f"misses={summary.misses} rebuilt_decks={summary.rebuilt_decks}"
+    )
 
 
 @app.command()

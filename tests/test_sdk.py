@@ -12,6 +12,7 @@ from ptcgdb.migrations import apply_migrations
 from ptcgdb.orm import (
     Card,
     CardNameGroup,
+    DeckIdAlias,
     Errata,
     LegalitySnapshot,
     Meta,
@@ -141,10 +142,13 @@ def db_path(tmp_path):
             ("mik_moe:3", "mik_moe:101", 1, 10.0),
         ):
             s.add(DeckAppearanceORM(
+                appearance_id=f"app-{did}-{tid}-{rank}",
+                appearance_key=f"key-{did}-{tid}",
                 deck_id=did, tournament_id=tid, rank=rank, points=points,
                 player_ref=None, record_wins=None, record_losses=None,
                 record_ties=None, source="mik_moe", fetched_at=datetime.now(UTC),
             ))
+        s.add(DeckIdAlias(old_deck_id="limitless:legacy-1", new_deck_id="mik_moe:1"))
         s.commit()
     engine.dispose()
     return path
@@ -154,6 +158,34 @@ def db_path(tmp_path):
 def dist(db_path, tmp_path):
     out = tmp_path / "dist"
     export_all(db_path, out)
+    return out
+
+
+@pytest.fixture()
+def old_dist(db_path, tmp_path):
+    """模拟旧 dist（schema 2.0.0）：导出后剥掉 appearance_id/legacy_ids 字段。"""
+    import json
+
+    out = tmp_path / "dist_old"
+    export_all(db_path, out)
+
+    def _strip(name: str, field: str) -> None:
+        p = out / name
+        rows = [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines()]
+        for r in rows:
+            r.pop(field, None)
+        p.write_text(
+            "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+            encoding="utf-8",
+        )
+
+    _strip("deck_appearances.jsonl", "appearance_id")
+    _strip("decks.jsonl", "legacy_ids")
+    m = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    m["schema_version"] = "2.0.0"
+    (out / "manifest.json").write_text(
+        json.dumps(m, ensure_ascii=False), encoding="utf-8"
+    )
     return out
 
 
@@ -172,8 +204,8 @@ D = date(2026, 8, 1)
 class TestInterfaceBehavior:
     def test_schema_version(self, backends):
         db, jl = backends
-        assert db.schema_version == "2.0.0"
-        assert jl.schema_version == "2.0.0"
+        assert db.schema_version == "3.0.0"
+        assert jl.schema_version == "3.0.0"
 
     def test_return_types_are_pydantic(self, backends):
         """返回类型一律 frozen Pydantic，不暴露 ORM。"""
@@ -374,3 +406,40 @@ class TestLegalityCache:
         report = db.validate_deck(["T1-001"] * 60, D, "standard")
         assert not report.ok  # 60 张同名超 deck_limit=4，缓存不改变判定
         assert any(v.kind == "name_limit" for v in report.violations)
+
+
+class TestTask062Identity:
+    """task 062：旧 deck_id 别名解析（双后端）与 appearance_id 透出。"""
+
+    def test_get_deck_resolves_alias_both_backends(self, backends):
+        db, jl = backends
+        for b in (db, jl):
+            deck = b.get_deck("limitless:legacy-1")
+            assert deck is not None and deck.deck_id == "mik_moe:1"
+
+    def test_get_deck_unknown_alias_still_none(self, backends):
+        db, jl = backends
+        for b in (db, jl):
+            assert b.get_deck("limitless:nope") is None
+
+    def test_appearance_carries_appearance_id(self, backends):
+        db, jl = backends
+        for b in (db, jl):
+            deck = b.get_deck("mik_moe:1")
+            ids = {a.appearance_id for a in deck.appearances}
+            assert ids == {
+                "app-mik_moe:1-mik_moe:100-1",
+                "app-mik_moe:1-mik_moe:101-3",
+            }
+
+    def test_old_dist_without_new_fields_compatible(self, db_path, old_dist):
+        """旧 dist（无 appearance_id/legacy_ids 列）JSONL 后端正常读取。"""
+        jl = open_jsonl(old_dist)
+        try:
+            deck = jl.get_deck("mik_moe:1")
+            assert deck is not None
+            assert all(a.appearance_id is None for a in deck.appearances)
+            result = jl.stats_usage(date_from="2026-07-01", date_to="2026-09-01")
+            assert result.meta is not None
+        finally:
+            jl.close()

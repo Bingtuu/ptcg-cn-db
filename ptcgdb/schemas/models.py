@@ -358,6 +358,7 @@ class DeckAppearance(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    appearance_id: str | None = None  # 稳定出战 ID（task 062）；旧 dist None 兼容
     tournament_id: str
     rank: int
     points: float | None

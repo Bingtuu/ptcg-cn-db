@@ -31,7 +31,7 @@ eligible_b AS (  -- B 层子范围：topcut 名额已知的赛事
 	  AND participant_count IS NOT NULL
 ),
 app AS (
-	SELECT a.tournament_id, a.deck_id, a.rank,
+	SELECT a.tournament_id, a.appearance_id, a.deck_id, a.rank,
 	       CASE WHEN a.points IS NOT NULL AND a.points > 0 THEN a.points
 	            ELSE 1.0 / a.rank END AS w_d,
 	       a.record_wins, a.record_losses, a.record_ties
@@ -40,26 +40,26 @@ app AS (
 	WHERE a.tournament_id IN (SELECT tournament_id FROM eligible)
 ),
 norm AS (
-	SELECT tournament_id, deck_id, rank,
+	SELECT tournament_id, appearance_id, deck_id, rank,
 	       w_d / SUM(w_d) OVER (PARTITION BY tournament_id) AS w_share,
 	       record_wins, record_losses, record_ties
 	FROM app
 ),
 per_app AS (  -- card 粒度：每组 × 出战条目：名次权重份额 + 逐局战绩（每组只计一次）
-	SELECT v.group_key, v.tournament_id, v.deck_id, v.rank,
+	SELECT v.group_key, v.tournament_id, v.appearance_id, v.deck_id, MAX(v.rank) AS rank,
 	       MAX(n.w_share) AS carry,
 	       MAX(n.record_wins) AS wins, MAX(n.record_losses) AS losses,
 	       MAX(n.record_ties) AS ties
 	FROM v_stat_deck_cards v
-	JOIN norm n ON n.tournament_id = v.tournament_id
-	           AND n.deck_id = v.deck_id AND n.rank = v.rank
+	JOIN norm n ON n.appearance_id = v.appearance_id
 	WHERE :granularity = 'card'
 	  AND INSTR(',' || :scope || ',', ',' || v.stat_scope || ',') > 0
 	  AND v.group_key IS NOT NULL
-	GROUP BY v.group_key, v.tournament_id, v.deck_id, v.rank
+	GROUP BY v.group_key, v.tournament_id, v.appearance_id, v.deck_id
 ),
 per_app_arch AS (  -- archetype 粒度：每出战条目一行（卡组级去重，v1.26）
-	SELECT d.archetype_name AS group_key, n.tournament_id, n.deck_id, n.rank,
+	SELECT d.archetype_name AS group_key, n.tournament_id, n.appearance_id, n.deck_id,
+	       n.rank AS rank,
 	       n.w_share AS carry,
 	       n.record_wins AS wins, n.record_losses AS losses, n.record_ties AS ties
 	FROM norm n

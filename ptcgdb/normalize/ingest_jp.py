@@ -49,21 +49,16 @@ event）：按出现序对第 n 个（n≥2）追加 `#{n}` 消歧（双胞胎�
   no_cn_printing）/ ambiguous_ja_name（多候选不猜）/ unknown_card_id（名表
   缺 id）。raw_set/raw_number 落 jp_set/jp_number；resolved_name_en 恒 NULL
   （JP 链无 EN 中间名）。
-- **decks/deck_appearances/deck_cards**：内容实体去重照 limitless_site 同款——
-  deck_id = `pokemon_card_jp:{sha256(canonical_json(排序后 (official_card_id,
-  count) 列表))[:16]}`，同内容跨码/跨 event 天然去重（1 内容行 + N 出战行）；
-  decks.deck_code 落首见码（官方 deckID 码；同内容多码时保持首见，不猜对应
-  关系）；placement 词 → rank 经 jp_rules placements（**未知词 → 跳过该出战
-  条目 + warning，不猜**——deck_appearances.rank 是 NOT NULL 复合主键列，
-  无法落 NULL，照 mik ingest「缺 rank 跳过」先例）；record 三列 NULL（聚合站
-  无比分，不猜）；player_ref NULL（聚合站无选手信息，隐私最小化天然满足）；
-  topcut_slots 物化 = 实际入库出战条数（拦截/缺 raw/未知名次词不计）。
+- **decks/deck_appearances/deck_cards**：deck_id 按 official_card_id 聚合 count、
+  排序后哈希，同内容跨码/跨 event 去重（1 内容行 + N 出战行）；decks.deck_code
+  落首见码；placement 词 → rank 经 jp_rules placements（未知词跳过 + warning）；
+  record 三列与 player_ref 均为 NULL；topcut_slots = 实际入库出战条数。
 - **env 推导 + 交叉校验（FR-9.1b）**：region='ja'，未命中 → env NULL + warning
   （不猜）；卡组最大赛制标记 ∉ allowed_marks 告警不拒收。
 - **mapping_status 分档（FR-9.1）**：full ≥0.95 / partial (0,0.95) / unmapped =0；
   misses 全量 record_miss（source 经 decks 行 = pokemon_card_jp）。
 - **幂等**：tournaments/decks merge upsert；deck_cards 按 deck_id 先删后插；
-  出战条目按 (deck_id, tournament_id) 先删后插（同 rank 碰撞后写覆盖）。
+  出战条目按 deck_code 派生的稳定 appearance_id 去重，同 key 冲突拒收。
 """
 
 from __future__ import annotations
@@ -80,13 +75,18 @@ from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
 from ptcgdb.normalize.deck_confirm import DeckConfirmParseError, parse_deck_confirm
-from ptcgdb.normalize.deck_misses import record_miss
+from ptcgdb.normalize.deck_misses import _deck_env_marks, record_miss
 from ptcgdb.normalize.envs import (
     SOURCE_REGION,
     EnvSegment,
     alignment_window,
     derive_env,
     load_calendar,
+)
+from ptcgdb.normalize.identity import (
+    appearance_identity,
+    jp_deck_content_id,
+    upsert_appearance,
 )
 from ptcgdb.normalize.ingest_tourneys import DECK_SIZE, _mapping_status, derive_stat_scope
 from ptcgdb.normalize.limitless import _recency_key
@@ -109,7 +109,7 @@ from ptcgdb.scrapers.deck_confirm import (
 from ptcgdb.scrapers.jp_rules import JpRules, load_jp_rules
 from ptcgdb.scrapers.pokecabook import PokecabookParseError, parse_article_page
 from ptcgdb.scrapers.pokecabook_runner import RAW_SUBDIR as POKECABOOK_SUBDIR
-from ptcgdb.scrapers.raw_store import canonical_json, read_raw
+from ptcgdb.scrapers.raw_store import read_raw
 
 DEGRADED_DECISION = "degraded_champions_only"  # plan.json 降级判定值（T6）
 
@@ -134,15 +134,8 @@ class JpIngestResult:
 
 
 def make_deck_id(pairs: Any) -> str:
-    """内容哈希 deck_id：pokemon_card_jp:{sha256(canonical_json([[card_id,count],...]))[:16]}。
-
-    pairs = (official_card_id, count) 对列表。哈希材料排序后归一（内容身份；
-    卡名/分组不参与，名表版本差异不制造新内容实体）。同一套 60 张清单跨码/
-    跨赛事同一 deck_id（天然去重，mik deckId / limitless 内容哈希同语义）。
-    """
-    norm = sorted((str(card_id), int(count)) for card_id, count in pairs)
-    digest = hashlib.sha256(canonical_json(norm).encode("utf-8")).hexdigest()
-    return f"{SOURCE}:{digest[:16]}"
+    """official_card_id 聚合 count、排序后哈希的内容 deck_id。"""
+    return jp_deck_content_id(SOURCE, pairs)
 
 
 def _fetched_at(doc: dict[str, Any]) -> datetime:
@@ -219,7 +212,7 @@ def map_ja_card(
       或子集为空跳过本层；rule "ja_name+group_env"），仍多候选取 release_date
       最新印刷（缺失视为最旧，并列取 card_id 字典序最小，确定性；无 env 收窄
       时 rule "ja_name+group_latest"）。
-    env_marks 由调用方给（ingest = 赛事 env 段；remap = 最早出战赛事推导，
+    env_marks 由调用方给（ingest/remap 均为最早非空出战日期推导，
     无上下文传 None → 直接最新印刷）。ja_name 缺失（名表缺 id）由调用方先行
     分流为 unknown_card_id，不进本函数。
     """
@@ -433,9 +426,9 @@ def _ingest_one_event(
         slot = by_deck.setdefault(
             deck_id,
             {"code": ref.deck_code, "page": page_dc, "fetched_at": _fetched_at(deck_doc),
-             "placements": []},
+             "appearances": []},
         )
-        slot["placements"].append(ref.placement)
+        slot["appearances"].append((ref.deck_code, ref.placement))
 
     with Session(engine) as session:
         session.merge(
@@ -465,7 +458,7 @@ def _ingest_one_event(
         ingested = 0
         for deck_id, slot in by_deck.items():
             ingested += _ingest_one_deck(
-                session, deck_id, slot, tournament_id, env_segment, env_marks,
+                session, deck_id, slot, tournament_id, env_segment, env_marks, env_calendar,
                 ja_name_index, card_index, rules, result,
             )
         tournament = session.get(Tournament, tournament_id)
@@ -481,6 +474,7 @@ def _ingest_one_deck(
     tournament_id: str,
     env_segment: EnvSegment | None,
     env_marks: tuple[str, ...] | None,
+    env_calendar: dict[str, Any],
     ja_name_index: dict[str, list[JaCandidate]],
     card_index: dict[str, tuple[str, str | None, str | None]],
     rules: JpRules,
@@ -501,6 +495,16 @@ def _ingest_one_deck(
             }
         )
         return 0
+    current_appearance_ids = [
+        appearance_identity(SOURCE, tournament_id, {"deck_code": deck_code})[1]
+        for deck_code, placement in slot["appearances"]
+        if rules.placement_rank(placement) is not None
+    ]
+    env_marks = _deck_env_marks(
+        session, deck_id, SOURCE, env_calendar,
+        current_tournament_id=tournament_id,
+        current_appearance_ids=current_appearance_ids,
+    )
     # card_id 解析（决策 rule 计分布）；同 card_id 多条目合并 count（两种印刷同名卡）
     merged: dict[str, int] = {}
     raw_names: dict[str, str] = {}
@@ -603,32 +607,23 @@ def _ingest_one_deck(
     session.add_all(deck_rows)
     result.decks += 1
     result.deck_cards += len(deck_rows)
-    # 出战条目：按 (deck_id, tournament_id) 先删后插；placement 词 → rank
-    session.execute(
-        delete(DeckAppearance).where(
-            DeckAppearance.deck_id == deck_id,
-            DeckAppearance.tournament_id == tournament_id,
-        )
-    )
-    by_rank: dict[int, None] = {}
-    for placement in slot["placements"]:
+    seen_appearances: set[str] = set()
+    for deck_code, placement in slot["appearances"]:
         rank = rules.placement_rank(placement) if placement else None
         if rank is None:
-            # 未知名次词/缺名次：跳过该出战条目 + warning，不猜
-            # （rank 是 NOT NULL 复合主键列落不了 NULL，照 mik ingest 缺 rank 跳过先例）
             result.warnings.append(
                 f"未知名次词 {placement!r}，该出战条目跳过（不猜）: "
                 f"deck={deck_id} tournament={tournament_id}"
             )
             continue
-        if rank in by_rank:
-            result.warnings.append(
-                f"同名次碰撞，后写覆盖: deck={deck_id} tournament={tournament_id} rank={rank}"
-            )
-        by_rank[rank] = None
-    for rank in sorted(by_rank):
-        session.add(
+        appearance_key, appearance_id = appearance_identity(
+            SOURCE, tournament_id, {"deck_code": deck_code}
+        )
+        upsert_appearance(
+            session,
             DeckAppearance(
+                appearance_id=appearance_id,
+                appearance_key=appearance_key,
                 deck_id=deck_id,
                 tournament_id=tournament_id,
                 rank=rank,
@@ -639,8 +634,9 @@ def _ingest_one_deck(
                 record_ties=None,
                 source=SOURCE,
                 fetched_at=slot["fetched_at"],
-            )
+            ),
         )
-    ingested = len(by_rank)
+        seen_appearances.add(appearance_id)
+    ingested = len(seen_appearances)
     result.appearances += ingested
     return ingested

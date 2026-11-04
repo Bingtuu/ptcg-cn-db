@@ -18,7 +18,9 @@ from typing import Any
 
 import yaml
 
+from ptcgdb.normalize.identity import appearance_identity
 from ptcgdb.schemas import AppearanceRecord, DeckCardRecord, TournamentRecord
+from ptcgdb.scrapers.raw_store import canonical_json
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
 VOCAB_DIR = CONFIG_DIR / "vocabularies"
@@ -178,17 +180,34 @@ def parse_rank_entry(
 
     名次/积分/选手 = 出战条目级属性；variant 归类是内容级属性（见
     parse_deck_variant），不在此解析。players[].pinCode → player_ref
-    （只存第一个选手的编号，隐私最小化）。
+    （取已知编号的最小值；全缺时为 None，不补造编号）。
     """
     players = entry.get("players") or []
-    player_ref = players[0].get("pinCode") if players else None
+    pin_codes = [str(player.get("pinCode") or "") for player in players]
+    player_ref = min((pin for pin in pin_codes if pin), default=None)
     records: list[AppearanceRecord] = []
     for deck in entry.get("decks") or []:
         if deck.get("deckId") is None:
             warnings.warn(f"排名条目缺 deckId，跳过: {deck!r}", stacklevel=2)
             continue
+        if players and all(pin_codes):
+            material = {"deckId": deck["deckId"], "pinCodes": sorted(pin_codes)}
+        else:
+            warnings.warn(
+                f"出战队伍缺完整 pinCode，使用原始队伍材料降级身份: {entry!r}",
+                stacklevel=2,
+            )
+            material = {
+                "deckId": deck["deckId"],
+                "fallback": {"players": sorted(players, key=canonical_json)},
+            }
+        appearance_key, appearance_id = appearance_identity(
+            SOURCE, tournament_id, material
+        )
         records.append(
             AppearanceRecord(
+                appearance_id=appearance_id,
+                appearance_key=appearance_key,
                 deck_id=make_deck_id(deck["deckId"]),
                 tournament_id=tournament_id,
                 rank=_to_int(entry.get("rank")),

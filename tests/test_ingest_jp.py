@@ -679,3 +679,69 @@ def test_ingest_jp_null_rows_merge_count(tmp_path):
     # misses：同 (deck_id, raw_name, jp_set, jp_number) 键幂等 upsert → 1 行
     misses = [m for m in query_all(db_path, DeckCardMiss) if m.deck_id == deck_id]
     assert len(misses) == 1 and misses[0].miss_kind == "ambiguous_ja_name"
+
+
+def test_jp_same_rank_deck_codes_get_distinct_stable_appearance_ids(tmp_path):
+    from ptcgdb.normalize.identity import appearance_identity
+
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "same-rank.db"
+    write_deck_raws(raw_dir)
+    write_article(
+        raw_dir, "8101", "champions", "2025-06-05", "チャンピオンズリーグ2026 神戸",
+        [("カードショップK（神戸）", [
+            (C_FULL1, "優勝"), (C_FULL2, "優勝"), (C_FULL1, "優勝"),
+        ])],
+    )
+    build_db(db_path)
+
+    result = ingest_jp(raw_dir, db_path)
+    assert result.appearances == 2
+    apps = query_all(db_path, DeckAppearance)
+    assert len(apps) == 2
+    assert {a.rank for a in apps} == {1}
+    assert len({a.deck_id for a in apps}) == 1
+    tournament_id = tid("8101", "カードショップK（神戸）")
+    expected = set()
+    for code in (C_FULL1, C_FULL2):
+        key, appearance_id = appearance_identity(
+            "pokemon_card_jp", tournament_id, {"deck_code": code}
+        )
+        expected.add((key, appearance_id))
+    assert {(a.appearance_key, a.appearance_id) for a in apps} == expected
+
+
+def test_jp_later_discovered_earlier_tournament_remaps_shared_deck(tmp_path):
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "env.db"
+    write_deck_raws(raw_dir)
+    write_article(
+        raw_dir, "9001", "champions", "2026-01-23", "チャンピオンズリーグ2026 後",
+        [("後の会場", [(C_PART, "優勝")])],
+    )
+    build_db(db_path)
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        session.add(make_card("CSJ-013", "CSJ", "ネストボール", "J", ctype="trainer",
+                              subtype="物品"))
+        session.add(NameGroup(group_key="grp-ネストボール", display_name="ネストボール"))
+        session.add_all([
+            CardNameGroup(card_id=cid, group_key="grp-ネストボール")
+            for cid in ("CSA-001", "CSB-002", "CSJ-013")
+        ])
+        session.commit()
+    engine.dispose()
+
+    ingest_jp(raw_dir, db_path, enforce_window=False)
+    deck_id = deck_id_of(PART_ENTRIES)
+    nest_ball = next(c for c in query_all(db_path, DeckCard) if c.raw_name == "ネストボール")
+    assert nest_ball.card_id == "CSJ-013"
+
+    write_article(
+        raw_dir, "1001", "champions", "2025-06-05", "チャンピオンズリーグ2026 前",
+        [("前の会場", [(C_PART, "優勝")])],
+    )
+    ingest_jp(raw_dir, db_path, enforce_window=False)
+    nest_ball = next(
+        c for c in query_all(db_path, DeckCard)
+        if c.deck_id == deck_id and c.raw_name == "ネストボール"
+    )
+    assert nest_ball.card_id == "CSB-002"

@@ -51,6 +51,8 @@ def test_orm_columns_match_prd():
         "fetched_at",
     ]
     assert list(DeckAppearance.__table__.columns.keys()) == [
+        "appearance_id",
+        "appearance_key",
         "deck_id",
         "tournament_id",
         "rank",
@@ -62,11 +64,7 @@ def test_orm_columns_match_prd():
         "source",
         "fetched_at",
     ]
-    assert [c.name for c in DeckAppearance.__table__.primary_key] == [
-        "deck_id",
-        "tournament_id",
-        "rank",
-    ]
+    assert [c.name for c in DeckAppearance.__table__.primary_key] == ["appearance_id"]
     assert list(DeckCard.__table__.columns.keys()) == [
         "deck_id",
         "card_id",
@@ -142,6 +140,8 @@ def test_orm_round_trip(tmp_path):
         session.add_all(
             [
                 DeckAppearance(
+                    appearance_id="mik_moe:app1",
+                    appearance_key="mik_moe:key1",
                     deck_id="mik_moe:555001",
                     tournament_id="mik_moe:8801",
                     rank=5,
@@ -154,6 +154,8 @@ def test_orm_round_trip(tmp_path):
                     fetched_at=now,
                 ),
                 DeckAppearance(
+                    appearance_id="mik_moe:app2",
+                    appearance_key="mik_moe:key2",
                     deck_id="mik_moe:555001",
                     tournament_id="mik_moe:8801",
                     rank=53,
