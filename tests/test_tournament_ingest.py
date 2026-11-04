@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session
 
 from ptcgdb.migrations import apply_migrations
@@ -434,6 +434,34 @@ def test_ingest_idempotent(env):
     ) == snapshot
     assert len(query(db_path, select(Deck))) == 2
     assert len(query(db_path, select(DeckAppearance))) == 2  # 555003 的名次条目不落
+
+
+def test_ingest_replaces_legacy_transition_identities(env):
+    """task 062：migration 014 给既有 mik 出战合成 legacy 过渡身份（legacy: key）；
+    raw 重放按赛事先删后插，把 legacy 行过渡为 raw 重算的 canonical 身份，
+    不得出现同一源出战新旧双份。"""
+    raw_dir, db_path = env
+    first = ingest_tourneys(raw_dir, db_path)
+    assert first.appearances == 2
+    # 模拟 migration 014 的 legacy 过渡身份：同事实行换成 legacy key/id
+    engine = create_engine(f"sqlite:///{db_path}")
+    with Session(engine) as session:
+        for row in session.execute(select(DeckAppearance)).scalars():
+            session.execute(
+                update(DeckAppearance)
+                .where(DeckAppearance.appearance_id == row.appearance_id)
+                .values(
+                    appearance_id=f"legacy:{row.appearance_id}",
+                    appearance_key=f"legacy:[{row.tournament_id},{row.deck_id}]",
+                )
+            )
+        session.commit()
+    engine.dispose()
+    second = ingest_tourneys(raw_dir, db_path)
+    assert second.appearances == 2
+    rows = query(db_path, select(DeckAppearance.appearance_key))
+    assert len(rows) == 2
+    assert all(not row[0].startswith("legacy:") for row in rows)
 
 
 def test_ingest_unmapped_deck(tmp_path):

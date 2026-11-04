@@ -272,6 +272,15 @@ def _ingest_one_tournament(
     with Session(engine) as session:
         session.merge(Tournament(**record.model_dump()))
         result.tournaments += 1
+        # task 062：migration 014 后既有 mik 出战是 legacy 过渡身份（legacy: key），
+        # 与 raw 重算的 canonical 身份不同键不同 id；按赛事先删后插，重放把
+        # legacy 过渡到 canonical，避免同一源出战新旧双份（PRD §7.5 legacy=过渡）。
+        session.execute(
+            delete(DeckAppearance).where(
+                DeckAppearance.tournament_id == record.tournament_id,
+                DeckAppearance.source == "mik_moe",
+            )
+        )
         # 按内容实体聚合出战条目：同一 deckId 可出现于多个名次（v1.10 续实测语义）
         by_deck: dict[str, list[AppearanceRecord]] = {}
         for app in appearance_records:
