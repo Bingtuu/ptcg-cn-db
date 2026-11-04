@@ -2,7 +2,7 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-10-25；PRD v1.38；实时库 user_version=13 / schema_version=2.0.0。
+> 最近更新：2026-10-31；PRD v1.38；实时库 user_version=13 / schema_version=2.0.0。
 
 ## 当前状态
 
@@ -21,7 +21,7 @@
 | 任务 | 状态 | 范围 |
 |---|---|---|
 | 061 | DONE | JP 自愈与 Brave Bangle/CBB/isQual 外部事实核销 |
-| 062 | TODO | 修复赛事 3710 出战身份冲突；EN deck_id 顺序无关哈希、旧实体迁移、共享 deck env 统一；重放本地 raw ingest |
+| 062 | DOING | 修复赛事 3710 出战身份冲突；EN deck_id 顺序无关哈希、旧实体迁移、共享 deck env 统一；重放本地 raw ingest |
 | 063 | TODO | 采集与 raw 层韧性：长周期瞬断、HTTP 异常面、采集/写入防护 |
 | 064 | TODO | 统计与 SDK 契约：统计边界、双后端一致性和查询接口 |
 | 065 | TODO | 剩余 P2、validate/monitor/accept 与文档收尾 |
@@ -73,6 +73,7 @@ M0–M12 均已完成：
 
 ## 当前运维与技术债
 
+- **mik 主源迁移暂停采集（2026-10-31 发现）**：tcg.mik.moe 全站 302 → areazero.gg，旧 API（`/api/v1/product-list` 等）新域名 404；新站声明 AI 访问政策（`/ai-access.json`：真实 UA + 逐请求 Agent-Intent + 逐请求人工确认、不鼓励批量）。站方 2026-10-30 公告因网络设施问题服务降级、升级中。L0 探测首轮即熔断中止（dry-run 只读，库无变更）。mik 侧卡牌/CN 赛事轮询全部暂停，待站点恢复后另立任务评估新 API 形态与政策合规的管线改造；EN/JP 赛事源不受影响。
 - **赛事 3710 唯一约束冲突**：由 task 062 修复并重放本地 raw；EN 双通道本轮已完成。
 - **Brave Bangle / 英勇手镯**：WHT 80、未解 miss 1,244 行；已公告随“白焰迸涌”2026-11-06 发售。等 mik 正式卡详情后走 L0 + remap-decks，当前不造卡、不 resolve。
 - **CBB 卡面分母（外部证据阻塞）**：CBB1C/CBB2C 仍有实测包冲突，mik 是不同编号多列示而非同号重复；保持只显分子，需新卡面锚或权威逐包清单。isQual 疑点已由 task 061 关闭。
@@ -84,6 +85,7 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-10-31 轮询中止**：L0 探测发现 tcg.mik.moe 302 迁移至 areazero.gg 且旧 API 失效；按站方降级公告与 AI 访问政策暂停 mik 侧采集，EN/JP 本轮未跑。详见「当前运维与技术债」首条。
 - **2026-10-25 task 059 完成**：新增 search/get CLI，修复验收覆盖、快照缺失判定、owner 词表和导出异常隔离；1190 测试全绿，真实 A1–A8 全 PASS。
 - **2026-10-25 嗨皮组合 L0**：active 12,908→13,057，sets 133→137；dist 重导 v20261025.1。
 - **2026-10-25 赛事轮询**：EN 完成；mik 3710 冲突中止，列 task 062；task 060 已按当前部分入库状态重导 dist，修复后仍需重放。
