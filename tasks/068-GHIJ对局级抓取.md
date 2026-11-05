@@ -12,9 +12,10 @@
 
 ## 现状与阻塞
 
-- 2026-10-31 查证：该窗口 128 场全部是 mik city 级赛事；库内 pairings 全部来自 limitless（EN），CN 赛事管线从未采集对局级数据（`scrape swiss` 仅积分榜快照 raw 留存）。
+- 2026-10-31 查证：该窗口 mik 赛事全部是 city 级以上 CN 赛事；库内 pairings 全部来自 limitless（EN），CN 赛事管线从未采集对局级数据（`scrape swiss` 仅积分榜快照 raw 留存）。
+- **2026-11-04 limitless 供给调查（数据源限制回报，用户指派的确认项）**：目标交付物是 **pairings 表的 GHIJ 行**（不是 tournaments 元数据）。实证——① API 通道 list raw 5 页 5,000 条目（2024-12-21→2026-10-24，窗口全覆盖）按 china/中文/主要城市/大师/超级赛 等模式匹配 **0 命中**；② 主站通道 tournaments raw 同样 0 命中（decks raw 的 23 个命中为卡组内容文本，非赛事列示）；③ 库内 2026-09-19..11-08 窗口 172 场赛事 100% mik_moe，limitless 源在窗口内无 CN 赛事页面，pairings 段无的放矢。结论：**CN GHIJ 对局级 pairings 在当前全部已知数据源下供给不存在**（mik 无端点[task 052 实证] + limitless 双通道无 CN 列示 + areazero API 404/政策禁批量）。2025 年的 14 万行 pairings 全部来自 EN 赛事（online_open + 官方档），不能外推到 CN 赛事。
 - mik 2026-10-31 起全站 302 → areazero.gg，旧 API 404，站方降级中；新站 AI 访问政策不鼓励批量。采集必须等源站恢复 + 管线适配评估后另行实施。
-- limitless 等外部源不含 CN 城市赛，无替代供给。
+- 下游影响如实表述：task 103 的 J 标窗口 9 池 36 格校准盘点在无 CN 对局数据时只能用 B 层代理（top-cut 转化率），不能升级为 A 层逐局口径；若 CN 官方后续开放对阵数据或 areazero 恢复后新增端点，按本任务恢复。
 
 ## 步骤
 
