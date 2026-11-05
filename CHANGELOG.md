@@ -41,6 +41,7 @@
 
 ### Added
 
+- task 067 数据版本治理（2026-11-04，PRD v1.40，无 schema 迁移）：manifest 增 **`data_version`**（整数，单调）+ **`data_changes`** 计数差集——导出边界比对本次与上一 dist 内容指纹（契约 JSONL 八件 checksum + legality data；parquet/db 为派生品不入指纹，避免 built_at 类易变字节假漂移），指纹不变沿用旧值、变化 +1 并附 `{key: {from, to}}` 差集；首次发布从 1 起、changes 留空，旧 dist 无字段按 0 兼容。下游凭 data_version 单调性主动检测「参考面刷新」，不必重算对账（清偿「tournaments 数据变了而版本没动」之病）；导出测试覆盖 不变/变更/首发 三态
 - task 059 卡牌查询 CLI（2026-10-25，PRD v1.37 FR-4，无 schema 迁移）：`search` 支持卡名/标记/种类/系列/规则框/太晶与分页筛选，输出 `{meta, data}` JSON；`get` 按 card_id 点查；两者与 SDK 共用查询路径，get 未命中退 1、缺库退 2。
 - 09-16 发售日临场增量收编（2026-09-19，PRD v1.34，无 schema 迁移）：`monitor l0` 实跑——SVP 442→507（+65）/ 30thP 27→31（+4）/ 30thDC「30周年庆典 豪华礼盒」新系列 45 张直接 activate / 30thC 169→176（+7，首跑被新罕贵度 `RGB` 拦截 → `config/vocabularies/rarities.yml` 补 RGB：30thC-B/G/R 三张梦幻 → validate 全过 → activate）；**active 12,795→12,908，sets 132→133**；L0 钩子自动 remap resolved=561 / partial→full 升级 292 / tag-effects changed=583 unknown=0（30thC 阻断钩子，事后手工 `tag-effects --set 30thC` changed=176 unknown=0 unknown_sent=3 与 task 054 预演一致）
 - mik 赛事收集起点底线守卫（2026-09-19，PRD v1.34 FR-9.8 续，无 schema 迁移）：`normalize/envs.py::cn_collection_start()`（赛区旋转日历 cn 段最早 effective_from=2026-07-16，取最早段未来旋转不漂移）+ `monitor/tourneys.py` plan 行回显底线 + mik `ingest-tourneys` handler 自动带 `date_from=floor`——task 051 积压 raw 曾被无底线 ingest 吃回 47 场退赛前赛事（已拍板清退还原），此后结构性拦截

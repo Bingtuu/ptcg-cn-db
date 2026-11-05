@@ -21,6 +21,7 @@ import tempfile
 import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -319,6 +320,11 @@ def _export_all_to_dir(db_path: Path, out_dir: Path, *, parquet: bool = True) ->
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
+    _write_checksums(out_dir)
+    return manifest
+
+
+def _write_checksums(out_dir: Path) -> None:
     lines = []
     for name in sorted(EXPORT_FILES):
         if name == "checksums.sha256":
@@ -327,7 +333,74 @@ def _export_all_to_dir(db_path: Path, out_dir: Path, *, parquet: bool = True) ->
             continue  # --no-parquet 跳过的文件不登记
         lines.append(f"{_sha256(out_dir / name)}  {name}")
     (out_dir / "checksums.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return manifest
+
+
+def _load_release(out_dir: Path) -> tuple[dict | None, dict[str, str], Any]:
+    """读取既有 dist 的 manifest/checksums/legality data（task 067 数据版本治理）。"""
+    manifest_path = out_dir / "manifest.json"
+    checksums_path = out_dir / "checksums.sha256"
+    if not (manifest_path.is_file() and checksums_path.is_file()):
+        return None, {}, None
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    sums: dict[str, str] = {}
+    for line in checksums_path.read_text(encoding="utf-8").splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2:
+            sums[parts[1].strip()] = parts[0]
+    legality_data = None
+    legality_path = out_dir / "legality.json"
+    if legality_path.is_file():
+        legality = json.loads(legality_path.read_text(encoding="utf-8"))
+        legality_data = (legality.get("meta", {}).get("schema_version"), legality.get("data"))
+    return manifest, sums, legality_data
+
+
+# 内容指纹面：契约 JSONL 八件 + legality data。parquet 由 cards.jsonl 派生、
+# db 为复制品、manifest/checksums 自带版本字段，均不入指纹（避免 built_at
+# 等易变字节造成假漂移）。
+_FINGERPRINT_FILES = (
+    "cards.jsonl", "sets.jsonl", "relations.jsonl", "tournaments.jsonl",
+    "decks.jsonl", "deck_appearances.jsonl", "deck_cards.jsonl", "pairings.jsonl",
+)
+
+
+def _fingerprint(out_dir: Path) -> tuple[dict[str, str], Any]:
+    sums = {
+        name: _sha256(out_dir / name)
+        for name in _FINGERPRINT_FILES
+        if (out_dir / name).is_file()
+    }
+    legality = json.loads((out_dir / "legality.json").read_text(encoding="utf-8"))
+    return sums, (legality.get("meta", {}).get("schema_version"), legality.get("data"))
+
+
+def _resolve_data_release(
+    staging: Path, out_dir: Path, manifest: dict,
+) -> tuple[int, dict]:
+    """task 067：与上一 dist 比内容指纹——不变沿用版本，变化 +1 并产计数差集。"""
+    prev_manifest, prev_sums, prev_legality = (
+        _load_release(out_dir) if out_dir.exists() else (None, {}, None)
+    )
+    new_sums, new_legality = _fingerprint(staging)
+    prev_fp = (
+        {name: prev_sums.get(name) for name in _FINGERPRINT_FILES if name in prev_sums}
+        if prev_manifest is not None else None
+    )
+    if prev_manifest is None:
+        # 首次发布：版本从 1 起，无数值可比，changes 留空（基线即第一版）。
+        return 1, {}
+    changed = prev_fp != new_sums or prev_legality != new_legality
+    prev_version = int(prev_manifest.get("data_version", 0))
+    if not changed:
+        return max(prev_version, 1), {}
+    prev_counts = (prev_manifest or {}).get("counts", {})
+    new_counts = manifest["counts"]
+    changes = {
+        key: {"from": prev_counts.get(key), "to": new_counts.get(key)}
+        for key in sorted(set(prev_counts) | set(new_counts))
+        if prev_counts.get(key) != new_counts.get(key)
+    }
+    return prev_version + 1, changes
 
 
 def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
@@ -345,6 +418,14 @@ def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
     logger = logging.getLogger(__name__)
     try:
         manifest = _export_all_to_dir(db_path, staging, parquet=parquet)
+        # task 067：发布前与旧 dist 比对内容指纹，定 data_version 与变更摘要。
+        data_version, data_changes = _resolve_data_release(staging, out_dir, manifest)
+        manifest["data_version"] = data_version
+        manifest["data_changes"] = data_changes
+        (staging / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        _write_checksums(staging)  # manifest 已更新，重签 checksums
         existed = out_dir.exists()
         if existed:
             os.replace(out_dir, backup)

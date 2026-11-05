@@ -528,3 +528,53 @@ def test_appearances_jsonl_carries_id_without_key(dist_decks):
     assert rows
     assert all("appearance_key" not in r for r in rows)  # 审计字段不进导出契约
     assert rows[0]["appearance_id"] == "exp-app-1"
+
+
+# ---- task 067：data_version 数据版本治理 ----
+
+
+class TestTask067DataVersion:
+    """manifest 增 data_version（内容指纹变化才递增）+ data_changes 计数差集。
+
+    语义：导出边界比对新旧 dist 内容指纹（内容 JSONL checksum + legality data），
+    指纹不变 → 版本不变、changes 空；指纹变化 → 版本 +1、changes 给前后值。
+    """
+
+    def test_fresh_export_starts_at_one(self, db_path, tmp_path):
+        manifest = export_all(db_path, tmp_path / "dist")
+        assert manifest["data_version"] == 1
+        assert manifest["data_changes"] == {}
+
+    def test_unchanged_content_keeps_version(self, db_path, tmp_path):
+        out = tmp_path / "dist"
+        first = export_all(db_path, out)
+        second = export_all(db_path, out)
+        assert second["data_version"] == first["data_version"]
+        assert second["data_changes"] == {}
+
+    def test_content_change_bumps_version_with_diff(self, db_path, tmp_path):
+        from sqlalchemy import text
+
+        out = tmp_path / "dist"
+        first = export_all(db_path, out)
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM cards WHERE card_id='T1-002'"))
+        engine.dispose()
+        second = export_all(db_path, out)
+        assert second["data_version"] == first["data_version"] + 1
+        assert second["data_changes"]["cards"] == {"from": 2, "to": 1}
+
+    def test_change_summary_covers_union_of_count_keys(self, db_path, tmp_path):
+        from sqlalchemy import text
+
+        out = tmp_path / "dist"
+        export_all(db_path, out)
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM cards WHERE card_id='T1-002'"))
+        engine.dispose()
+        manifest = export_all(db_path, out)
+        # parquet 行数随 cards 派生，合法计入差集
+        assert set(manifest["data_changes"]) == {"cards", "cards_parquet"}
+        assert manifest["data_changes"]["cards"] == {"from": 2, "to": 1}
