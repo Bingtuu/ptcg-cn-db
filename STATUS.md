@@ -2,11 +2,11 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-04；PRD v1.39；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-04；PRD v1.40；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
-**task 062 DONE：赛事身份统一。** migration 014 真实库 43s 完成，EN 旧实体合并（aliases 41,773）、赛事 3710 双出战修复、mik 重放 legacy→canonical 过渡、统计/导出/SDK 贯通，验收 A1/A4–A8 全 PASS（`dist/acceptance-20261104.md`），任务档 `tasks/done/062`。下一项按用户拍板为 task 067（数据版本治理），其后 068（GHIJ 对局级抓取，阻塞于 mik 源停摆）。
+**task 062 DONE：赛事身份统一。** migration 014 真实库 43s 完成，EN 旧实体合并（aliases 41,773）、赛事 3710 双出战修复、mik 重放 legacy→canonical 过渡、统计/导出/SDK 贯通，验收 A1/A4–A8 全 PASS（`dist/acceptance-20261104.md`），任务档 `tasks/done/062`。067 数据版本治理 DONE；下一项为 068（GHIJ 对局级 pairings 落地，limitless 自身赛事供给，执行中）。
 
 **当前数据（2026-11-04，task 062 后）**：
 
@@ -16,7 +16,7 @@
 - dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
 - **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队，第 2 页 raw 待 mik 恢复后补，当前不称整场收齐。
 - **mik 源停摆**：2026-10-31 起 tcg.mik.moe 迁移 areazero.gg 且旧 API 404，mik 侧采集按政策停摆（areazero 要求逐请求人工确认，禁止批量）；mik 赛事数据停在停摆前快照 + 本地 raw 可重放。EN/JP 源不受影响。
-- 测试基线：task 062 完成后 1248 passed、ruff 全净。
+- 测试基线：task 067 完成后 1252 passed、ruff 全净。
 
 ## 当前任务队列
 
@@ -24,7 +24,7 @@
 |---|---|---|
 | 061 | DONE | JP 自愈与 Brave Bangle/CBB/isQual 外部事实核销 |
 | 062 | DONE | 赛事身份统一：appearance 身份、EN 旧实体合并、3710 修复、dist 3.0.0 |
-| 067 | TODO | 数据版本治理：scrape 变更 data_version 递增 + 变更摘要（A2） |
+| 067 | DONE | 数据版本治理：manifest data_version 单调递增 + data_changes 差集（PRD v1.40） |
 | 068 | TODO | GHIJ 时代对局级抓取（A1，最高价值；阻塞于 mik 源停摆，含 areazero 探测结论） |
 | 063 | TODO | 采集与 raw 层韧性：长周期瞬断、HTTP 异常面、采集/写入防护 |
 | 064 | TODO | 统计与 SDK 契约：统计边界、双后端一致性和查询接口 |

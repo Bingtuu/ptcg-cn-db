@@ -9,7 +9,7 @@
 
 ## 当前摘要
 
-卡牌实时库为 137 系列 / 13,057 active（2026-10-25，task 062 未动卡牌面），schema_version=3.0.0 / user_version=14；task 062 后测试基线为 1248 passed。task 062 赛事身份统一已完成（3710 修复、EN 别名、dist 3.0.0），下一项为 task 067 数据版本治理，068 GHIJ 对局级抓取阻塞于 mik 源停摆；063–065 队列见 STATUS。真实库与 dist 的数字必须按各自版本表述，不混为同一快照。
+卡牌实时库为 137 系列 / 13,057 active（2026-10-25，task 062 未动卡牌面），schema_version=3.0.0 / user_version=14；task 067 后测试基线为 1252 passed。task 062 赛事身份统一已完成（3710 修复、EN 别名、dist 3.0.0），067 数据版本治理已完成，068 GHIJ 对局级抓取执行中；063–065 队列见 STATUS。真实库与 dist 的数字必须按各自版本表述，不混为同一快照。
 
 代码结构按 PRD 第 8 章：`ptcgdb/` 下 `orm/schemas/migrations/scrapers/normalize/validate/legal/monitor/export/sdk/accept/mapping/stats`，不要自行发明布局。
 
