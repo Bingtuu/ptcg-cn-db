@@ -379,8 +379,12 @@ def _fingerprint(out_dir: Path) -> tuple[dict[str, str], Any]:
 
 def _resolve_data_release(
     staging: Path, out_dir: Path, manifest: dict,
-) -> tuple[int, dict]:
-    """task 067：与上一 dist 比内容指纹——不变沿用版本，变化 +1 并产计数差集。"""
+) -> tuple[int, dict, str]:
+    """task 067：与上一 dist 比内容指纹——不变沿用 data_version，变化 +1 并产计数差集。
+
+    version（日历轨）每构建重取 v{date}.{data_version}（FR-6.1「每次合入递增」
+    的落实）：下游盯 version 看发布新鲜度，盯 data_version 看内容稳定性。
+    """
     prev_manifest, prev_sums, prev_legality = (
         _load_release(out_dir) if out_dir.exists() else (None, {}, None)
     )
@@ -391,19 +395,23 @@ def _resolve_data_release(
     )
     if prev_manifest is None:
         # 首次发布：版本从 1 起，无数值可比，changes 留空（基线即第一版）。
-        return 1, {}
-    changed = prev_fp != new_sums or prev_legality != new_legality
-    prev_version = int(prev_manifest.get("data_version", 0))
-    if not changed:
-        return max(prev_version, 1), {}
-    prev_counts = (prev_manifest or {}).get("counts", {})
-    new_counts = manifest["counts"]
-    changes = {
-        key: {"from": prev_counts.get(key), "to": new_counts.get(key)}
-        for key in sorted(set(prev_counts) | set(new_counts))
-        if prev_counts.get(key) != new_counts.get(key)
-    }
-    return prev_version + 1, changes
+        data_version, changes = 1, {}
+    else:
+        changed = prev_fp != new_sums or prev_legality != new_legality
+        prev_version = int(prev_manifest.get("data_version", 0))
+        if not changed:
+            data_version, changes = max(prev_version, 1), {}
+        else:
+            data_version = prev_version + 1
+            prev_counts = prev_manifest.get("counts", {})
+            new_counts = manifest["counts"]
+            changes = {
+                key: {"from": prev_counts.get(key), "to": new_counts.get(key)}
+                for key in sorted(set(prev_counts) | set(new_counts))
+                if prev_counts.get(key) != new_counts.get(key)
+            }
+    version = f"v{date.today():%Y%m%d}.{data_version}"
+    return data_version, changes, version
 
 
 def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
@@ -421,10 +429,13 @@ def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
     logger = logging.getLogger(__name__)
     try:
         manifest = _export_all_to_dir(db_path, staging, parquet=parquet)
-        # task 067：发布前与旧 dist 比对内容指纹，定 data_version 与变更摘要。
-        data_version, data_changes = _resolve_data_release(staging, out_dir, manifest)
+        # task 067：发布前与旧 dist 比对内容指纹，定 data_version/version 与变更摘要。
+        data_version, data_changes, version = _resolve_data_release(
+            staging, out_dir, manifest
+        )
         manifest["data_version"] = data_version
         manifest["data_changes"] = data_changes
+        manifest["version"] = version
         (staging / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )

@@ -87,7 +87,7 @@ def test_all_files_present(dist):
 
 def test_manifest(dist):
     m = json.loads((dist / "manifest.json").read_text(encoding="utf-8"))
-    assert m["version"] == "v20260801.1"
+    assert m["version"] == f"v{date.today():%Y%m%d}.1"  # 日历轨随构建重取（task 067）
     assert m["schema_version"] == "3.0.0"
     assert m["built_at"]
     assert len(m["db_sha256"]) == 64
@@ -551,6 +551,9 @@ class TestTask067DataVersion:
         second = export_all(db_path, out)
         assert second["data_version"] == first["data_version"]
         assert second["data_changes"] == {}
+        # version 计数与 data_version 对齐；同日重建字符串不变
+        assert second["version"] == first["version"]
+        assert second["version"].rsplit(".", 1)[1] == str(second["data_version"])
 
     def test_content_change_bumps_version_with_diff(self, db_path, tmp_path):
         from sqlalchemy import text
@@ -564,6 +567,9 @@ class TestTask067DataVersion:
         second = export_all(db_path, out)
         assert second["data_version"] == first["data_version"] + 1
         assert second["data_changes"]["cards"] == {"from": 2, "to": 1}
+        # 日历轨同步递增（下游盯 version 的判据）
+        assert second["version"] != first["version"]
+        assert second["version"] == f"v{date.today():%Y%m%d}.{second['data_version']}"
 
     def test_change_summary_covers_union_of_count_keys(self, db_path, tmp_path):
         from sqlalchemy import text
