@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [v20261107.1] - 2026-11-07
+
+### Changed
+
+- L0 增量合入：系列 SVP, CBB7C
+- 刷新当前快照 latest_text_overrides（standard-2026-09-16, open-2026-09-16）
+- 效果标签打标（L0 tag-effects 钩子，task 040）：changed=756 零命中归类=185 unknown=0
 ## [v20261025.1] - 2026-10-25
 
 ### Changed
@@ -41,6 +48,7 @@
 
 ### Added
 
+- 2026-11-07 轮询增量收编（mik v3 API 恢复后首跑，PRD v1.40，无 schema 迁移）：**白焰迸涌 CSV10.6C 174 / 黑雷奔流 CSV10.5C 174 / 宝石包 CBB7C 196** 三系列 11-05 发售全链入库——activate +596（**active 13,057→13,653**，sets 137→140）；`rarities.yml` +BWR（两主系列 -174 各一张莱希拉姆ex 特别罕贵，循 RGB 先例）；tag-effects changed=756 unknown=0；validate 十规则全过；**mik 新主系列英文桥未发布**（nameEn 空白）致 remap resolved=0——英勇手镯 1,052 行未解挂账待 mik 补桥后自动清偿；另 6 系列 cardsNum 缩水（CS5.5C/CSV1C/3C/5C/7C/CSVH5C 各 1-2 张）挂 L0 question 待人工核查。**mik v3 赛事 API 同步恢复**：`monitor tourneys --source mik` 断点续传 fetched=1,591，3711-3753 填充 32 场（tournaments 922→935 / appearances→91,606 / deck_cards→1,810,172）；3710 按 top64 口径维持 64 队，第 2 页超现口径未收（扩全场需拍板）；limitless 尾窗 11-06..08 无新事件
 - task 068 GHIJ 对局级 pairings 落地（2026-11-06，无 schema 迁移）：EN 对齐窗口闸门（FR-9.8，EN 段止 2026-04-09）是 2026 年 pairings 全缺的机制性原因——以 `scrape limitless --date-from/--date-to` 显式窗口 + `ingest-limitless --no-enforce-window` 特殊补录（管线既有旗标，采集端分类规则不动：online_open 2026 段按 v1.35 date_range 拒收、休闲/人数不足照拒）。窗口 2026-09-16..11-08 实抓 **accepted=4**（SEASAC League Cup ×4——API 通道全窗口官方档供给仅此量级；主站通道无 pairings 的任务 028 结论不变）；**pairings +1,063 行（覆盖 MAX(date) 2025-12-27→2026-10-16），env 推导 HIJ 自然命中（无需新增日历段），v_pairing_players 1,063/1,063 全命中**。067 机制首次实战：dist `data_version` 1→2、`data_changes` 显性给出 pairings/tournaments 等前后值——下游读 manifest 即知参考面刷新。A1 验收口径达成：pairings MAX(date) ≥ 2026-09-16 且 GHIJ 行 > 0
 - task 067 数据版本治理（2026-11-04，PRD v1.40，无 schema 迁移）：manifest 增 **`data_version`**（整数，单调）+ **`data_changes`** 计数差集——导出边界比对本次与上一 dist 内容指纹（契约 JSONL 八件 checksum + legality data；parquet/db 为派生品不入指纹，避免 built_at 类易变字节假漂移），指纹不变沿用旧值、变化 +1 并附 `{key: {from, to}}` 差集；首次发布从 1 起、changes 留空，旧 dist 无字段按 0 兼容。下游凭 data_version 单调性主动检测「参考面刷新」，不必重算对账（清偿「tournaments 数据变了而版本没动」之病）；日历轨 version 同步每构建重取 v{date}.{data_version}（11-06 补实——仅整数轨时盯 version 的下游仍看不到刷新）；导出测试覆盖 不变/变更/首发 三态
 - task 059 卡牌查询 CLI（2026-10-25，PRD v1.37 FR-4，无 schema 迁移）：`search` 支持卡名/标记/种类/系列/规则框/太晶与分页筛选，输出 `{meta, data}` JSON；`get` 按 card_id 点查；两者与 SDK 共用查询路径，get 未命中退 1、缺库退 2。
@@ -201,3 +209,4 @@
 ---
 
 数据版本说明：当前库 meta 尚无 data_version（L0 零增量、从未实际合入），export manifest 显示 fallback `v20260801.0`；自 L0 首次实际合入增量起按日历版本递增。
+

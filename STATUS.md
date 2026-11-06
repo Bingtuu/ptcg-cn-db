@@ -2,7 +2,7 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-04；PRD v1.40；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-07；PRD v1.40；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
@@ -10,8 +10,8 @@
 
 **当前数据（2026-11-04，task 062 后）**：
 
-- 卡牌实时库：137 系列，13,057 active + 8 deprecated = 13,065 行（与 10-25 一致，卡牌面无变更）。
-- 赛事实时库：922 tournaments / 60,622 decks（limitless 31,412 / limitless_site 1,095 / mik_moe 27,494 / jp 229——068 后）/ 88,940 appearances / 1,767,565 deck_cards / 142,028 pairings（**GHIJ 1,063 行，MAX(date)=2026-10-16**，A1 验收口径达成）；mapping_status full 59,045 / partial 1,181；misses 10,477。
+- 卡牌实时库：**140 系列，13,653 active** + 8 deprecated = 13,661 行（11-07 轮询收编 白焰迸涌 CSV10.6C 174 / 黑雷奔流 CSV10.5C 174 / 宝石包 CBB7C 196，含 BWR 新罕贵度）。
+- 赛事实时库：935 tournaments / 62,085 decks / 91,606 appearances / 1,810,172 deck_cards / 142,028 pairings（GHIJ 1,063 行，MAX(date)=2026-10-16）；mik 轮询恢复后 3711-3753 填充 32 场、3710 维持 top64 口径 64 队（第 2 页超出口径，扩全场需拍板）；mapping_status full 59,045 / partial 1,181；misses 10,477。
 - 合法性：4 份快照，standard 当前 G/H/I/J。真实验收 A1/A4–A8 全 PASS，见 `dist/acceptance-20261104.md`。
 - dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
 - **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队，第 2 页 raw 待 mik 恢复后补，当前不称整场收齐。
@@ -75,8 +75,8 @@ M0–M12 均已完成：
 
 ## 当前运维与技术债
 
-- **mik 主源迁移暂停采集（2026-10-31 发现）**：tcg.mik.moe 全站 302 → areazero.gg，旧 API（`/api/v1/product-list` 等）新域名 404（11-03 复探仍 404）；新站 AI 访问政策（`/ai-access.json` v1.1：真实 UA + 逐请求 Agent-Intent + 逐请求人工确认、禁止批量）。站方 2026-10-30 公告因网络设施问题服务降级、升级中；L0 探测首轮即熔断中止（dry-run 只读，库无变更），此后 mik 通道降级为只监控不采集。mik 侧卡牌/CN 赛事轮询全部暂停，数据停在停摆前快照、本地 raw 可重放；待站点恢复后另立任务评估新 API 形态与政策合规的管线改造。EN/JP 赛事源不受影响，JP 对齐窗口定向解析（FR-9.5）维持。
-- **Brave Bangle / 英勇手镯**：WHT 80、未解 miss 1,244 行；已公告随“白焰迸涌”2026-11-06 发售。等 mik 正式卡详情后走 L0 + remap-decks，当前不造卡、不 resolve。
+- **mik v3 API 恢复（2026-11-07 轮询发现）**：10-31 停摆的只是路由/旧 v1 路径（areazero 与 v1 仍 404），**v3 卡牌/赛事 API 已全部恢复可用**（card product-list POST 200 实测；tournament series-list 参数校验 400 = 端点存活）。卡牌侧已正常 L0 全链；赛事侧 `monitor tourneys --source mik` 断点续传正常（1591 新 raw）。此前的政策评估结论仅对 areazero 新域有效，mik 原域按原管线继续。
+- **Brave Bangle / 英勇手镯**：白焰迸涌（CSV10.6C）11-05 已发售入库，英勇手镯=CSV10.6C-082 active；但 mik 对新主系列**未发布英文桥**（nameEn/setCodeEn 空白，082.json 实测空串），WHT-80→手镯链路断在源头，1,052 行未解挂账——mik 补桥后 L0 remap 自动清偿，不猜不造卡。另：CSV10.5C/10.6C 的 174 编号外 BWR 罕贵度已入词表（莱希拉姆ex ×2）。
 - **CBB 卡面分母（外部证据阻塞）**：CBB1C/CBB2C 仍有实测包冲突，mik 是不同编号多列示而非同号重复；保持只显分子，需新卡面锚或权威逐包清单。isQual 疑点已由 task 061 关闭。
 - **deck_card_misses**：多数为 Mega 时代无简中印刷的预期缺口；简中卡池扩展后通过 remap-decks 刷新，不为提高 full 率猜映射。
 - **采集瞬断**：22.4 小时回补曾因连续 5 次失败熔断，探源为瞬时网络问题；task 063 在不硬闯红线的前提下改进恢复能力。
