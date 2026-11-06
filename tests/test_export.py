@@ -578,3 +578,8 @@ class TestTask067DataVersion:
         # parquet 行数随 cards 派生，合法计入差集
         assert set(manifest["data_changes"]) == {"cards", "cards_parquet"}
         assert manifest["data_changes"]["cards"] == {"from": 2, "to": 1}
+
+
+def test_checksums_file_lf_only(dist):
+    """task 068 复核实测：CRLF 会让下游 sha256sum -c 解析失败，必须 LF。"""
+    assert b"\r" not in (dist / "checksums.sha256").read_bytes()

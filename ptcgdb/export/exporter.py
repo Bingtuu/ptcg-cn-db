@@ -332,7 +332,10 @@ def _write_checksums(out_dir: Path) -> None:
         if not (out_dir / name).exists():
             continue  # --no-parquet 跳过的文件不登记
         lines.append(f"{_sha256(out_dir / name)}  {name}")
-    (out_dir / "checksums.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # newline="\n"：sha256sum -c 按原始字节解析文件名，CRLF 会让下游
+    # Linux 校验失败（Path.write_text 默认按 os.linesep 转换，task 068 复核实测）。
+    with (out_dir / "checksums.sha256").open("w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 def _load_release(out_dir: Path) -> tuple[dict | None, dict[str, str], Any]:
