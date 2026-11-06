@@ -11,7 +11,7 @@
 **当前数据（2026-11-04，task 062 后）**：
 
 - 卡牌实时库：137 系列，13,057 active + 8 deprecated = 13,065 行（与 10-25 一致，卡牌面无变更）。
-- 赛事实时库：918 tournaments / 60,226 decks（limitless 31,408 / limitless_site 1,095 / mik_moe 27,494 / jp 229）/ 88,521 appearances / 1,757,558 deck_cards / 140,965 pairings；mapping_status full 59,045 / partial 1,181；misses 10,477。
+- 赛事实时库：922 tournaments / 60,622 decks（limitless 31,412 / limitless_site 1,095 / mik_moe 27,494 / jp 229——068 后）/ 88,940 appearances / 1,767,565 deck_cards / 142,028 pairings（**GHIJ 1,063 行，MAX(date)=2026-10-16**，A1 验收口径达成）；mapping_status full 59,045 / partial 1,181；misses 10,477。
 - 合法性：4 份快照，standard 当前 G/H/I/J。真实验收 A1/A4–A8 全 PASS，见 `dist/acceptance-20261104.md`。
 - dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
 - **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队，第 2 页 raw 待 mik 恢复后补，当前不称整场收齐。
@@ -25,7 +25,7 @@
 | 061 | DONE | JP 自愈与 Brave Bangle/CBB/isQual 外部事实核销 |
 | 062 | DONE | 赛事身份统一：appearance 身份、EN 旧实体合并、3710 修复、dist 3.0.0 |
 | 067 | DONE | 数据版本治理：manifest data_version 单调递增 + data_changes 差集（PRD v1.40） |
-| 068 | TODO | GHIJ 时代对局级抓取（A1，最高价值；阻塞于 mik 源停摆，含 areazero 探测结论） |
+| 068 | 部分落地 | A1 已交付（GHIJ pairings 1,063 行入 dist，data_version 2）；online_open 2026 放宽与 mik 侧待后续拍板 |
 | 063 | TODO | 采集与 raw 层韧性：长周期瞬断、HTTP 异常面、采集/写入防护 |
 | 064 | TODO | 统计与 SDK 契约：统计边界、双后端一致性和查询接口 |
 | 065 | TODO | 剩余 P2、validate/monitor/accept 与文档收尾 |

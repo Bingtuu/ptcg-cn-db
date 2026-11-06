@@ -19,14 +19,15 @@
 - mik 2026-10-31 起全站 302 → areazero.gg 停摆，CN 赛事自身仍无对局供给（task 052 实证不变）；本任务走 limitless intl_aligned 通道，不受 mik 停摆影响。
 - 下游验收口径（用户给出）：`pairings MAX(date) ≥ 2026-09-16 且 GHIJ 行 > 0` → 下游自动开跑对齐窗重验（36 格 n 盘点 → sim↔real 相关复验 → task 103 预注册 D1 门判定格级外部效度）。
 
-## 执行计划（等用户通知再启动）
+## 执行记录（2026-11-06，A1 交付已落地）
 
-- [ ] 拍板：EN J 时代日历段（source_url）+ 窗口内收录 tier 口径
-- [ ] list 补抓 2026-10-25..11-08 + 窗口内事件按分类规则盘点（official tier 清单 + 请求量估算）
-- [ ] 抽样 2~3 场实探 pairings 段（6.5s/请求）；确认供给后全量抓 pairings + 必要时 decks/standings
-- [ ] ingest（窗口守卫随新日历自然放行）→ pairings 入库 → v_pairing_players 覆盖验证
-- [ ] 重导 dist（data_version 应 +1 且 data_changes 含 pairings 差集——067 机制首次实战）→ 通知下游验收
-- [ ] 任务档收尾 + PRD/CHANGELOG/STATUS 同步
+- [x] 供给探针：窗口内 3 场抽样深抓，pairings 段齐（175/371/388 行），供给实证
+- [x] 全量抓取 `scrape limitless --date-from 2026-09-16 --date-to 2026-11-08`：**accepted=4**（SEASAC League Cup #2 S5 09-19 / #3 S5 09-27 / #4 S5 10-05 / #1 S6 10-16）；rejected 730+（online_open 2026 段按 v1.35 date_range 拒收、休闲场、人数不足）——**API 通道全窗口官方档供给仅此量级**，主站通道无 pairings（task 028 结论）不变
+- [x] ingest `ingest-limitless --no-enforce-window`：pairings 140,965→**142,028**（+1,063），tournaments +4，decks/appearances/deck_cards 同步；**env 推导 HIJ 自然命中（无需新增日历段——derive_env 按段匹配，EN 有 HIJ 段覆盖到 2026-10 后）**；v_pairing_players 1,063/1,063 全命中；integrity ok
+- [x] dist 重导：067 机制首实战——`data_version` 1→2，`data_changes` 显性给出 pairings/tournaments/decks 差集
+- [x] **A1 验收口径达成：pairings MAX(date)=2026-10-16 ≥ 2026-09-16，GHIJ 行=1,063 > 0** → 下游可自动开跑对齐窗重验（36 格 n 盘点 → sim↔real 相关复验 → task 103 D1 门）
+- [ ] 待拍板（不影响本次验收）：online_open 2026 段是否放宽收编（v1.35「后段再议」）——可显著扩大 GHIJ pairings 供给（窗口内被拒的 700+ 场大多属此）；EN 日历 J 时代段 source_url 补录（env 已能推导 HIJ，低优先）
+- [ ] mik 侧 CN 对局供给：仍阻塞于 areazero 停摆（长期项，见「步骤（历史留痕）」）
 
 ## 步骤（历史留痕）
 
