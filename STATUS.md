@@ -87,6 +87,7 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-11-07 晚 · 供给实证更正（重要）**：昨日「API pairings 按场次发布且会衰减、185 场无供给」结论**系探测主机错误**（limitlessapi.com 为非官方镜像）——真实 API play.limitlesstcg.com 实测：2025 年场次 >1 年仍全量（4,701 行）、GHIJ 窗内离线 ≥64 人赛事抽样 8/8 全部有 pairings（220–556 行/场）。**185 场的供给真实存在**，闸门是分类口径（v1.35 online_open date_range 止 2025-08-31 + 官方档名称正则）。放宽拍板待用户确认（task 070 预研），mik CN 对局与 JP pairings 供给仍无。
 - **2026-11-07 task 069 完成**：GHIJ 收割窗挂 monitor（PRD v1.41）+ 404 确定性缺失语义全通道落地 + ingest 多窗守卫；1276 测试全绿。详见任务档与 CHANGELOG。
 - **2026-11-07 task 063 完成**：429 有限退避、熔断冷却半开探测、raw 原子写、swiss 同秒快照、Limitless 清单页 24h TTL、ingest-tourneys CLI 底线守卫（062 运维教训结构性清偿）。
 - **2026-11-07 轮询**：mik v3 API 恢复（旧结论翻案——停摆的只是路由/v1），三新系列收编（140 系列 / 13,653 active）+ mik 赛事续传 32 场；limitless 尾窗无新事件。

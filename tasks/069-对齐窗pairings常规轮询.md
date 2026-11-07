@@ -37,6 +37,8 @@ task 068 实证：limitless API pairings 供给**按场次发布且会衰减**�
 
 ## 完成总结（DONE 时填写）
 
+> **更正（2026-11-07 晚，供给预研）**：本任务「API pairings 按场次发布且会衰减」的核心论据**系探测主机错误**——昨日抽样误用 limitlessapi.com（非官方镜像，全 404 是镜像缺口）；真实 API play.limitlesstcg.com 实测 2025 年场次 >1 年仍全量（4,701 行）、GHIJ 窗内离线 ≥64 人赛事抽样 8/8 全部有 pairings（220–556 行/场）。供给无衰减，收割轮机制保留但紧迫性论据作废；窗内 pairings 真实闸门 = v1.35 分类口径。详见 STATUS 近期记录。
+
 做了什么：按步骤全项落地。关键设计决策：①404 语义三分（403/验证码硬熔断、5xx/429 退避、404 确定性缺失）——这是收割轮可持续的前提；②GHIJ 收割轮 force=False 断点续传，已抓场次零请求，只对新增发布场次发请求；③ingest 多窗用显式 windows 参数绕开 EN 日历 J 段 source_url 未补录的遗留项（068 遗留，低优先）；④附带发现回报：baseline 轮（近 14 天强刷，窗口右端 2026-04-09）自 J 标以来一直空转（date_from > window_to 全 out_of_window），本轮未动它（超出 scope，保留既有行为）。
 
 验收结果：新增 tests/test_ghij_pairings_poll.py 7 项 + test_monitor_tourneys 更新/新增 5 项 + test_ingest_limitless 多窗 2 项全过；全量 pytest 与 ruff 净（数字见 STATUS）。
