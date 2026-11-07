@@ -123,7 +123,14 @@ def resolve_text(
     errata: Iterable[ErrataRecord],
     d: date,
 ) -> EffectiveText:
-    """FR-3.3 有效文本：勘误（最新生效）> 最新印刷 > text_raw。"""
+    """FR-3.3 有效文本：勘误（最新生效）> 最新印刷 > text_raw。
+
+    登记口径（task 064 文档化）：勘误按 **resolved_id**（latest_text_overrides
+    解析后的目标卡）匹配，不按查询传入的 card_id——同组旧印刷卡经 latest_print
+    解析后共享目标卡的勘误；登记勘误时 card_id 应填 resolved/latest 卡 id
+    （errata yml 的 card_id 与 latest_text_overrides 目标一致），旧印刷卡
+    自身不单独登记。
+    """
     if card_id not in cards_by_id:
         raise LookupError(f"卡牌不存在: {card_id}")
 

@@ -22,7 +22,10 @@ CALIBER_FILES = {
 def caliber_hashes() -> dict[str, str]:
     """词表文件 → SHA-256 前 12 位。"""
     return {
-        key: hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+        # 行尾归一（task 064）：CRLF/LF 不造成假漂移（checkout 配置差异）
+        key: hashlib.sha256(
+            path.read_bytes().replace(b"\r\n", b"\n")
+        ).hexdigest()[:12]
         for key, path in CALIBER_FILES.items()
     }
 

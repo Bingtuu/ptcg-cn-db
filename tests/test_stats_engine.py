@@ -83,7 +83,8 @@ def test_winrate_b_layer(env):
         assert got[g].layer == "b"
     assert meta["q0"] == pytest.approx(exp["q0"], abs=TOL)
     assert meta["n_tournaments"] == 2  # B 层口径：T6 topcut NULL 不参与
-    assert meta["mirror"] == "include"  # v1.25 起 include 为默认口径（standings 汇总）
+    # task 064：mirror 逐局语义仅 A 层成立，B 层不回显（防误导消费）
+    assert "mirror" not in meta
 
 
 def test_winrate_a_layer(env):

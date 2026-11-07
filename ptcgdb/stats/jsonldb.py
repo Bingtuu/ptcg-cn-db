@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 _DDL = """
@@ -128,9 +129,19 @@ _PAIRINGS_COLUMNS = (
 )
 
 
-def _read_jsonl(path: Path) -> list[dict]:
+def _read_jsonl(path: Path) -> Iterator[dict]:
+    """流式逐行解析（task 064：生成器，不全文件一次性读入）；坏行抛带文件名与
+    行号的 ValueError，诊断不再裸 JSONDecodeError。"""
     with path.open(encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        for lineno, line in enumerate(f, start=1):
+            if not line.strip():
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"{path.name} 第 {lineno} 行 JSON 解析失败：{exc}"
+                ) from exc
 
 
 def build_stats_conn(dist_dir: str | Path) -> sqlite3.Connection:
@@ -150,16 +161,17 @@ def build_stats_conn(dist_dir: str | Path) -> sqlite3.Connection:
     for table, cols in _COLUMNS.items():
         names = [c.strip() for c in cols.split(",")]
         placeholders = ", ".join("?" for _ in names)
-        raw_rows = _read_jsonl(dist_dir / f"{table}.jsonl")
-        if table == "deck_appearances":
-            for r in raw_rows:
-                if not r.get("appearance_id"):
-                    # 旧 dist（schema<3.0.0）缺 appearance_id：按旧复合键合成，
-                    # 保持 (deck_id,tournament_id,rank) 连接语义（可空兼容）
-                    r["appearance_id"] = (
-                        f"legacy|{r['deck_id']}|{r['tournament_id']}|{r['rank']}"
-                    )
-        rows = [[r.get(c) for c in names] for r in raw_rows]
+        # 单次流式过：补全旧 dist 缺失的 appearance_id 同时取列
+        # （生成器只能消费一次，两个循环必须合并）
+        rows = []
+        for r in _read_jsonl(dist_dir / f"{table}.jsonl"):
+            if table == "deck_appearances" and not r.get("appearance_id"):
+                # 旧 dist（schema<3.0.0）缺 appearance_id：按旧复合键合成，
+                # 保持 (deck_id,tournament_id,rank) 连接语义（可空兼容）
+                r["appearance_id"] = (
+                    f"legacy|{r['deck_id']}|{r['tournament_id']}|{r['rank']}"
+                )
+            rows.append([r.get(c) for c in names])
         conn.executemany(
             f"INSERT INTO {table} ({cols}) VALUES ({placeholders})", rows
         )
@@ -184,6 +196,15 @@ def build_stats_conn(dist_dir: str | Path) -> sqlite3.Connection:
                 " VALUES (?, ?)",
                 (r["card_id"], r["group_key"]),
             )
+    # 任务 064：大 dist 加载后建连接索引（视图 JOIN 列），不改 _DDL（与
+    # migrations 的对拍测试只比对视图定义，索引在灌库后单独建）
+    conn.executescript(
+        "CREATE INDEX idx_dc_deck ON deck_cards(deck_id);\n"
+        "CREATE INDEX idx_app_deck ON deck_appearances(deck_id);\n"
+        "CREATE INDEX idx_app_tour ON deck_appearances(tournament_id);\n"
+        "CREATE INDEX idx_pair_tour ON pairings(tournament_id);\n"
+        "CREATE INDEX idx_tour_date ON tournaments(date);\n"
+    )
     manifest = json.loads((dist_dir / "manifest.json").read_text(encoding="utf-8"))
     for key, value in (manifest.get("caliber") or {}).items():
         if value is not None:

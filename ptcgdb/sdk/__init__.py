@@ -74,6 +74,16 @@ from ptcgdb.stats import engine as stats_engine
 from ptcgdb.stats.jsonldb import build_stats_conn
 
 
+def _check_paging(limit: int, offset: int) -> None:
+    """分页参数契约（task 064）：limit 必须 >= 1（0/负拒绝），offset 必须 >= 0。
+
+    双后端同一契约——SQL 层负数 limit 静默退化为不限行数是陷阱。
+    """
+    if limit < 1:
+        raise ValueError(f"limit 必须 >= 1：{limit}")
+    if offset < 0:
+        raise ValueError(f"offset 必须 >= 0：{offset}")
+
 def _as_date(d: str | date) -> date:
     return date.fromisoformat(d) if isinstance(d, str) else d
 
@@ -316,6 +326,7 @@ class DbBackend(CardDatabase):
         limit: int = 100,
         offset: int = 0,
     ) -> list[CardSchema]:
+        _check_paging(limit, offset)
         with Session(self._engine) as s:
             rows = [_row_schema(CardSchema, c) for c in s.scalars(select(Card))]
         filters = {
@@ -410,7 +421,9 @@ class DbBackend(CardDatabase):
             )
             for a, t in s.execute(
                 select(DeckAppearanceORM, TournamentORM)
-                .join(
+                # task 064：孤儿 appearance 保留（tournament_date=None），
+                # 与 JSONL 后端查表语义一致
+                .outerjoin(
                     TournamentORM,
                     DeckAppearanceORM.tournament_id == TournamentORM.tournament_id,
                 )
@@ -450,6 +463,7 @@ class DbBackend(CardDatabase):
         limit: int = 100,
         offset: int = 0,
     ) -> list[Deck]:
+        _check_paging(limit, offset)
         df = _as_date(date_from) if date_from is not None else None
         dt = _as_date(date_to) if date_to is not None else None
         with Session(self._engine) as s:
@@ -552,6 +566,7 @@ class JsonlBackend(CardDatabase):
         limit: int = 100,
         offset: int = 0,
     ) -> list[CardSchema]:
+        _check_paging(limit, offset)
         filters = {
             "name": name, "marks": marks, "card_type": card_type,
             "has_rule_box": has_rule_box, "is_tera": is_tera, "set_ids": set_ids,
@@ -671,6 +686,7 @@ class JsonlBackend(CardDatabase):
         limit: int = 100,
         offset: int = 0,
     ) -> list[Deck]:
+        _check_paging(limit, offset)
         store = self._decks()
         df = _as_date(date_from) if date_from is not None else None
         dt = _as_date(date_to) if date_to is not None else None

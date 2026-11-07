@@ -74,9 +74,13 @@ def check_counts(
 
     counts = Counter(cid for cid in deck if cid in cards_by_id)
 
-    # 组 → 成员（全库反查，组上限由全库成员形态决定）
+    # 组 → 成员（全库反查，组上限由全库成员形态决定）；deprecated 不参与
+    # 同名组规则推导（task 064：下架双胞胎不压低组上限；显式放入卡组的
+    # deprecated 卡由合法性层 not_legal 拒绝，计数层不猜）
     members_of: dict[str, set[str]] = {}
     for cid, card in cards_by_id.items():
+        if card.status == "deprecated":
+            continue
         for g in groups_of.get(cid) or {card.name_full}:
             members_of.setdefault(g, set()).add(cid)
 

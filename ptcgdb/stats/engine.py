@@ -229,6 +229,10 @@ def usage(
 ) -> tuple[list[CardStat], dict[str, Any]]:
     """WUR 加权出场率（canonical: wur.sql）。"""
     _check_granularity(params)
+    if params.usage_basis not in ("decks", "copies"):
+        raise ValueError(
+            f"usage_basis 必须是 decks/copies：{params.usage_basis!r}"
+        )
     conn, owned = _connect(db)
     try:
         rows = conn.execute(_load_sql("wur.sql"), _binds(params)).fetchall()
@@ -299,9 +303,12 @@ def winrate(
         if owned:
             conn.close()
     meta["layer"] = resolved
-    meta["mirror"] = params.mirror
-    if resolved == "b" and rows:
-        meta["q0"] = rows[0][4]  # q0 常数列（每行同值）
+    if resolved == "a":
+        # mirror 逐局语义仅 A 层成立；B 层不回显（task 064，防误导消费）
+        meta["mirror"] = params.mirror
+    if resolved == "b":
+        # q0 键稳定契约（task 064）：空结果也回显 q0=None，不随数据形状有无
+        meta["q0"] = rows[0][4] if rows else None  # q0 常数列（每行同值）
     return _to_card_stats(rows, params, layer=resolved), meta
 
 

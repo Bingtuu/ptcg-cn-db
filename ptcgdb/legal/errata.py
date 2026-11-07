@@ -10,9 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+from typing import Annotated
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -31,10 +32,12 @@ class ErrataSeed(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    errata_id: str = Field(min_length=1)
-    card_id: str = Field(min_length=1)
+    # strip_whitespace（task 064）：纯空白串（"   "）strip 后为空、不满足
+    # min_length，拒收（Field 直传 strip_whitespace 已弃用，用 StringConstraints）
+    errata_id: Annotated[str, StringConstraints(strip_whitespace=True), Field(min_length=1)]
+    card_id: Annotated[str, StringConstraints(strip_whitespace=True), Field(min_length=1)]
     effective_from: date
-    corrected_text: str = Field(min_length=1)
+    corrected_text: Annotated[str, StringConstraints(strip_whitespace=True), Field(min_length=1)]
     notice_url: str | None = None
 
 

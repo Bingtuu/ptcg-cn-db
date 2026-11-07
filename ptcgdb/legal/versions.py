@@ -193,5 +193,16 @@ def rollback(db_path: Path, *, versions_dir: Path | None = None) -> str:
     backups = sorted(versions_dir.glob("ptcg-cn-*.db")) if versions_dir.is_dir() else []
     if not backups:
         raise LookupError(f"无可用备份: {versions_dir}")
-    shutil.copy2(backups[-1], db_path)
-    return backups[-1].name
+    # task 064：同日 .10 > .9 须按数值后缀排序（字典序 .10 < .9 会选错）；
+    # 版本化备份（v{日期}.{n}）优先于临时 before-* 备份
+    import re as _re
+
+    def _key(path: Path) -> tuple:
+        m = _re.fullmatch(r"ptcg-cn-v(\d{8})\.(\d+)\.db", path.name)
+        if m:
+            return (0, m.group(1), int(m.group(2)))
+        return (1, path.name, 0)
+
+    latest = max(backups, key=_key)
+    shutil.copy2(latest, db_path)
+    return latest.name

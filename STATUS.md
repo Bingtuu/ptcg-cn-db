@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-**task 069 DONE：对齐窗 pairings 常规轮询（PRD v1.41）。** GHIJ 收割窗（2026-09-16 起滚动）挂进 `monitor tourneys` limitless 通道——新发布的官方档赛事 pairings 自动收编，不再受 API 按场次衰减丢失；HTTP 404 全通道改确定性缺失语义（不重试不计熔断）。同日 task 063 采集韧性收官（429 退避、熔断冷却、raw 原子写、swiss 同秒快照、ingest-tourneys 底线守卫）。062/067/068 此前已 DONE（赛事身份统一、数据版本治理、GHIJ pairings 1,063 行 A1 交付）；**下一项为 064（统计与 SDK 契约）**。
+**task 069 DONE：对齐窗 pairings 常规轮询（PRD v1.41）。** GHIJ 收割窗（2026-09-16 起滚动）挂进 `monitor tourneys` limitless 通道——新发布的官方档赛事 pairings 自动收编，不再受 API 按场次衰减丢失；HTTP 404 全通道改确定性缺失语义（不重试不计熔断）。同日 task 063 采集韧性收官（429 退避、熔断冷却、raw 原子写、swiss 同秒快照、ingest-tourneys 底线守卫）。062/067/068 此前已 DONE（赛事身份统一、数据版本治理、GHIJ pairings 1,063 行 A1 交付）；**064 统计/SDK 契约 DONE（九项 P2 清偿）；下一项为 065（剩余 P2 收尾）。**
 
 **当前数据（2026-11-04，task 062 后）**：
 
@@ -16,7 +16,7 @@
 - dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
 - **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队，第 2 页 raw 待 mik 恢复后补，当前不称整场收齐。
 - **mik 源停摆**：2026-10-31 起 tcg.mik.moe 迁移 areazero.gg 且旧 API 404，mik 侧采集按政策停摆（areazero 要求逐请求人工确认，禁止批量）；mik 赛事数据停在停摆前快照 + 本地 raw 可重放。EN/JP 源不受影响。
-- 测试基线：task 069 完成后 **1276 passed**、ruff 全净。
+- 测试基线：task 064 完成后 **1290 passed**、ruff 全净。
 
 ## 当前任务队列
 
@@ -29,7 +29,7 @@
 | 069 | DONE | 对齐窗 pairings 常规轮询：GHIJ 收割窗挂 monitor（PRD v1.41）、404 确定性缺失语义、ingest 多窗守卫 |
 | 070 | DONE | GHIJ 窗非官方档 pairings 收编：online_open 扩窗至 2026-11-08（PRD v1.42），accepted=225，pairings +66,163 |
 | 063 | DONE | 采集与 raw 层韧性：429 退避、熔断冷却恢复、raw 原子写、swiss 同秒快照、清单页 24h TTL、ingest-tourneys CLI 底线守卫 |
-| 064 | TODO | 统计与 SDK 契约：统计边界、双后端一致性和查询接口 |
+| 064 | DONE | 统计/合法性/SDK 契约：九项 P2 清偿（参数校验、meta 契约、GBK、jsonldb 流式+索引、双后端 outerjoin、caliber、rollback、deprecated、勘误口径） |
 | 065 | TODO | 剩余 P2、validate/monitor/accept 与文档收尾 |
 
 061–065 共用设计：`docs/superpowers/specs/2026-10-25-技术债分批清偿-design.md`；067/068 任务档已建于 `tasks/`。task 048 官方 Q&A 因无可用供给已于 10-25 删除，不再安排专项或历史回扫。

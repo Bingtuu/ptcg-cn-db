@@ -89,7 +89,25 @@ def _params(
     )
 
 
+def ensure_utf8_stdout() -> None:
+    """Windows GBK 控制台中文 JSON 输出防崩溃（task 064）：入口 reconfigure utf-8。
+
+    无 reconfigure 能力的流（StringIO/已被测试夹具替换）静默跳过；幂等。
+    """
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass  # 已关闭/不支持的双向流不阻断输出
+
+
 def _emit(meta: dict[str, Any], rows: list[dict[str, Any]], fmt: str) -> None:
+    ensure_utf8_stdout()
     if fmt == "json":
         typer.echo(json.dumps({"meta": meta, "data": rows}, ensure_ascii=False, indent=2))
     elif fmt == "csv":
@@ -348,13 +366,23 @@ def query_cmd(
     limit: Annotated[int, typer.Option("--limit", help="最多返回行数")] = 500,
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
-    """只读 ad-hoc SQL（FR-9.7）：mode=ro 打开，仅 SELECT/WITH，默认 LIMIT 500。"""
+    """只读 ad-hoc SQL（FR-9.7）：mode=ro 打开，仅 SELECT/WITH，默认 LIMIT 500。
+
+    limit 语义（task 064 固定）：负数 → BadParameter 退 2；0 → 返回 0 行，
+    truncated 如实回显（是否仍有未返回的行）。
+    """
+    ensure_utf8_stdout()
     checked = _check_readonly_sql(sql)
+    if limit < 0:
+        raise typer.BadParameter(f"--limit 必须 >= 0：{limit}")
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         cur = conn.execute(checked)
         cols = [d[0] for d in cur.description]
-        fetched = cur.fetchmany(limit + 1)
+        if limit == 0:
+            fetched = cur.fetchmany(1)  # 仅探truncated，不取数据
+        else:
+            fetched = cur.fetchmany(limit + 1)
     finally:
         conn.close()
     truncated = len(fetched) > limit
