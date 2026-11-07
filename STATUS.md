@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-**task 062 DONE：赛事身份统一。** migration 014 真实库 43s 完成，EN 旧实体合并（aliases 41,773）、赛事 3710 双出战修复、mik 重放 legacy→canonical 过渡、统计/导出/SDK 贯通，验收 A1/A4–A8 全 PASS（`dist/acceptance-20261104.md`），任务档 `tasks/done/062`。067 数据版本治理 DONE；下一项为 068（GHIJ 对局级 pairings 落地，limitless 自身赛事供给，执行中）。
+**task 069 DONE：对齐窗 pairings 常规轮询（PRD v1.41）。** GHIJ 收割窗（2026-09-16 起滚动）挂进 `monitor tourneys` limitless 通道——新发布的官方档赛事 pairings 自动收编，不再受 API 按场次衰减丢失；HTTP 404 全通道改确定性缺失语义（不重试不计熔断）。同日 task 063 采集韧性收官（429 退避、熔断冷却、raw 原子写、swiss 同秒快照、ingest-tourneys 底线守卫）。062/067/068 此前已 DONE（赛事身份统一、数据版本治理、GHIJ pairings 1,063 行 A1 交付）；**下一项为 064（统计与 SDK 契约）**。
 
 **当前数据（2026-11-04，task 062 后）**：
 
@@ -42,7 +42,7 @@
 
 | 内容 | 位置 |
 |---|---|
-| 权威设计 | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.39） |
+| 权威设计 | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.41） |
 | 工程约定 | `AGENTS.md` |
 | 任务队列与规范 | `tasks/`、`tasks/README.md`、`tasks/done/` |
 | 数据源 | `docs/data-sources.md` |
@@ -80,14 +80,18 @@ M0–M12 均已完成：
 - **Brave Bangle / 英勇手镯**：白焰迸涌（CSV10.6C）11-05 已发售入库，英勇手镯=CSV10.6C-082 active；但 mik 对新主系列**未发布英文桥**（nameEn/setCodeEn 空白，082.json 实测空串），WHT-80→手镯链路断在源头，1,052 行未解挂账——mik 补桥后 L0 remap 自动清偿，不猜不造卡。另：CSV10.5C/10.6C 的 174 编号外 BWR 罕贵度已入词表（莱希拉姆ex ×2）。
 - **CBB 卡面分母（外部证据阻塞）**：CBB1C/CBB2C 仍有实测包冲突，mik 是不同编号多列示而非同号重复；保持只显分子，需新卡面锚或权威逐包清单。isQual 疑点已由 task 061 关闭。
 - **deck_card_misses**：多数为 Mega 时代无简中印刷的预期缺口；简中卡池扩展后通过 remap-decks 刷新，不为提高 full 率猜映射。
-- **采集瞬断**：22.4 小时回补曾因连续 5 次失败熔断，探源为瞬时网络问题；task 063 在不硬闯红线的前提下改进恢复能力。
+- **采集瞬断**：22.4 小时回补曾因连续 5 次失败熔断，探源为瞬时网络问题——task 063 已清偿：熔断冷却 60s 半开探测（成功闭合/失败重开），429 统一有限退避，raw 原子写。
 - **needs_manual 提案**：`data/proposals/20260919_manual-2026-09-19.yaml`（阵营对抗赛奖励规则）仍待人工核销，与卡池合法性无关。
 - **TCGdex 简中卡级供给**：外部观察项，卡级仍为 0%，不是本地阻塞。
 - 第二轮 review 的其余 P2 由 063–065 分批清偿，原始清单见 `reports/code-review-tracker-20261005.md`。
 
 ## 近期记录
 
-- **2026-10-31 轮询中止**：L0 探测发现 tcg.mik.moe 302 迁移至 areazero.gg 且旧 API 失效；按站方降级公告与 AI 访问政策暂停 mik 侧采集，EN/JP 本轮未跑。详见「当前运维与技术债」首条。
+- **2026-11-07 task 069 完成**：GHIJ 收割窗挂 monitor（PRD v1.41）+ 404 确定性缺失语义全通道落地 + ingest 多窗守卫；1276 测试全绿。详见任务档与 CHANGELOG。
+- **2026-11-07 task 063 完成**：429 有限退避、熔断冷却半开探测、raw 原子写、swiss 同秒快照、Limitless 清单页 24h TTL、ingest-tourneys CLI 底线守卫（062 运维教训结构性清偿）。
+- **2026-11-07 轮询**：mik v3 API 恢复（旧结论翻案——停摆的只是路由/v1），三新系列收编（140 系列 / 13,653 active）+ mik 赛事续传 32 场；limitless 尾窗无新事件。
+- **2026-11-06 task 068 A1 交付**：GHIJ pairings 1,063 行入库（4 场 SEASAC，MAX(date) 2026-10-16），data_version 1→2 首实战。
+- **2026-10-31 轮询中止**：L0 探测发现 tcg.mik.moe 302 迁移至 areazero.gg 且旧 API 失效；按站方降级公告与 AI 访问政策暂停 mik 侧采集，EN/JP 本轮未跑。详见「当前运维与技术债」首条（11-07 已翻案：v3 恢复）。
 - **2026-10-25 task 059 完成**：新增 search/get CLI，修复验收覆盖、快照缺失判定、owner 词表和导出异常隔离；1190 测试全绿，真实 A1–A8 全 PASS。
 - **2026-10-25 嗨皮组合 L0**：active 12,908→13,057，sets 133→137；dist 重导 v20261025.1。
 - **2026-10-25 赛事轮询**：EN 完成；mik 3710 冲突中止，列 task 062；task 060 已按当前部分入库状态重导 dist，修复后仍需重放。

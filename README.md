@@ -6,8 +6,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-137系列/13,057张-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.38-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Status](https://img.shields.io/badge/Status-140系列/13,653张-brightgreen.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.41-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
 [![Tests](https://img.shields.io/badge/Tests-1198%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
@@ -23,12 +23,12 @@
 ## ✨ 亮点
 
 - **📸 快照化合法性引擎** —— 赛制标记 + 白名单 + 禁卡表 + 视作覆盖 + 能量种类全部按生效日版本化；旧快照永不删除，可回放任意历史环境（`legal_at('2026-08-01', 'standard')`）。当前快照：standard（G/H/I/J，2026-09-16 起生效）/ open
-- **🏆 真实赛事卡组管线（CN/EN/JP 三赛区）** —— dist `v20261025.1`（schema 2.0.0）快照含 874 场赛事 / 66,363 套卡组 / 83,653 条出战记录 / 140,965 桌逐局对阵；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用）；三赛区旋转日历 + 赛事日期自动推导环境标号，CN/EN/JP 样本以 `basis` 口径隔离互不混同；**CN 侧 mik 全量历史回补收官**（55/55 系列 raw，该快照 CN 326 场），EN 侧 Limitless **API + 主站双通道**（官方大赛 Top Cut，含 Worlds 2025 与亚洲联赛）+ **在线公开赛收编**（platform 自办 ≥64 人非休闲场，pre-Mega 段 388 场，tier=online_open coef=0.5），JP 侧聚合站壳 + 官方卡组码卡表解析
+- **🏆 真实赛事卡组管线（CN/EN/JP 三赛区）** —— dist `v20261107.3`（schema 3.0.0）快照含 935 场赛事 / 62,085 套卡组 / 91,606 条出战记录 / 142,028 桌逐局对阵（含 GHIJ 时代 SEASAC 联赛杯，收割窗随 monitor 自动续增）；卡组内容与出战记录分表（同一套 60 张可跨赛事、跨选手复用）；三赛区旋转日历 + 赛事日期自动推导环境标号，CN/EN/JP 样本以 `basis` 口径隔离互不混同；**CN 侧 mik 全量历史回补收官**（55/55 系列 raw），EN 侧 Limitless **API + 主站双通道**（官方大赛 Top Cut，含 Worlds 2025 与亚洲联赛）+ **在线公开赛收编**（platform 自办 ≥64 人非休闲场，pre-Mega 段 388 场，tier=online_open coef=0.5），JP 侧聚合站壳 + 官方卡组码卡表解析
 - **📊 可复算的统计指标 + 对阵矩阵** —— 加权出场率 WUR / 胜率 WR（逐局战绩与 top-cut 转化率两层口径，支持镜像局剔除）/ 加权胜率 WWS（贝叶斯收缩）/ matchup 对阵矩阵（archetype×archetype 逐局胜率）；**公式只在 canonical SQL 文件里**（单一事实源），权重输入全量落库，任何人都能用 SQL 原样重放每一个数字
 - **🔍 像写 SQL 一样查库** —— `ptcgdb query` 只读 ad-hoc SQL；导出 DB 自带统计物化视图，口径词表 hash 版本化进 meta
 - **🌏 三语卡名映射** —— 简中卡 99.3% 挂英文桥（12,337 张），日文名 11,046 张；映射来源经 `external_ids` 体系逐条可溯，pokemon-card.com 官方抽样核对一致率 100%
 - **🔌 规则语义一等公民的 SDK** —— 合法性 `legal_at` / `effective_text`；卡组校验 `validate_deck`（结构化违规列表）；统计 `stats_usage` / `stats_winrate` / `stats_wws` / `stats_matchup`；卡组查询 `get_deck` / `list_decks`；`open_db` / `open_jsonl` 双后端同一接口、契约测试保一致
-- **📦 十四件套导出契约** —— `manifest.json` + 八份 JSONL + `cards.parquet`（DuckDB 直读免灌库）+ `legality.json` + 只读 SQLite + `schema.md` + `checksums.sha256`；字段只加不删，双轨版本化（日历版本管数据，SemVer 管 schema），对齐 MTGJSON/Scryfall 惯例
+- **📦 十四件套导出契约** —— `manifest.json`（含 `data_version` 单调版本 + `data_changes` 计数差集，下游可主动检测参考面刷新）+ 八份 JSONL + `cards.parquet`（DuckDB 直读免灌库）+ `legality.json` + 只读 SQLite + `schema.md` + `checksums.sha256`；字段只加不删，双轨版本化（日历版本管数据，SemVer 管 schema），对齐 MTGJSON/Scryfall 惯例
 - **🔄 分级自动更新** —— L0 新卡每日增量入库、L1 赛制页变更自动生成提案、L2 勘误人工维护；目标新包发售 30 分钟内完成更新
 - **🛡️ 原文保真** —— `text_raw` 逐字保留绝不规范化，原文与派生字段严格分层；DB 与 raw 同源自验保证数据质量
 - **📐 卡面口径保真** —— 卡号分母逐系列种子口径（实测数据点驱动），种子未覆盖系列只显分子不伪装；mik 双重列示的字母编号能量卡以 `alias_of` 归并到数字正本
@@ -57,7 +57,7 @@ ruff check .
 
 ## 🚀 快速预览
 
-> 卡牌实时库（2026-10-25）：**137 系列 / 13,057 张 active 卡**（三语卡名 EN 12,337+ / JA 11,046+）；合法卡池 **standard 5,850 / open 13,028**（@2026-10-25，赛制 2026-09-16 版）。dist `v20261025.1` / schema 2.0.0 的赛事快照：**874 场（CN 326 + EN 442 + JP 106）/ 66,363 套卡组 / 83,653 条出战 / pairings 140,965 桌**；后续轮询计数会变化，以 `dist/manifest.json` 和 STATUS 为准。
+> 卡牌实时库（2026-11-07）：**140 系列 / 13,653 张 active 卡**（三语卡名 EN 12,337+ / JA 11,046+）；合法卡池 **standard 5,850 / open 13,028**（赛制 2026-09-16 版）。dist `v20261107.3` / schema 3.0.0 的赛事快照：**935 场（CN mik + EN 双通道 + JP 对齐样本）/ 62,085 套卡组 / 91,606 条出战 / pairings 142,028 桌**（含 GHIJ 时代 4 场 SEASAC 联赛杯 1,063 桌，MAX(date)=2026-10-16）；后续轮询计数会变化，以 `dist/manifest.json` 和 STATUS 为准。
 
 ### CLI 速查
 
@@ -176,7 +176,7 @@ duckdb.sql("SELECT name_full, effect_tags FROM 'dist/cards.parquet' LIMIT 5")
 - **matchup 矩阵**：archetype×archetype 有向逐局胜率（平局计 0.5），消费源站卡组归类名、不按 mapping_status 过滤；同 archetype 内战不进矩阵；winner 空局（平局/未报不可区分）排除出 n 并在 meta 回显。
 - **archetype 粒度（`--granularity archetype`）**：统计单元从卡级 name_group 切到卡组归类名（源站事实，不归并同名不同写）；卡组级去重（一套卡组一权重）；archetype 缺失的出战条目排除并计数回显；跨语言命名分裂不治理——basis 内各自同源一致，`--basis all` 混合时如实呈现并附警告。
 - **低样本**：n 低于阈值打 `low_confidence`；一切输出的 meta 回显 as_of / 窗口 / 口径 / 词表 hash，可原样重放。
-- **窗口注意**：pairings 覆盖赛事集中在 2025-04~2025-08（官方系列赛 5 场 + online_open 在线公开赛 388 场，task 057 收编），exclude / matchup 口径需显式 `--from 2025-04-01` 级别的窗口，默认 90 天滚动窗内可能为空集（诚实结果，非 bug）。
+- **窗口注意**：pairings 覆盖赛事 = 2025-04~2025-08（官方系列赛 5 场 + online_open 在线公开赛 388 场，task 057 收编）+ **2026-09-16 起 GHIJ 收割窗**（SEASAC 联赛杯等官方档，task 068/069 收编并随 monitor 轮询续增）；exclude / matchup 口径需显式 `--from` 级别的窗口，默认 90 天滚动窗内可能为空集（诚实结果，非 bug）。
 
 ## 📈 实战示例：竹兰的烈咬陆鲨ex 的出场与胜率（示例数据截至 2026-09-19）
 
@@ -336,14 +336,14 @@ flowchart TB
 - ✅ **Phase 2** 数据质量与扩展：跨系列进化解析 · 三语映射（EN 桥 12,337 / JP 名 11,046）· 同名计数引擎与 `validate_deck` · 卡面人工比对复核（一致率 100%）· **赛事卡组管线三赛区**（CN mik + EN Limitless 双通道 + JP 卡组码通道）与可复算统计基建 · 范围收口：以当前简中环境为起点收集维护，历史不回填
 - ✅ **Phase 3** 效果标签层：29 意图标签 + 3 机制 flag 词表 · 全库首标 unknown=0 · 人工抽检复核 · 句级打标（规则引擎/AI 模拟的数据接缝，效果 DSL 归下游项目）
 - ✅ **Phase 4** 统计深化与模拟基建：pairings 消费层（镜像剔除 + matchup 矩阵）· archetype 级统计 · `cards.parquet` 导出 + 对战模拟数据契约（模拟结果永远落独立库，主库只读）
-- ✅ **持续运营**：新包 L0 自动增量全链验证（2026-10-25「嗨皮组合」收编后 active 13,057 张 / 137 系列）· 赛制快照随官方赛制页滚动（当前 2026-09-16 版：standard G/H/I/J）· CN 赛事退赛后补采集与增量刷新管线 · **Limitless 在线公开赛收编 388 场**（task 057，pairings 479→140,965 桌，matchup 头部格 n=1,559，下游对战系统 n≥30 门槛达成）· **CN 赛事全量历史回补收官**（2026-10-17 完成时 55/55 系列 raw 累计 +205,427 件、874 赛 / CN 326 场；task 058 修复窗口守卫并清退幽灵赛事 3 场）
+- ✅ **持续运营**：新包 L0 自动增量全链验证（2026-11-07 收编白焰迸涌/黑雷奔流/宝石包后 active 13,653 张 / 140 系列）· 赛制快照随官方赛制页滚动（当前 2026-09-16 版：standard G/H/I/J）· CN 赛事退赛后补采集与增量刷新管线 · **Limitless 在线公开赛收编 388 场**（task 057，pairings 479→140,965 桌，matchup 头部格 n=1,559，下游对战系统 n≥30 门槛达成）· **CN 赛事全量历史回补收官**（2026-10-17 完成时 55/55 系列 raw 累计 +205,427 件、874 赛 / CN 326 场；task 058 修复窗口守卫并清退幽灵赛事 3 场）· **GHIJ 时代 pairings 落地 + 常规轮询**（task 068/069：4 场 SEASAC 联赛杯 1,063 桌补齐对局级数据至 2026-10-16，收割窗挂进 monitor 自动收编新供给；dist manifest `data_version` 单调版本 + `data_changes` 差集，下游可主动检测参考面刷新）
 - ⬜ **后续** 对战模拟引擎与 AI 策略（下游项目，本 repo 提供数据契约与关联键）
 
 ## 📚 文档
 
 | 文档 | 内容 |
 |---|---|
-| [PRD v1.38](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约（十四件套）、SDK 设计、跨语言映射、赛事卡组与统计基建、效果标签策略、对战模拟数据契约 |
+| [PRD v1.41](docs/简中PTCG卡牌数据库_PRD与技术方案.md) | 权威设计：赛制调研、数据模型、合法性引擎、导出契约（十四件套）、SDK 设计、跨语言映射、赛事卡组与统计基建、效果标签策略、对战模拟数据契约 |
 | [数据源与接口文档](docs/data-sources.md) | 全部数据源获取方式：mik.moe 主源 API（卡牌 + 赛事）、官网赛制页、TCGdex / pokemon-tcg-data / PokéAPI、Limitless 与 JP 卡组聚合站、pokemon-card.com 抽样核对 |
 | [STATUS.md](STATUS.md) | 当前阶段、里程碑进度、决策日志、技术债 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本变更（四段式，数据日历版本 + schema SemVer 双轨） |

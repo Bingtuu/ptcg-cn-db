@@ -2,14 +2,14 @@
 
 简中 PTCG 标准环境卡牌数据库。本地 SQLite 卡牌库 + 数据管线 + 更新机制，为下游规则引擎、AI 对战模拟和胜率统计提供数据基建。
 
-- **权威设计**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.39）。
+- **权威设计**：`docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.41）。
 - **当前进展**：`STATUS.md`，开始工作前先读；完整旧历史在 `docs/archive/STATUS-2026-10-25.md`。
 - **数据源**：`docs/data-sources.md`。
 - **任务规范**：`tasks/README.md`。
 
 ## 当前摘要
 
-卡牌实时库为 137 系列 / 13,057 active（2026-10-25，task 062 未动卡牌面），schema_version=3.0.0 / user_version=14；task 067 后测试基线为 1252 passed。task 062 赛事身份统一已完成（3710 修复、EN 别名、dist 3.0.0），067 数据版本治理已完成，068 GHIJ 对局级抓取执行中；063–065 队列见 STATUS。真实库与 dist 的数字必须按各自版本表述，不混为同一快照。
+卡牌实时库为 140 系列 / 13,653 active（2026-11-07 轮询收编三新系列），schema_version=3.0.0 / user_version=14；测试基线 **1276 passed**（task 069 后）。task 062 赛事身份统一、063 采集韧性、067 数据版本治理、068 GHIJ pairings A1 交付、069 GHIJ 收割轮全部 DONE；队列剩 064（统计与 SDK 契约）/ 065（剩余 P2 收尾）。真实库与 dist 的数字必须按各自版本表述，不混为同一快照。
 
 代码结构按 PRD 第 8 章：`ptcgdb/` 下 `orm/schemas/migrations/scrapers/normalize/validate/legal/monitor/export/sdk/accept/mapping/stats`，不要自行发明布局。
 
@@ -74,9 +74,9 @@ ptcgdb tag-effects-audit [--min-tags N] [--out-dir D]
 
 # CN / EN 赛事
 ptcgdb scrape tourneys [--series-id 54] [--max-tournaments N]
-ptcgdb ingest-tourneys                          # monitor 调用时自动带 CN 收集底线
+ptcgdb ingest-tourneys                          # 直连须 --date-from（或显式 --allow-full-history），monitor 自动带 CN 收集底线
 ptcgdb scrape swiss                             # ongoing 积分榜快照，仅 raw 留存
-ptcgdb scrape limitless [--window A B]          # 6.5s/请求，断点续传
+ptcgdb scrape limitless [--date-from A --date-to B]   # 6.5s/请求，断点续传；monitor 另带 GHIJ 收割轮
 ptcgdb ingest-limitless [--no-enforce-window]
 ptcgdb scrape limitless-site
 ptcgdb ingest-limitless-site [--no-enforce-window]
