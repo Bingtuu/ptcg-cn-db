@@ -47,6 +47,7 @@ from ptcgdb.normalize.envs import alignment_window
 from ptcgdb.scrapers.http import (
     CircuitOpenError,
     HttpClient,
+    HttpNotFoundError,
     RateLimiter,
     TransientHttpError,
 )
@@ -435,6 +436,18 @@ class DeckConfirmRunner:
         fallback_ts = datetime.now(UTC).isoformat(timespec="milliseconds")
         try:
             status, text = self.scraper.fetch_deck(code)
+        except HttpNotFoundError as exc:
+            # deck confirm 页 404（卡组码失效/未公开，task 069 同口径）：台账记
+            # http_error、question 留痕后继续，不熔断整轮
+            self._ledger.append(
+                ts=_resolve_wire_ts(self.scraper, prev_dispatch, fallback_ts),
+                deck_code=code, url=url, http_status=404,
+                elapsed_ms=_elapsed_ms(started), outcome="http_error", run_id=run_id,
+            )
+            stats.question.append(
+                {"id": label, "endpoint": url, "reason": f"404 无供给：{exc}"}
+            )
+            return "http_error"
         except (TransientHttpError, CircuitOpenError) as exc:
             self._ledger.append(
                 ts=_resolve_wire_ts(self.scraper, prev_dispatch, fallback_ts),

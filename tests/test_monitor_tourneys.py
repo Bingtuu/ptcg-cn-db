@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 from ptcgdb import cli
 from ptcgdb.monitor.tourneys import (
     DEFAULT_REFRESH_DAYS,
+    GHIJ_PAIRINGS_FROM,
     resolve_sources,
     run_monitor_tourneys,
 )
@@ -51,8 +52,8 @@ class StubHandler:
         self.calls.append(("scrape", kwargs))
         return self.scrape_res
 
-    def ingest(self):
-        self.calls.append(("ingest",))
+    def ingest(self, **kwargs):
+        self.calls.append(("ingest", kwargs))
         return self.ingest_res
 
     def as_dict(self):
@@ -93,15 +94,24 @@ def test_all_sources_call_order_and_args():
     )
     assert [r.source for r in result.reports] == ["mik", "limitless", "limitless_site"]
     # mik：无参断点续传轮询
-    assert stubs["mik"].calls == [("scrape", {}), ("ingest",)]
-    # EN：近 refresh_days 天强制重抓
-    for src in ("limitless", "limitless_site"):
-        assert stubs[src].calls == [
-            ("scrape", {"date_from": date(2026, 7, 26), "force": True}),
-            ("ingest",),
-        ]
+    assert stubs["mik"].calls == [("scrape", {}), ("ingest", {})]
+    # limitless（task 069）：baseline 近 refresh_days 天强刷 + GHIJ 收割窗断点续传
+    assert stubs["limitless"].calls == [
+        ("scrape", {"date_from": date(2026, 7, 26), "date_to": None, "force": True}),
+        ("scrape", {"date_from": GHIJ_PAIRINGS_FROM, "date_to": TODAY, "force": False}),
+        ("ingest", {"windows": [(date(2025, 4, 11), date(2026, 4, 9)),
+                                 (GHIJ_PAIRINGS_FROM, TODAY)]}),
+    ]
+    # limitless_site：单轮强制重抓，行为不变
+    assert stubs["limitless_site"].calls == [
+        ("scrape", {"date_from": date(2026, 7, 26), "date_to": None, "force": True}),
+        ("ingest", {}),
+    ]
     for report in result.reports:
-        assert report.scraped == {"fetched": 1, "skipped": 1}
+        # limitless 双轮合并：stub 两轮同结果 → 计数翻倍；mik/site 单轮
+        expected = {"fetched": 2, "skipped": 2} if report.source == "limitless" \
+            else {"fetched": 1, "skipped": 1}
+        assert report.scraped == expected
         assert report.ingest == {"tournaments": 1, "decks": 2, "appearances": 3}
         assert report.blocked == 0 and report.aborted is False
 
@@ -125,8 +135,21 @@ def test_refresh_days_custom():
     )
     assert result.refresh_from == date(2026, 8, 2)
     assert stubs["limitless"].calls[0] == (
-        "scrape", {"date_from": date(2026, 8, 2), "force": True},
+        "scrape", {"date_from": date(2026, 8, 2), "date_to": None, "force": True},
     )
+    assert stubs["limitless"].calls[1] == (
+        "scrape", {"date_from": GHIJ_PAIRINGS_FROM, "date_to": TODAY, "force": False},
+    )
+
+
+def test_ghij_plan_in_dry_run():
+    """dry-run 计划须列出 GHIJ 收割窗（透明可审）。"""
+    stubs = make_stubs()
+    result = run_monitor_tourneys(
+        source="limitless", dry_run=True, today=TODAY,
+        handlers={k: v.as_dict() for k, v in stubs.items()},
+    )
+    assert any("GHIJ" in line and str(GHIJ_PAIRINGS_FROM) in line for line in result.plan)
 
 
 def test_resolve_sources_invalid():
@@ -219,10 +242,17 @@ def test_cli_source_all_wires_each_scrape_to_own_runner(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "LimitlessSiteScrapeRunner", make_fake_runner("limitless_site"))
 
     def fake_run_monitor_tourneys(*, source, refresh_days, dry_run, handlers):
-        # 与 run_monitor_tourneys 相同的 handler 调用约定
+        # 与 run_monitor_tourneys 相同的 handler 调用约定（task 069：limitless 双轮）
         handlers["mik"]["scrape"]()
-        handlers["limitless"]["scrape"](date_from=date(2026, 9, 21), force=True)
-        handlers["limitless_site"]["scrape"](date_from=date(2026, 9, 21), force=True)
+        handlers["limitless"]["scrape"](
+            date_from=date(2026, 9, 21), date_to=None, force=True
+        )
+        handlers["limitless"]["scrape"](
+            date_from=GHIJ_PAIRINGS_FROM, date_to=date(2026, 11, 7), force=False
+        )
+        handlers["limitless_site"]["scrape"](
+            date_from=date(2026, 9, 21), date_to=None, force=True
+        )
         return SimpleNamespace(dry_run=False, reports=[], plan=[], refresh_from=None)
 
     monkeypatch.setattr(
@@ -237,9 +267,15 @@ def test_cli_source_all_wires_each_scrape_to_own_runner(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0
     assert calls["mik"] == [{}]  # mik 无参断点续传轮询
-    # EN 双通道：date_from 序列化为 ISO 字符串 + force=True（近 N 天强制重抓）
-    assert calls["limitless"] == [{"date_from": "2026-09-21", "force": True}]
-    assert calls["limitless_site"] == [{"date_from": "2026-09-21", "force": True}]
+    # limitless（task 069）：baseline 强刷 + GHIJ 收割断点续传（date_to 序列化 ISO）
+    assert calls["limitless"] == [
+        {"date_from": "2026-09-21", "date_to": None, "force": True},
+        {"date_from": "2026-09-16", "date_to": "2026-11-07", "force": False},
+    ]
+    # limitless_site：单轮强制重抓，行为不变
+    assert calls["limitless_site"] == [
+        {"date_from": "2026-09-21", "date_to": None, "force": True}
+    ]
 
 
 # ---- 2026-10 code review G3：单源硬异常隔离 ----
@@ -263,10 +299,15 @@ def test_source_scrape_exception_isolated():
     assert mik.scraped == {} and mik.ingest == {} and mik.run_id is None
     for report in result.reports[1:]:
         assert report.error is None
-        assert report.scraped == {"fetched": 1, "skipped": 1}
+        expected = {"fetched": 2, "skipped": 2} if report.source == "limitless" \
+            else {"fetched": 1, "skipped": 1}
+        assert report.scraped == expected
     # 其余两源确实执行了
     assert stubs["limitless"].calls == [
-        ("scrape", {"date_from": date(2026, 7, 26), "force": True}), ("ingest",),
+        ("scrape", {"date_from": date(2026, 7, 26), "date_to": None, "force": True}),
+        ("scrape", {"date_from": GHIJ_PAIRINGS_FROM, "date_to": TODAY, "force": False}),
+        ("ingest", {"windows": [(date(2025, 4, 11), date(2026, 4, 9)),
+                                 (GHIJ_PAIRINGS_FROM, TODAY)]}),
     ]
     assert stubs["limitless_site"].calls != []
 
@@ -275,7 +316,7 @@ def test_source_ingest_exception_isolated():
     """G3：scrape 成功但 ingest 抛异常 → error 留痕且 scrape 计数保留，后续源照常。"""
     stubs = make_stubs()
 
-    def boom():
+    def boom(**kwargs):
         raise ValueError("ingest blew up")
 
     handlers = {k: v.as_dict() for k, v in stubs.items()}
@@ -284,7 +325,7 @@ def test_source_ingest_exception_isolated():
 
     lim = result.reports[1]
     assert lim.error is not None and "ingest blew up" in lim.error
-    assert lim.scraped == {"fetched": 1, "skipped": 1}  # scrape 部分已计数
+    assert lim.scraped == {"fetched": 2, "skipped": 2}  # 双轮 scrape 部分已计数
     assert lim.ingest == {}
     assert result.reports[2].error is None  # limitless_site 照常
     assert stubs["limitless_site"].calls != []

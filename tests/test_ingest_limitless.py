@@ -855,3 +855,47 @@ def test_api_none_and_zero_extra_counts_have_distinct_stable_decks(tmp_path):
         (c.deck_id, c.card_id, c.raw_name, c.count)
         for c in query_all(db_path, DeckCard)
     ) == snapshot
+
+
+# ---- task 069：多窗口守卫（baseline 对齐窗 ∪ GHIJ 收割窗）----
+
+T_GHIJ = "eeeeeeeeeeeeeeeeeeeeee4"  # 2026-10-05：GHIJ 收割窗内、baseline 对齐窗（止 2026-04-09）外
+LIST_GHIJ = [{
+    "game": "PTCG", "name": "Gdansk Regional Championship",
+    "date": "2026-10-05T02:10:00.000Z", "format": "STANDARD",
+    "id": T_GHIJ, "players": 300, "organizerId": "org-2",
+}]
+
+
+def build_ghij_fixture(tmp_path):
+    raw_dir, db_path = tmp_path / "raw", tmp_path / "t.db"
+    write_ptcd_raw(raw_dir)
+    write_limitless_raw(
+        raw_dir,
+        list_entries=LIST_GHIJ,
+        standings={T_GHIJ: STANDINGS_A},
+    )
+    build_db(db_path)
+    return raw_dir, db_path
+
+
+def test_windows_default_single_guard_skips_ghij(tmp_path):
+    """默认（windows=None）= 单一 baseline 对齐窗：GHIJ 赛事跳过。"""
+    raw_dir, db_path = build_ghij_fixture(tmp_path)
+    result = ingest_limitless(raw_dir, db_path)
+    assert result.tournaments == 0
+    assert result.skipped_out_of_window == 1
+
+
+def test_windows_multi_window_ingests_ghij(tmp_path):
+    """显式多窗（monitor GHIJ 收割轮传入）：baseline 窗外、GHIJ 窗内照入。"""
+    raw_dir, db_path = build_ghij_fixture(tmp_path)
+    result = ingest_limitless(
+        raw_dir, db_path,
+        windows=[(date(2025, 4, 11), date(2026, 4, 9)),
+                 (date(2026, 9, 16), date(2026, 12, 31))],
+    )
+    assert result.tournaments == 1
+    assert result.skipped_out_of_window == 0
+    ids = {t.tournament_id for t in query_all(db_path, Tournament)}
+    assert ids == {f"limitless:{T_GHIJ}"}

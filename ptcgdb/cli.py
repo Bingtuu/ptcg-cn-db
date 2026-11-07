@@ -1614,10 +1614,19 @@ def monitor_tourneys_cmd(
                         raw_dir, LimitlessScraper(http), db_path
                     )
                     handlers["limitless"] = {
-                        "scrape": lambda date_from, force, runner=runner: runner.scrape(
-                            date_from=date_from.isoformat(), force=force
+                        # task 069：协议 scrape(date_from, date_to, force)——monitor
+                        # 调两轮（baseline 强刷 date_to=None + GHIJ 收割断点续传）；
+                        # ISO 序列化与既有约定一致
+                        "scrape": lambda date_from, date_to, force, runner=runner: runner.scrape(
+                            date_from=date_from.isoformat(),
+                            date_to=date_to.isoformat() if date_to else None,
+                            force=force,
                         ),
-                        "ingest": lambda: ingest_limitless(raw_dir, db_path),
+                        # 多窗守卫：None = 单一 alignment_window()（直调兼容）；
+                        # monitor 传 [baseline 对齐窗, GHIJ 收割窗]
+                        "ingest": lambda windows=None: ingest_limitless(
+                            raw_dir, db_path, windows=windows
+                        ),
                     }
                 if source in ("all", "limitless_site"):
                     http = stack.enter_context(HttpClient(
@@ -1628,8 +1637,12 @@ def monitor_tourneys_cmd(
                         raw_dir, LimitlessSiteScraper(http), db_path
                     )
                     handlers["limitless_site"] = {
-                        "scrape": lambda date_from, force, runner=runner: runner.scrape(
-                            date_from=date_from.isoformat(), force=force
+                        # task 069：协议对齐 scrape(date_from, date_to, force)，
+                        # site 单轮（date_to=None = runner 默认对齐窗右端）
+                        "scrape": lambda date_from, date_to, force, runner=runner: runner.scrape(
+                            date_from=date_from.isoformat(),
+                            date_to=date_to.isoformat() if date_to else None,
+                            force=force,
                         ),
                         "ingest": lambda: ingest_limitless_site(raw_dir, db_path),
                     }

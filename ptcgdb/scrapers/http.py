@@ -54,6 +54,22 @@ class RateLimitedError(TransientHttpError):
     """
 
 
+class HttpNotFoundError(RuntimeError):
+    """HTTP 404：资源不存在（如赛事 pairings 尚未发布）。不重试、不计熔断。
+
+    与 403/验证码硬熔断、5xx/429 退避重试都不同：404 是确定性缺失信号，
+    轮询场景（task 069 GHIJ 收割窗）必须把单场 404 降级为 question 继续，
+    否则一场未发布 pairings 的新赛事就会熔断整轮。
+
+    path = 触发 404 的请求路径（get_json/get_text 捕获时补全），
+    runners 记 question 时可原样引用。
+    """
+
+    def __init__(self, message: str, path: str | None = None) -> None:
+        super().__init__(message)
+        self.path = path
+
+
 class RateLimiter:
     """注入式限速器：clock / sleep 可替换，测试传假时钟或 interval=0。"""
 
@@ -150,19 +166,29 @@ class HttpClient:
 
     def post_json(self, path: str, payload: dict[str, Any]) -> Any:
         """POST JSON，返回解析后的响应体。熔断条件满足时抛 CircuitOpenError。"""
-        return self._request(lambda: self._client.post(path, json=payload), _parse_json)
+        try:
+            return self._request(lambda: self._client.post(path, json=payload), _parse_json)
+        except HttpNotFoundError as exc:
+            raise HttpNotFoundError(str(exc), path=path) from exc
 
     def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
         """GET JSON，返回解析后的响应体。限速/退避/熔断语义与 post_json 完全一致。"""
-        return self._request(lambda: self._client.get(path, params=params), _parse_json)
+        try:
+            return self._request(lambda: self._client.get(path, params=params), _parse_json)
+        except HttpNotFoundError as exc:
+            raise HttpNotFoundError(str(exc), path=path) from exc
 
     def get_text(self, path: str, params: dict[str, Any] | None = None) -> tuple[int, str]:
         """GET 文本（HTML 页面），返回 (status_code, text)。
 
         限速/退避/熔断语义与 get_json 一致，唯二差别：不解析 JSON（HTML 页面不触发
-        "响应非 JSON" 熔断）；非 200 的 4xx（403 除外，仍熔断）原样返回，由调用方判定。
+        "响应非 JSON" 熔断）；非 200 的 4xx（403/404 除外，仍熔断/缺失语义）原样返回，
+        由调用方判定。
         """
-        return self._request(lambda: self._client.get(path, params=params), _parse_text)
+        try:
+            return self._request(lambda: self._client.get(path, params=params), _parse_text)
+        except HttpNotFoundError as exc:
+            raise HttpNotFoundError(str(exc), path=path) from exc
 
     def _request(self, send: Callable[[], httpx.Response], parse: ResponseParser) -> Any:
         """一次请求的完整生命周期：熔断闸（含冷却半开探测）→ 退避重试 → 成功/失败计数。"""
@@ -175,7 +201,8 @@ class HttpClient:
             # 冷却期满：放行一次半开探测；成败分别闭合/立即重开（task 063 瞬断恢复）
         try:
             body = self._with_retry(send, parse)
-        except CircuitOpenError:
+        except (CircuitOpenError, HttpNotFoundError):
+            # 硬熔断与确定性 404 都不计入连续失败（绝不硬闯 / 轮询不熔断）
             raise
         except Exception:
             self._consecutive_failures += 1
@@ -207,6 +234,8 @@ class HttpClient:
             resp = send()
         except httpx.TransportError as exc:
             raise TransientHttpError(f"网络错误: {exc}") from exc
+        if resp.status_code == 404:
+            raise HttpNotFoundError("HTTP 404，资源不存在（该场次可能尚未发布此数据）")
         if resp.status_code == 429:
             raise RateLimitedError("HTTP 429 限速，按有限退避重试")
         if resp.status_code == 403:

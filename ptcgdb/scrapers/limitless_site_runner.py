@@ -28,7 +28,11 @@ from pathlib import Path
 from typing import Any
 
 from ptcgdb.normalize.envs import alignment_window
-from ptcgdb.scrapers.http import CircuitOpenError, TransientHttpError
+from ptcgdb.scrapers.http import (
+    CircuitOpenError,
+    HttpNotFoundError,
+    TransientHttpError,
+)
 from ptcgdb.scrapers.limitless_site import (
     INDEX_PAGE_SIZE,
     SOURCE,
@@ -224,6 +228,13 @@ class LimitlessSiteScrapeRunner:
         except LimitlessSiteApiError as exc:
             state.stats.question.append(
                 {"id": label, "endpoint": exc.endpoint, "reason": str(exc)}
+            )
+            return None
+        except HttpNotFoundError as exc:
+            # 页面 404（赛事页不存在/下架，task 069 同口径）：记 question 继续，
+            # 不熔断整轮
+            state.stats.question.append(
+                {"id": label, "endpoint": "-", "reason": f"404 无供给：{exc}"}
             )
             return None
         except TransientHttpError as exc:

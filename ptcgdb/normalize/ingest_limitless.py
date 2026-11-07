@@ -37,6 +37,8 @@ mik 管线（ingest_tourneys.py，FR-9.1/9.2/9.3/9.6）：
   有 list 条目但日期缺失照入库（不猜）；缺 list 条目拒收（v1.36，见上）。
   依据：raw append-only，窗口外残留 raw 永存，守卫防重跑 ingest 吃回已清除
   数据。enforce_window=False 关闭（调试/特殊补录）。
+  windows 显式多窗覆盖（task 069）：传入时取代单窗，命中任一窗即入库
+  （monitor GHIJ 收割轮 = [baseline 对齐窗, GHIJ 收割窗]）。
 """
 
 from __future__ import annotations
@@ -188,18 +190,28 @@ def ingest_limitless(
     *,
     vocab_dir: Path | None = None,
     enforce_window: bool = True,
+    windows: list[tuple[date, date]] | None = None,
 ) -> LimitlessIngestResult:
     """扫 raw limitless/tournaments/standings → 四表入库。raw 层只读，重跑幂等。
 
     enforce_window（FR-9.8 窗口守卫，默认开）：赛事日期不在 EN 对齐窗口 → 跳过
     （不写库不删行）；有 list 条目但日期缺失照入库（不猜）；缺 list 条目
     （元数据不可得）→ 拒收跳过（v1.36，task 058）。
+
+    windows（task 069）：显式多窗覆盖——传入时取代 alignment_window() 单窗
+    （monitor GHIJ 收割轮传 [baseline 对齐窗, GHIJ 收割窗]）；enforce_window=False
+    且 windows 未传 → 守卫全关（调试/特殊补录）。
     """
     raw_dir = Path(raw_dir)
     db_path = Path(db_path)
     tier_map = load_tier_map(vocab_dir or VOCAB_DIR)
     env_calendar = load_calendar()
-    window = alignment_window(calendar=env_calendar) if enforce_window else None
+    if windows is not None:
+        guard: list[tuple[date, date]] | None = list(windows)
+    elif enforce_window:
+        guard = [alignment_window(calendar=env_calendar)]
+    else:
+        guard = None
     result = LimitlessIngestResult()
 
     base = raw_dir / RAW_SUBDIR / TOURNAMENTS_DIR
@@ -233,7 +245,7 @@ def ingest_limitless(
                 _ingest_one_tournament(
                     engine, path.stem, doc, pairings_doc, list_index, tier_map,
                     env_calendar, cn_name_index, card_index, ptcd_index, result,
-                    window,
+                    guard,
                 )
         result.warnings.extend(str(w.message) for w in caught)
     finally:
@@ -253,7 +265,7 @@ def _ingest_one_tournament(
     card_index: dict[str, tuple[str, str | None, str | None]],
     ptcd_index: dict[tuple[str, str], dict[str, Any]],
     result: LimitlessIngestResult,
-    window: tuple[date, date] | None = None,
+    windows: list[tuple[date, date]] | None = None,
 ) -> None:
     fetched_at = _fetched_at(doc)
     tournament_id = f"{SOURCE}:{tid}"
@@ -286,8 +298,11 @@ def _ingest_one_tournament(
             f"赛事 tier 归类未命中（tier/tier_coef 置空）: {tournament_id} — {classify_reason}"
         )
     tier_coef = tier_map[tier][1] if tier is not None and tier in tier_map else None
-    # 窗口守卫（FR-9.8）：窗口外 → 跳过（不写库不删既有行）；day 缺失照入库（不猜）
-    if window is not None and day is not None and not (window[0] <= day <= window[1]):
+    # 窗口守卫（FR-9.8，task 069 多窗）：不在任一窗口内 → 跳过（不写库不删既有行）；
+    # day 缺失照入库（不猜）
+    if windows is not None and day is not None and not any(
+        w[0] <= day <= w[1] for w in windows
+    ):
         result.skipped_out_of_window += 1
         return
     # env 推导（FR-9.1b）：日期 ∩ EN 日历段；未命中 → NULL + 记异常，不猜

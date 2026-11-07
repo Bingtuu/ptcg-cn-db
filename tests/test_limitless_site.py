@@ -30,7 +30,13 @@ from typer.testing import CliRunner
 
 from ptcgdb import cli
 from ptcgdb.orm import ScrapeRun
-from ptcgdb.scrapers import CircuitOpenError, HttpClient, RateLimiter, TransientHttpError
+from ptcgdb.scrapers import (
+    CircuitOpenError,
+    HttpClient,
+    HttpNotFoundError,
+    RateLimiter,
+    TransientHttpError,
+)
 from ptcgdb.scrapers.limitless_site import (
     BASE_URL,
     INDEX_PAGE_SIZE,
@@ -94,9 +100,12 @@ def test_get_text_html_does_not_trip_non_json_circuit():
     assert status == 200 and "not json" in text
 
 
-def test_get_text_404_returned_not_raised():
+def test_get_text_404_raises_not_found():
+    # task 069：404 = 确定性缺失，抛 HttpNotFoundError（不重试、不计熔断）；
+    # 不再原样返回 (404, text)——与 get_json 同语义
     client = make_client(lambda r: httpx.Response(404, text="not found"))
-    assert client.get_text("/x") == (404, "not found")
+    with pytest.raises(HttpNotFoundError):
+        client.get_text("/x")
 
 
 def test_get_text_circuit_open_on_403():
@@ -340,9 +349,10 @@ def test_seasons_for_window():
 # ---- LimitlessSiteScraper：HTTP 200 校验 + id 强校验 ----
 
 
-def test_scraper_non_200_raises():
+def test_scraper_404_raises_not_found():
+    # task 069：404 = 确定性缺失，HttpNotFoundError 直透（runner _ensure 记 question）
     scraper = LimitlessSiteScraper(make_client(lambda r: httpx.Response(404, text="nf")))
-    with pytest.raises(LimitlessSiteApiError):
+    with pytest.raises(HttpNotFoundError):
         scraper.fetch_standings("518")
 
 

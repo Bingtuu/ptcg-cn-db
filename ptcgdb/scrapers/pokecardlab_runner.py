@@ -44,7 +44,12 @@ from pathlib import Path
 from typing import Any
 
 from ptcgdb.normalize.envs import alignment_window
-from ptcgdb.scrapers.http import CircuitOpenError, HttpClient, TransientHttpError
+from ptcgdb.scrapers.http import (
+    CircuitOpenError,
+    HttpClient,
+    HttpNotFoundError,
+    TransientHttpError,
+)
 from ptcgdb.scrapers.pokecardlab import parse_list_page
 from ptcgdb.scrapers.raw_store import is_valid_raw, read_raw, write_raw
 from ptcgdb.scrapers.runner import (
@@ -286,6 +291,14 @@ class PokecardlabShellRunner:
         except PokecardlabApiError as exc:
             state.stats.question.append(
                 {"id": label, "endpoint": exc.endpoint, "reason": str(exc)}
+            )
+            return None
+        except HttpNotFoundError as exc:
+            # 页面 404（文章/分类下架，task 069 同口径）：记 question 继续，
+            # 不熔断整轮；endpoint 取请求路径原样留痕
+            state.stats.question.append(
+                {"id": label, "endpoint": exc.path or "-",
+                 "reason": f"404 无供给：{exc}"}
             )
             return None
         except TransientHttpError as exc:

@@ -9,7 +9,19 @@
 - **limitless / limitless_site**：近 refresh_days 天**强制重抓**（赛后约 7 天
   decklist 延迟公开，缺省 14 = 7 + 余量；force + 收窄 date_from，成本有界）
   → 对应 ingest（窗口守卫 FR-9.8 默认开）；
+- **limitless 追加 GHIJ 收割轮**（task 069，2026-11-07 拍板）：baseline 对齐窗右端
+  止 2026-04-09，J 标以来近 N 天强刷窗口倒挂空转；自 2026-09-16（CN J 标生效）
+  追加一轮断点续传收割（force=False，已抓零请求），新发布的官方档赛事
+  （SEASAC 等）standings+pairings 随轮询自动收编，不再受 API pairings
+  按场次衰减丢失。ingest 窗口同步扩为 [baseline 对齐窗, GHIJ 收割窗]；
 - dry_run：只出计划（源 / 重抓窗口）零调用。
+
+handler 协议（CLI 注入）：
+- mik：scrape() / ingest()；
+- EN：scrape(date_from: date, date_to: date|None, force: bool)——limitless 被
+  调两轮（baseline 强刷 + GHIJ 收割），limitless_site 单轮（date_to=None =
+  runner 默认对齐窗右端）；ingest()，limitless 额外接受 windows 列表覆盖
+  ingest 窗口守卫（None = 单一 alignment_window()）。
 
 限速/熔断由各采集器既有配置保证（FR-9.5）；某源中止/异常只记录不中断其余源
 （不同源不同宿主，熔断中止与 DB 锁等硬异常同口径，2026-10 review G3），
@@ -27,8 +39,17 @@ SOURCES = ("mik", "limitless", "limitless_site")
 
 # handler 协议（duck-type，CLI 注入）：
 #   {"scrape": Callable[[], ScrapeResult], "ingest": Callable[[], IngestResult]}（mik）
-#   {"scrape": Callable[[date_from: date, force: bool], ScrapeResult], ...}（EN）
+#   {"scrape": Callable[[date_from: date, date_to: date|None, force: bool], ScrapeResult],
+#    "ingest": Callable[..., IngestResult]}（EN；limitless ingest 可传 windows）
 # ScrapeResult 需有 .stats.scraped（[{"action": ...}]）/ .stats.aborted / .run_id。
+
+GHIJ_PAIRINGS_FROM = date(2026, 9, 16)
+"""GHIJ 收割窗起点 = CN J 标生效日（快照 standard-2026-09-16，task 069）。
+
+baseline 对齐窗（alignment_window，EN 种子段止 2026-04-09）不覆盖 J 时代；
+2026-09-16 起由本收割窗续接，右端 = 轮询当日（滚动）。分类规则不动——
+online_open 2026 段未放宽（供给实测≈0，v1.35「后段再议」维持）。
+"""
 
 
 @dataclass
@@ -106,6 +127,13 @@ def run_monitor_tourneys(
                 f"mik：断点续传轮询全系列 → ingest-tourneys"
                 f"（收集起点底线 {floor}，更早的退赛前赛事不入库，2026-09-19 拍板）"
             )
+        elif src == "limitless":
+            result.plan.append(
+                f"limitless：强制重抓 {refresh_from} 起近 {refresh_days} 天窗口"
+                f"（赛后 decklist 延迟公开）+ GHIJ 收割窗 "
+                f"{GHIJ_PAIRINGS_FROM}..{today} 断点续传（新发布 pairings 自动收编，"
+                f"task 069）→ ingest-limitless（双窗守卫）"
+            )
         else:
             result.plan.append(
                 f"{src}：强制重抓 {refresh_from} 起近 {refresh_days} 天窗口"
@@ -121,14 +149,35 @@ def run_monitor_tourneys(
             raise ValueError(f"非 dry-run 运行缺 handler: {src}")
         report = SourceReport(source=src)
         try:
-            if src == "mik":
+            # ---- scrape 阶段（limitless 双轮：baseline 强刷 + GHIJ 收割）----
+            if src == "limitless":
+                baseline_res = handler["scrape"](
+                    date_from=refresh_from, date_to=None, force=True
+                )
+                ghij_res = handler["scrape"](
+                    date_from=GHIJ_PAIRINGS_FROM, date_to=today, force=False
+                )
+                scrape_res = _merge_results(baseline_res, ghij_res)
+            elif src == "mik":
                 scrape_res = handler["scrape"]()
             else:
-                scrape_res = handler["scrape"](date_from=refresh_from, force=True)
+                scrape_res = handler["scrape"](
+                    date_from=refresh_from, date_to=None, force=True
+                )
+            # scrape 计数先落（G3：ingest 异常时 scrape 部分仍保留）
             report.scraped = _count_actions(scrape_res.stats)
             report.aborted = bool(scrape_res.stats.aborted)
             report.run_id = scrape_res.run_id
-            ingest_res = handler["ingest"]()
+            # ---- ingest 阶段（limitless 多窗守卫：baseline 对齐窗 ∪ GHIJ 收割窗）----
+            if src == "limitless":
+                from ptcgdb.normalize.envs import alignment_window
+
+                ingest_res = handler["ingest"](windows=[
+                    alignment_window(),
+                    (GHIJ_PAIRINGS_FROM, today),
+                ])
+            else:
+                ingest_res = handler["ingest"]()
             report.ingest = _ingest_summary(ingest_res)
             report.blocked = len(getattr(ingest_res, "blocked", []))
         except Exception as exc:
@@ -136,3 +185,20 @@ def run_monitor_tourneys(
             report.error = f"{type(exc).__name__}: {exc}"
         result.reports.append(report)
     return result
+
+
+def _merge_results(first: Any, second: Any) -> Any:
+    """limitless 双轮（baseline 强刷 + GHIJ 收割）结果合并为单报告。
+
+    scraped 计数相加、aborted 取或、run_id 并列留痕（两轮各自有
+    scrape_runs 记录，manifest 对账不受合并影响）。返回新对象，不改动入参。
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        stats=SimpleNamespace(
+            scraped=list(first.stats.scraped) + list(second.stats.scraped),
+            aborted=bool(first.stats.aborted or second.stats.aborted),
+        ),
+        run_id=f"{first.run_id};{second.run_id}",
+    )

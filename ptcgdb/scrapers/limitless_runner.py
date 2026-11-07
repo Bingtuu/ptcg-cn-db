@@ -21,7 +21,11 @@ from pathlib import Path
 from typing import Any
 
 from ptcgdb.normalize.envs import alignment_window
-from ptcgdb.scrapers.http import CircuitOpenError, TransientHttpError
+from ptcgdb.scrapers.http import (
+    CircuitOpenError,
+    HttpNotFoundError,
+    TransientHttpError,
+)
 from ptcgdb.scrapers.limitless import (
     ENDPOINT_TOURNAMENTS,
     SOURCE,
@@ -227,6 +231,13 @@ class LimitlessScrapeRunner:
         except LimitlessApiError as exc:
             state.stats.question.append(
                 {"id": label, "endpoint": exc.endpoint, "reason": str(exc)}
+            )
+            return None
+        except HttpNotFoundError as exc:
+            # 该场此数据无供给（如 pairings 尚未发布，task 069）：记 question 继续，
+            # 不熔断整轮（404 是确定性缺失，非风控信号）
+            state.stats.question.append(
+                {"id": label, "endpoint": "-", "reason": f"404 无供给：{exc}"}
             )
             return None
         except TransientHttpError as exc:

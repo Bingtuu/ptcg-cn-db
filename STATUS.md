@@ -2,7 +2,7 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-07；PRD v1.40；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-07；PRD v1.41；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
@@ -16,7 +16,7 @@
 - dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
 - **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队，第 2 页 raw 待 mik 恢复后补，当前不称整场收齐。
 - **mik 源停摆**：2026-10-31 起 tcg.mik.moe 迁移 areazero.gg 且旧 API 404，mik 侧采集按政策停摆（areazero 要求逐请求人工确认，禁止批量）；mik 赛事数据停在停摆前快照 + 本地 raw 可重放。EN/JP 源不受影响。
-- 测试基线：task 063 完成后 **1269 passed**（含新增 16 项韧性测试）、ruff 全净。
+- 测试基线：task 069 完成后 **1276 passed**、ruff 全净。
 
 ## 当前任务队列
 
@@ -26,6 +26,7 @@
 | 062 | DONE | 赛事身份统一：appearance 身份、EN 旧实体合并、3710 修复、dist 3.0.0 |
 | 067 | DONE | 数据版本治理：manifest data_version 单调递增 + data_changes 差集（PRD v1.40） |
 | 068 | 部分落地 | A1 已交付（GHIJ pairings 1,063 行入 dist，data_version 2）；online_open 2026 放宽与 mik 侧待后续拍板 |
+| 069 | DONE | 对齐窗 pairings 常规轮询：GHIJ 收割窗挂 monitor（PRD v1.41）、404 确定性缺失语义、ingest 多窗守卫 |
 | 063 | DONE | 采集与 raw 层韧性：429 退避、熔断冷却恢复、raw 原子写、swiss 同秒快照、清单页 24h TTL、ingest-tourneys CLI 底线守卫 |
 | 064 | TODO | 统计与 SDK 契约：统计边界、双后端一致性和查询接口 |
 | 065 | TODO | 剩余 P2、validate/monitor/accept 与文档收尾 |
