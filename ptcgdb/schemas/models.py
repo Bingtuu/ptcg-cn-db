@@ -159,6 +159,9 @@ class Card(BaseModel):
 
         首标/重标前库内仍是 list 值（= 未标注 + 机制标签），读库侧不炸；
         tag-effects 幂等转换后落库为 dict 结构，本转换不再触发。
+        语义注记（task 065）：转换产物的 tags=[] 表示「旧库未跑标注器、无命中
+        信息」而非「跑过零命中」；dict 形态（tags 空 + sentences）才是已标注
+        零命中的可信信号——消费侧按形态区分，不凭 tags 空判未标。
         """
         if isinstance(v, list):
             return {"tags": [], "detail": {}, "labels": v}

@@ -32,7 +32,9 @@ def fill_en(db_path: Path, raw_dir: Path) -> EnFillResult:
     result = EnFillResult()
     try:
         with Session(engine) as session:
-            cards = list(session.scalars(select(Card)))
+            cards = list(
+                session.scalars(select(Card).where(Card.status != "deprecated"))
+            )  # task 065：只排除 deprecated（draft/active 照处理）
             result.total = len(cards)
             for card in cards:
                 bucket = result.by_set.setdefault(card.set_id, [0, 0])

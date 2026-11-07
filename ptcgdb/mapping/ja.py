@@ -294,6 +294,8 @@ def fill_ja(
                 select(Card.card_id, Card.name_en, Card.card_type, Card.name_ja)
                 .join(ExternalId, Card.card_id == ExternalId.card_id)
                 .where(ExternalId.system == "mik_en")
+                .where(Card.status != "deprecated")
+                # task 065：deprecated 不填充（draft/active 照处理，口径统一）
             ).all()
 
             def ask(category: str, card_id: str) -> None:
@@ -328,6 +330,8 @@ def fill_ja(
                 if existing_ja and existing_ja != built:
                     result.conflicts.append(card_id)
                     continue
+                if existing_ja == built:
+                    continue  # task 065：同值不计 filled（幂等重跑不虚高）
                 card.name_ja = built
                 result.name_ja_filled += 1
             session.commit()

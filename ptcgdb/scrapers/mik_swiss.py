@@ -11,7 +11,7 @@
 raw 落盘布局（append-only 快照，配合 raw_store.write_raw 使用）：
   data/raw/mikmoe/tournaments/swiss/{tournamentId}/{YYYYMMDDTHHMMSSZ}.json
 
-入库形态（pairings 表或新表）待真实 ongoing 响应字段确认后拍板——骨架只采 raw。
+入库形态已拍板（task 052）：仅 raw 留存不入库（现场积分榜无对阵/卡组、含昵称）。
 """
 
 from __future__ import annotations

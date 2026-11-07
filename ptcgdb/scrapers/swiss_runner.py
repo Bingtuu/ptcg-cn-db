@@ -9,7 +9,7 @@
 三清单 + scrape_runs 复用 runner.finish_run。熔断（CircuitOpenError）立即中止
 本轮，已抓产物保留，status=aborted。
 
-入库形态未定（task 052：待真实 ongoing 响应字段确认后拍板）——本模块只产 raw。
+入库形态已拍板（task 052）：仅 raw 留存不入库——本模块只产 raw。
 比赛日调度见 docs/data-sources.md §1（cron 周期调用 `scrape swiss`）。
 """
 

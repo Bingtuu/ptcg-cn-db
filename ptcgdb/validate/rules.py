@@ -291,6 +291,10 @@ def check_reconciliation(
     (条目 setCode, cardIndex) 全局去重后、归属于该 setCode 的卡数；
     入库数按 cards.set_id 计数。不给 raw_dir 时回退
     expected_count + expected_secret_count 口径（单测/无 raw 场景）。
+
+    task 065 口径注记：cards 入参须为 **active 全集**（不含 deprecated——
+    deprecated 双重列示 v1.34 拍板置状态不删行，raw 对账面亦排除之）；
+    raw 层缺 mikmoe 目录（全新环境/误传路径）时本规则跳过，不裸崩。
     """
     res = RuleResult(rule="系列对账", checked=len(sets))
     counts = Counter(c.set_id for c in cards)
@@ -300,19 +304,24 @@ def check_reconciliation(
 
         seen: set[tuple[str, str]] = set()
         base = Path(raw_dir) / "mikmoe"
-        for set_dir in sorted(p for p in base.iterdir() if p.is_dir()):
-            cards_json = set_dir / "cards.json"
-            if not cards_json.exists():
-                continue
-            try:
-                entries = json.loads(cards_json.read_text(encoding="utf-8"))["data"]["cards"]
-            except (KeyError, json.JSONDecodeError):
-                continue
-            for entry in entries:
-                key = (entry.get("setCode") or set_dir.name, str(entry.get("cardIndex")))
-                seen.add(key)
-        expected_by_set = dict(Counter(sc for sc, _ in seen))
-        res.note = "期望值按条目自身 setCode + (setCode, cardIndex) 全局去重（task 005 口径）"
+        if base.is_dir():
+            for set_dir in sorted(p for p in base.iterdir() if p.is_dir()):
+                cards_json = set_dir / "cards.json"
+                if not cards_json.exists():
+                    continue
+                try:
+                    entries = json.loads(cards_json.read_text(encoding="utf-8"))["data"]["cards"]
+                except (KeyError, json.JSONDecodeError):
+                    continue
+                for entry in entries:
+                    key = (entry.get("setCode") or set_dir.name, str(entry.get("cardIndex")))
+                    seen.add(key)
+            expected_by_set = dict(Counter(sc for sc, _ in seen))
+            res.note = "期望值按条目自身 setCode + (setCode, cardIndex) 全局去重（task 005 口径）"
+        else:
+            # task 065：raw 层缺 mikmoe 目录守卫（全新环境/误传路径不 iterdir
+            # 裸崩），回退 expected_count 口径并留痕
+            res.note = "raw 层缺 mikmoe 目录，回退 expected_count 口径（task 065）"
     for s in sets:
         actual = counts.get(s.set_id, 0)
         if expected_by_set is not None:

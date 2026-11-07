@@ -66,6 +66,9 @@ class TournamentIngestResult:
     unknown_cards: list[dict[str, Any]] = field(default_factory=list)  # card_id 未解析
     warnings: list[str] = field(default_factory=list)  # 未知 tier / subtype 等
     skipped_before_date: int = 0  # --date-from 拦截（task 051，日期缺失照入不猜）
+    skipped_before_date_ids: list[str] = field(  # task 065：可审计清单
+        default_factory=list
+    )
 
 
 def derive_stat_scope(card_type: str | None, trainer_subtype: str | None) -> str:
@@ -228,6 +231,7 @@ def ingest_tourneys(
                 and record.date < date_from
             ):
                 result.skipped_before_date += 1
+                result.skipped_before_date_ids.append(record.tournament_id)
                 continue
             # env 推导（FR-9.1b）：日期 ∩ 日历段；未命中 → NULL + 记异常，不猜
             env_segment = derive_env(

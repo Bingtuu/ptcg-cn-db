@@ -118,7 +118,7 @@ def classify_sentence(sentence: str) -> str:
     n = len(s)
     while i < n:
         ch = s[i]
-        if ch in " \t":
+        if ch.isspace():  # task 065：Unicode 空白（含全角 U+3000），不只空格/tab
             i += 1
             continue
         if ch not in _OPEN_GROUP:

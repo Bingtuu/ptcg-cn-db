@@ -34,6 +34,13 @@ stats_app = typer.Typer(
     help="赛事统计（FR-9.7）：usage / winrate / wws / card / matchup / overview"
 )
 
+
+def _require_db(db_path: Path) -> None:
+    """缺库守卫（task 065）：只读命令缺库友好退 2，不创建空库文件、不裸 traceback。"""
+    if not Path(db_path).is_file():
+        typer.echo(f"错误：数据库不存在：{db_path}", err=True)
+        raise typer.Exit(code=2)
+
 DbPathOpt = Annotated[Path, typer.Option("--db-path", help="数据库路径")]
 FmtOpt = Annotated[str, typer.Option("--format", help="输出格式 table|json|csv")]
 AsOfOpt = Annotated[str | None, typer.Option("--as-of", help="查询时点（时间衰减基准）")]
@@ -141,6 +148,7 @@ def _emit_stats(meta: dict[str, Any], stats: list[CardStat], fmt: str) -> None:
 
 def _overview(db_path: Path) -> None:
     """原对账行为：各赛制标记/卡类型卡数 + 系列 expected vs 实际。"""
+    _require_db(db_path)
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         total = conn.execute(
@@ -205,6 +213,7 @@ def usage_cmd(
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
     """加权出场率 WUR（canonical: wur.sql）。"""
+    _require_db(db_path)
     params = _params(
         as_of, date_from, date_to, window_days, scope, tier, division, min_n,
         include_qual, include_team, usage_basis=usage_basis, basis=basis,
@@ -240,6 +249,7 @@ def winrate_cmd(
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
     """胜率 WR（canonical: winrate_a/b.sql；A 层真实战绩 / B 层 top-cut 转化代理）。"""
+    _require_db(db_path)
     params = _params(
         as_of, date_from, date_to, window_days, scope, tier, division, min_n,
         include_qual, include_team, mirror=mirror, basis=basis,
@@ -270,6 +280,7 @@ def wws_cmd(
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
     """加权胜率 WWS = WUR × 贝叶斯收缩胜率（canonical: wws.sql）。"""
+    _require_db(db_path)
     if k_a <= 0:
         raise typer.BadParameter("--k-a 必须是正数（贝叶斯收缩等效局数）")
     if k_b <= 0:
@@ -304,6 +315,7 @@ def card_cmd(
 
     --granularity archetype 时 name 传 decks.archetype_name（v1.26）。
     """
+    _require_db(db_path)
     params = _params(
         as_of, date_from, date_to, window_days, scope, tier, division, 5,
         include_qual, include_team, basis=basis, granularity=granularity,
@@ -328,6 +340,7 @@ def matchup_cmd(
     db_path: DbPathOpt = DEFAULT_DB_PATH,
 ) -> None:
     """matchup 对阵矩阵（canonical: matchup.sql；v1.25，仅 pairings 覆盖赛事）。"""
+    _require_db(db_path)
     params = _params(
         as_of, date_from, date_to, window_days, "pokemon,supporter,stadium", tier,
         division, min_n, include_qual, include_team, basis=basis,
@@ -371,6 +384,7 @@ def query_cmd(
     limit 语义（task 064 固定）：负数 → BadParameter 退 2；0 → 返回 0 行，
     truncated 如实回显（是否仍有未返回的行）。
     """
+    _require_db(db_path)
     ensure_utf8_stdout()
     checked = _check_readonly_sql(sql)
     if limit < 0:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import platform
+import string
 import subprocess
 from collections.abc import Callable
 from typing import Any
@@ -19,16 +20,20 @@ import httpx
 NOTIFY_EVENTS = {"increment", "activated", "blocked", "postprocess", "proposal", "news"}
 
 _PWSH_TOAST = r"""
-$mgr = 'Windows.UI.Notifications.ToastNotificationManager'
-[$mgr, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(
+$$mgr = 'Windows.UI.Notifications.ToastNotificationManager'
+[$$mgr, Windows.UI.Notifications, ContentType = WindowsRuntime] > $$null
+$$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(
     [Windows.UI.Notifications.ToastTemplateType]::ToastText02)
-$nodes = $xml.GetElementsByTagName('text')
-$nodes.Item(0).AppendChild($xml.CreateTextNode('{title}')) > $null
-$nodes.Item(1).AppendChild($xml.CreateTextNode('{message}')) > $null
-$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('ptcg-cn-db').Show($toast)
+$$nodes = $$xml.GetElementsByTagName('text')
+$$nodes.Item(0).AppendChild($$xml.CreateTextNode('${title}')) > $$null
+$$nodes.Item(1).AppendChild($$xml.CreateTextNode('${message}')) > $$null
+$$toast = [Windows.UI.Notifications.ToastNotification]::new($$xml)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('ptcg-cn-db').Show($$toast)
 """
+
+# task 065：string.Template 单次渲染（串行 .replace 对 message 含 "{title}" 字面量
+# 会二次替换——顺序隐患）；pwsh 字面 $ 已转义为 $$，${title}/${message} 为占位符
+_PWSH_TEMPLATE = string.Template(_PWSH_TOAST)
 
 
 def _osascript_escape(text: str) -> str:
@@ -44,9 +49,9 @@ def desktop_command(title: str, message: str) -> list[str]:
     """按平台构造桌面通知命令。"""
     system = platform.system()
     if system == "Windows":
-        script = (_PWSH_TOAST
-            .replace("{title}", _pwsh_escape(title))
-            .replace("{message}", _pwsh_escape(message)))
+        script = _PWSH_TEMPLATE.substitute(
+            title=_pwsh_escape(title), message=_pwsh_escape(message)
+        )
         return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]
     if system == "Darwin":
         script = (
@@ -93,10 +98,13 @@ class Notifier:
         sent: list[str] = []
         if self.desktop:
             try:
-                self._runner(desktop_command(title, message))
-                sent.append("desktop")
+                proc = self._runner(desktop_command(title, message))
             except Exception:
                 pass
+            else:
+                # task 065：命令非零退出不算送达（runner 默认 check=False）
+                if getattr(proc, "returncode", 0) == 0:
+                    sent.append("desktop")
         if self.webhook_url:
             body = {"title": title, "message": message,
                     "event": event, "payload": payload or {}}

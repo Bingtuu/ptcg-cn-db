@@ -71,7 +71,9 @@ def fill_tera(db_path: Path, raw_dir: Path) -> TeraMapResult:
                     select(ExternalId.card_id, ExternalId.external_id).filter_by(system="mik_en")
                 ).all()
             )
-            cards = list(session.scalars(select(Card)))
+            cards = list(
+                session.scalars(select(Card).where(Card.status != "deprecated"))
+            )  # task 065：只排除 deprecated（draft/active 照处理）
             result.total = len(cards)
             for card in cards:
                 ext = bridges.get(card.card_id)

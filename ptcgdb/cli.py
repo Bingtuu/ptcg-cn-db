@@ -58,6 +58,18 @@ DEFAULT_DB_PATH = Path("data/ptcg-cn.db")
 DEFAULT_RAW_DIR = Path("data/raw")
 
 
+def _parse_date_opt(value: str | None, flag: str):
+    """CLI 日期选项解析（task 065）：非法日期友好退 2（BadParameter），不裸 traceback。"""
+    if value is None:
+        return None
+    from datetime import date as date_cls
+
+    try:
+        return date_cls.fromisoformat(value)
+    except ValueError:
+        raise typer.BadParameter(f"{flag} 须为 YYYY-MM-DD：{value!r}") from None
+
+
 def _db_not_found_exit(db_path: Path) -> typer.Exit:
     typer.echo(f"错误：数据库不存在或无法打开：{db_path}", err=True)
     typer.echo("请先运行 ptcgdb init-db 初始化数据库", err=True)
@@ -829,7 +841,7 @@ def scrape_swiss(
 
     仅进行中赛事可用（ended 返回 400 按 unavailable 跳过）；内容不变的赛事
     不重复写快照。比赛日密集轮询用 cron 周期调本命令（见 docs/data-sources.md §1）。
-    入库形态待真实 ongoing 响应字段确认后拍板——当前只产 raw。
+    入库形态已拍板（task 052）：仅 raw 留存，不入库。
     """
     try:
         with HttpClient(BASE_URL) as http:
@@ -1097,8 +1109,6 @@ def ingest_tourneys_cmd(
     收集底线（task 063）：直连 CLI 必须显式给出 --date-from 或 --allow-full-history，
     防止误将退赛前全量历史 raw 入库；monitor 编排路径自动注入 cn_collection_start()。
     """
-    from datetime import date as date_cls
-
     if date_from is None and not allow_full_history:
         typer.echo(
             "错误：缺少收集底线。直连 ingest-tourneys 不带 --date-from 曾误收退赛前"
@@ -1109,7 +1119,7 @@ def ingest_tourneys_cmd(
         raise typer.Exit(code=2)
     result = ingest_tourneys(
         raw_dir, db_path,
-        date_from=date_cls.fromisoformat(date_from) if date_from else None,
+        date_from=_parse_date_opt(date_from, "--date-from"),
     )
     typer.echo(
         f"tournaments={result.tournaments} decks={result.decks} appearances={result.appearances} "
@@ -1426,7 +1436,10 @@ def _make_notifier(notify: bool, webhook: str | None):
 
 @monitor_app.command("l0")
 def monitor_l0(
-    dry_run: bool = typer.Option(False, "--dry-run", help="只探测增量（只读，零额外请求）"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run",
+        help="只探测增量（会刷新 products.json 索引缓存；不入库、零额外请求）",
+    ),
     notify: bool = typer.Option(True, "--notify/--no-notify", help="重要事件桌面通知"),
     webhook: str | None = typer.Option(None, "--webhook", help="webhook URL（可选）"),
     raw_dir: Path = DEFAULT_RAW_DIR,

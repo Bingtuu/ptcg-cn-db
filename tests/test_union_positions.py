@@ -43,21 +43,21 @@ def _make_db(db_path, rows):
             Set(
                 set_id="CSEC", name_zh="四方联结礼盒", era="剑&盾",
                 release_date=None, regulation_mark="E", source="test",
-                fetched_at=NOW,
+                fetched_at=NOW.isoformat(),
             )
         )
         session.add(
             Set(
                 set_id="SSP", name_zh="测试特典", era="剑&盾",
                 release_date=None, regulation_mark="E", source="test",
-                fetched_at=NOW,
+                fetched_at=NOW.isoformat(),
             )
         )
         session.add(
             Set(
                 set_id="XXX", name_zh="未核对系列", era="剑&盾",
                 release_date=None, regulation_mark="E", source="test",
-                fetched_at=NOW,
+                fetched_at=NOW.isoformat(),
             )
         )
         session.add_all(rows)

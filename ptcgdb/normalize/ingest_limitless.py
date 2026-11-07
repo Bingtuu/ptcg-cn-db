@@ -172,6 +172,7 @@ def _build_cn_index(
             Card.card_id, Card.name_en, Card.regulation_mark, Card.card_type,
             Card.trainer_subtype, Set.release_date,
         ).outerjoin(Set, Card.set_id == Set.set_id)
+        .where(Card.status == "active")  # task 065：deprecated 不进映射候选
     )
     for card_id, name_en, mark, card_type, subtype, release in rows:
         card_index[card_id] = (card_type, subtype, mark)
