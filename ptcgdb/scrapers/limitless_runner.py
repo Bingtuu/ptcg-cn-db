@@ -32,7 +32,13 @@ from ptcgdb.scrapers.limitless import (
     standings_path,
     tournament_list_path,
 )
-from ptcgdb.scrapers.raw_store import is_valid_raw, read_raw, write_raw
+from ptcgdb.scrapers.raw_store import (
+    DEFAULT_INDEX_TTL,
+    is_fresh_raw,
+    is_valid_raw,
+    read_raw,
+    write_raw,
+)
 from ptcgdb.scrapers.runner import (
     RunResult,
     RunStats,
@@ -86,17 +92,16 @@ class LimitlessScrapeRunner:
     # ---- 清单翻页 ----
 
     def _scrape_pages(self, state: _State, *, force: bool) -> None:
-        """清单按日期降序翻页：空页 → 停；页内最旧赛事早于窗口 → 处理完本页后停。"""
+        """清单按日期降序翻页：空页 → 停；页内最旧赛事早于窗口 → 处理完本页后停。
+
+        清单页是可变索引（新赛事登记即变），用 24h TTL 复用（task 063，同 mik
+        索引页 task 055 口径）：期内零请求复用，过期重抓使增量可见；force 恒重抓。
+        详情页（standings/pairings）内容不可变，仍走 _ensure 的"有效即跳过"。
+        """
         page = 1
         while True:
             path = tournament_list_path(self.raw_dir, page)
-            doc = self._ensure(
-                path,
-                f"tournaments/page-{page}",
-                lambda page=page: self.scraper.fetch_tournaments_page(page),
-                state,
-                force=force,
-            )
+            doc = self._ensure_index_page(path, page, state, force=force)
             if doc is None:
                 break
             items = _list_entries(doc)
@@ -108,6 +113,25 @@ class LimitlessScrapeRunner:
             if oldest is not None and oldest < state.window_from:
                 break  # 列表日期降序：本页之后全部早于窗口
             page += 1
+
+    def _ensure_index_page(
+        self, path: Path, page: int, state: _State, *, force: bool
+    ) -> dict[str, Any] | None:
+        """清单页：24h 内复用缓存（零请求）；过期/force 重抓并覆盖旧文件。"""
+        label = f"tournaments/page-{page}"
+        if not force and is_fresh_raw(path, DEFAULT_INDEX_TTL):
+            state.stats.scraped.append(
+                {"id": label, "path": str(path), "action": "skipped"}
+            )
+            return read_raw(path)
+        # hash 有效但已过期：必须 force 绕过 _ensure/write_raw 的"存在即跳过"以覆盖
+        overwrite = force or is_valid_raw(path)
+        return self._ensure(
+            path, label,
+            lambda page=page: self.scraper.fetch_tournaments_page(page),
+            state,
+            force=overwrite,
+        )
 
     def _process_page(
         self, items: list[dict[str, Any]], state: _State, *, force: bool

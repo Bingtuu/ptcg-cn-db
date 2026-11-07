@@ -1083,15 +1083,30 @@ def ingest_tourneys_cmd(
         None, "--date-from",
         help="只收此日及之后的赛事（YYYY-MM-DD，task 051 退赛后口径）；日期缺失照入不猜",
     ),
+    allow_full_history: bool = typer.Option(
+        False, "--allow-full-history",
+        help="显式确认全量重放（跳过收集底线）。2026-11-04 事故：直连无底线误收退赛前"
+             " 2,880 场全量历史，无 --date-from 时本命令默认拒绝入库",
+    ),
     raw_dir: Path = DEFAULT_RAW_DIR,
     db_path: Path = DEFAULT_DB_PATH,
 ) -> None:
     """赛事入库：raw mikmoe/tournaments + decks → tournaments/decks/deck_cards。
 
     重跑幂等；count 合计 != 60 的卡组整组拦截（FR-9.6 质量门）并以非零码退出。
+    收集底线（task 063）：直连 CLI 必须显式给出 --date-from 或 --allow-full-history，
+    防止误将退赛前全量历史 raw 入库；monitor 编排路径自动注入 cn_collection_start()。
     """
     from datetime import date as date_cls
 
+    if date_from is None and not allow_full_history:
+        typer.echo(
+            "错误：缺少收集底线。直连 ingest-tourneys 不带 --date-from 曾误收退赛前"
+            "全量历史（2026-11-04）。请显式给出 --date-from YYYY-MM-DD；"
+            "确认要全量重放时加 --allow-full-history。",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     result = ingest_tourneys(
         raw_dir, db_path,
         date_from=date_cls.fromisoformat(date_from) if date_from else None,

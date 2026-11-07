@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -36,6 +37,8 @@ from ptcgdb.scrapers.raw_store import (
     read_raw,
     write_raw,
 )
+
+logger = logging.getLogger(__name__)
 
 STATUS_OK = "ok"
 STATUS_ABORTED = "aborted"
@@ -209,8 +212,7 @@ class ScrapeRunner:
                 data_check = doc.get("data") or {}
                 cached_count = len(data_check.get("cards") or [])
                 if expected != cached_count:
-                    import logging
-                    logging.warning(
+                    logger.warning(
                         f"{set_id}: cardsNum={expected} ≠ cached={cached_count}，重新拉取"
                     )
                     try:

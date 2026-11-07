@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -59,9 +61,19 @@ def write_raw(
         },
         **payload,
     }
-    path.write_text(
-        json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    # 原子写（task 063）：先写同目录临时文件再 os.replace 覆盖。故障（写盘中断/
+    # 替换失败）时目标路径只暴露旧完整文件或新完整文件，且不留临时残留；
+    # os.replace 同文件系统原子替换，Windows 兼容（os.rename 无法覆盖已存在目标）。
+    tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}")
+    try:
+        tmp.write_text(
+            json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8", newline="\n",
+        )
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return True
 
 

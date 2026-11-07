@@ -534,7 +534,8 @@ def test_cli_ingest_tourneys_blocked_exit_1(env):
     raw_dir, db_path = env
     result = CliRunner().invoke(
         cli.app,
-        ["ingest-tourneys", "--raw-dir", str(raw_dir), "--db-path", str(db_path)],
+        ["ingest-tourneys", "--allow-full-history",
+         "--raw-dir", str(raw_dir), "--db-path", str(db_path)],
     )
     # 有卡组被 60 张门拦截 → 非零退出（与卡牌 ingest 的 skipped 行为一致）
     assert result.exit_code == 1
@@ -562,7 +563,8 @@ def test_cli_ingest_tourneys_clean_exit_0(tmp_path):
     )
     result = CliRunner().invoke(
         cli.app,
-        ["ingest-tourneys", "--raw-dir", str(raw_dir), "--db-path", str(db_path)],
+        ["ingest-tourneys", "--allow-full-history",
+         "--raw-dir", str(raw_dir), "--db-path", str(db_path)],
     )
     assert result.exit_code == 0
     assert "blocked=0" in result.output

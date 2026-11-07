@@ -74,3 +74,21 @@ def swiss_snapshot_path(
     """时间戳快照路径：tournaments/swiss/{tournamentId}/{YYYYMMDDTHHMMSSZ}.json。"""
     ts = (fetched_at or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
     return swiss_dir(base_dir, tournament_id) / f"{ts}.json"
+
+
+def unique_swiss_snapshot_path(
+    base_dir: Path, tournament_id: str, fetched_at: datetime | None = None
+) -> Path:
+    """同秒第二份不同内容快照不互相覆盖（task 063）：路径冲突时追加 -2/-3 序号。
+
+    append-only 快照语义要求每次内容变化都留痕；秒级时间戳在快速轮询下同秒
+    多次命中内容变化，直接写同路径会先被 write_raw"存在即跳过"静默丢弃。
+    """
+    path = swiss_snapshot_path(base_dir, tournament_id, fetched_at)
+    if not path.exists():
+        return path
+    for i in range(2, 10_000):
+        candidate = path.with_name(f"{path.stem}-{i}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"swiss 快照序号耗尽: {path}")  # pragma: no cover

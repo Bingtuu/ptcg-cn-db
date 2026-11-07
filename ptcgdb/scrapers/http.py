@@ -2,9 +2,11 @@
 
 硬性约束（goal 限速红线，见 tasks/003）：
 - 默认 ≤1 次/2 秒（RateLimiter interval=2.0，测试可传 0）；连续出错自动降速到 5 秒/请求。
-- 指数退避最多重试 3 次，仅对瞬时错误（网络错误 / HTTP 5xx）重试。
+- 指数退避最多重试 3 次，仅对瞬时错误（网络错误 / HTTP 5xx / HTTP 429 限速）重试。
 - 连续 5 次失败、HTTP 403、或响应非 JSON（疑似验证码/封禁页）→ CircuitOpenError，
   立即中止本轮运行，绝不硬闯。
+- 熔断打开后冷却 60 秒（CIRCUIT_COOLDOWN）放行一次半开探测：成功即闭合，
+  失败立即重开——长任务遇瞬时网络抖动可自动恢复，持续故障仍熔断（task 063）。
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ DEFAULT_INTERVAL = 2.0  # 正常限速：1 次/2 秒
 SLOW_INTERVAL = 5.0  # 连续出错后的降速：1 次/5 秒
 MAX_ATTEMPTS = 3  # 指数退避最多重试 3 次
 MAX_CONSECUTIVE_FAILURES = 5  # 连续 5 次失败熔断
+CIRCUIT_COOLDOWN = 60.0  # 熔断冷却（秒）：期满放行一次半开探测（task 063）
 
 # 响应解析 callable：get_json 用 _parse_json，get_text 用 _parse_text
 ResponseParser = Callable[[httpx.Response], Any]
@@ -41,6 +44,14 @@ class CircuitOpenError(RuntimeError):
 
 class TransientHttpError(RuntimeError):
     """可重试的瞬时错误（网络错误 / HTTP 5xx），重试耗尽后向上抛。"""
+
+
+class RateLimitedError(TransientHttpError):
+    """HTTP 429 限速：有限退避重试耗尽后的最终失败语义（runners 记 question/aborted）。
+
+    与 403/验证码的硬熔断不同，429 是源站显式限速信号，重试有界（max_attempts），
+    耗尽后向上抛，由调用方记 question/中止本轮，绝不无限重试。
+    """
 
 
 class RateLimiter:
@@ -96,6 +107,8 @@ class HttpClient:
         retry_wait: Any | None = None,
         transport: httpx.BaseTransport | None = None,
         timeout: float = 30.0,
+        cooldown: float = CIRCUIT_COOLDOWN,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._client = httpx.Client(
             base_url=base_url,
@@ -110,7 +123,10 @@ class HttpClient:
         self._retry_wait = (
             retry_wait if retry_wait is not None else wait_exponential(multiplier=1, min=1, max=10)
         )
+        self._cooldown = cooldown
+        self._clock = clock
         self._consecutive_failures = 0
+        self._opened_at: float | None = None  # 熔断打开时刻（单调时钟）
         self._last_dispatch_at: datetime | None = None
 
     @property
@@ -149,20 +165,26 @@ class HttpClient:
         return self._request(lambda: self._client.get(path, params=params), _parse_text)
 
     def _request(self, send: Callable[[], httpx.Response], parse: ResponseParser) -> Any:
-        """一次请求的完整生命周期：熔断闸 → 退避重试 → 成功/失败计数。"""
+        """一次请求的完整生命周期：熔断闸（含冷却半开探测）→ 退避重试 → 成功/失败计数。"""
         if self._consecutive_failures >= self._max_consecutive_failures:
-            raise CircuitOpenError(
-                f"连续 {self._consecutive_failures} 次请求失败，熔断中止，请人工确认数据源状态"
-            )
+            opened = self._opened_at
+            if opened is None or self._clock() - opened < self._cooldown:
+                raise CircuitOpenError(
+                    f"连续 {self._consecutive_failures} 次请求失败，熔断中止，请人工确认数据源状态"
+                )
+            # 冷却期满：放行一次半开探测；成败分别闭合/立即重开（task 063 瞬断恢复）
         try:
             body = self._with_retry(send, parse)
         except CircuitOpenError:
             raise
         except Exception:
             self._consecutive_failures += 1
+            if self._consecutive_failures >= self._max_consecutive_failures:
+                self._opened_at = self._clock()
             self._limiter.report_error()
             raise
         self._consecutive_failures = 0
+        self._opened_at = None
         self._limiter.report_success()
         return body
 
@@ -185,6 +207,8 @@ class HttpClient:
             resp = send()
         except httpx.TransportError as exc:
             raise TransientHttpError(f"网络错误: {exc}") from exc
+        if resp.status_code == 429:
+            raise RateLimitedError("HTTP 429 限速，按有限退避重试")
         if resp.status_code == 403:
             raise CircuitOpenError("HTTP 403，疑似触发封禁/风控，熔断中止")
         if resp.status_code >= 500:

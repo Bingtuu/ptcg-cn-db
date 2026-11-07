@@ -20,7 +20,11 @@ from typing import Any
 
 from ptcgdb.scrapers import mikmoe
 from ptcgdb.scrapers.http import CircuitOpenError, TransientHttpError
-from ptcgdb.scrapers.mik_swiss import MikMoeSwissScraper, swiss_dir, swiss_snapshot_path
+from ptcgdb.scrapers.mik_swiss import (
+    MikMoeSwissScraper,
+    swiss_dir,
+    unique_swiss_snapshot_path,
+)
 from ptcgdb.scrapers.mikmoe import MikMoeApiError
 from ptcgdb.scrapers.mikmoe_tournament import (
     DEFAULT_PAGE_SIZE,
@@ -146,9 +150,12 @@ class SwissPollRunner:
                 {"id": label, "path": str(latest), "action": "unchanged"}
             )
             return
-        path = swiss_snapshot_path(self.raw_dir, str(tid))
-        write_raw(path, payload, source=mikmoe.SOURCE)
-        stats.scraped.append({"id": label, "path": str(path), "action": "fetched"})
+        # 同秒不同内容：唯一路径保证两份快照都落盘（task 063，append-only 留痕）
+        path = unique_swiss_snapshot_path(self.raw_dir, str(tid))
+        written = write_raw(path, payload, source=mikmoe.SOURCE)
+        # fetched/unchanged 与实际写入一致：write_raw 跳过（未写）不谎报 fetched
+        action = "fetched" if written else "unchanged"
+        stats.scraped.append({"id": label, "path": str(path), "action": action})
 
 
 def _list_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
