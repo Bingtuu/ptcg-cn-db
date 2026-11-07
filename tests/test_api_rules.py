@@ -61,7 +61,7 @@ def test_load_real_config():
     ca = rules.catch_all_rule()
     assert ca is not None and ca.tier == "online_open"
     assert ca.min_players == 64
-    assert ca.date_range == (date(2025, 4, 11), date(2025, 8, 31))
+    assert ca.date_range == (date(2025, 4, 11), date(2026, 11, 8))  # task 070 扩窗
     assert len(ca.reject) >= 1
     assert DEFAULT_RULES_PATH.name == "api_tournament_rules.yml"
 
@@ -149,11 +149,12 @@ def test_online_open_players_gate():
 
 
 def test_online_open_date_range():
-    # pre-Mega 段外拒收（两端边界含）；day 缺失不猜照收
+    # task 070 扩窗：pre-Mega 段 + GHIJ 校准窗（止 2026-11-08，两端边界含）；
+    # 窗外拒收；day 缺失不猜照收
     assert classify_tournament("Moujii's Dojo #1", 100, day=date(2025, 4, 10))[0] is None
     assert classify_tournament("Moujii's Dojo #1", 100, day=date(2025, 4, 11))[0] == "online_open"
-    assert classify_tournament("Moujii's Dojo #1", 100, day=date(2025, 8, 31))[0] == "online_open"
-    assert classify_tournament("Moujii's Dojo #1", 100, day=date(2025, 9, 1))[0] is None
+    assert classify_tournament("Moujii's Dojo #1", 100, day=date(2026, 11, 8))[0] == "online_open"
+    assert classify_tournament("Moujii's Dojo #1", 100, day=date(2026, 11, 9))[0] is None
     assert classify_tournament("Moujii's Dojo #1", 100, day=None)[0] == "online_open"
 
 

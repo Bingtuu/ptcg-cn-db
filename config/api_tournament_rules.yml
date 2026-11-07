@@ -16,16 +16,20 @@ tiers:
     patterns: ["Special Event"]
   - tier: league_cup
     patterns: ["League Cup"]
-  # ---- online_open catch-all 档（task 057，2026-10-02 拍板，PRD v1.35）----
-  # 收编 Limitless 平台自办在线公开赛（名称不命中以上官方档者），核心供给 = pairings
-  # 逐局对阵（下游 matchup 矩阵 n≥30 门槛，task 056 调研实证 decklist 100% 覆盖）。
-  # 防草根噪声三重闸：人数门 64（高于官方档 32）+ date_range pre-Mega 段（Mega 时代卡
-  # 未映射致 archetype 失真，后段再议）+ reject 正则拒休闲场。
+  # ---- online_open catch-all 档（task 057，2026-10-02 拍板，PRD v1.35；task 070
+  # 2026-11-07 拍板扩窗至 GHIJ 校准窗，PRD v1.42）----
+  # 收编 Limitless 平台收录的非官方档赛事（在线公开赛 + 窗内线下周赛等，名称不命中
+  # 官方档正则者），核心供给 = pairings 逐局对阵（下游 matchup 矩阵与 J 标窗格级
+  # 校准 n；task 070 供给实证：真实 API 窗内离线 ≥64 人赛事抽样 8/8 全有 pairings，
+  # 220–556 行/场，2025 年场次 >1 年仍全量——供给无衰减）。
+  # 防草根噪声三重闸：人数门 64（高于官方档 32）+ date_range + reject 正则拒休闲场。
   # date_range 只约束本档；day 缺失不猜照收（与窗口守卫口径一致）。
+  # 扩窗注记：区间名义覆盖 Mega 中段（2025-09~2026-09），但该段无采集窗/无 raw
+  # 供给（task 068 实抓只覆盖 GHIJ 窗），不构成事实开口；下次旋转/扩窗时按拍板续延。
   - tier: online_open
     catch_all: true
     min_players: 64
-    date_range: ["2025-04-11", "2025-08-31"]
+    date_range: ["2025-04-11", "2026-11-08"]
     reject:
       - pattern: "casual"
         reason: "休闲场（娱乐卡组比例高，FR-9.1a 样本污染）"

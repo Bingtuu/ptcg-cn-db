@@ -538,14 +538,17 @@ def test_scrape_online_open(tmp_path):
     """online_open catch-all：段内 ≥64 人收编并抓详情；超收编段拒收只记录。"""
     pages = {1: [
         {"game": "PTCG", "name": "Moujii's Dojo #42",
-         "date": "2025-10-15T18:00:00.000Z", "format": "STANDARD",
+         "date": "2026-12-15T18:00:00.000Z", "format": "STANDARD",
          "id": T7, "players": 100, "organizerId": "org-oo"},
         {"game": "PTCG", "name": "Moujii's Dojo #42",
-         "date": "2025-06-15T18:00:00.000Z", "format": "STANDARD",
+         "date": "2026-10-05T18:00:00.000Z", "format": "STANDARD",
          "id": T6, "players": 100, "organizerId": "org-oo"},
     ]}
     scraper = FakeLimitlessScraper(pages=pages)
-    result = make_runner(tmp_path, scraper).scrape()
+    # task 070：收编段已扩至 2026-11-08，超出场景须用显式窗覆盖 GHIJ 之后
+    result = make_runner(tmp_path, scraper).scrape(
+        date_from="2026-09-16", date_to="2026-12-31"
+    )
     raw = tmp_path / "raw"
 
     assert result.stats.total == 1

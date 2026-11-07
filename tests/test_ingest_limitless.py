@@ -642,7 +642,7 @@ def test_window_guard_missing_date_ingests(tmp_path):
 # ---- online_open 档收编与拒收（task 057，PRD v1.35）----
 
 T_OO = "ooooooooooooooooooooooo1"  # 在线公开赛，pre-Mega 段内（2025-06-15，100 人）
-T_OO_LATE = "ooooooooooooooooooooooo2"  # 超收编段（2025-10-15）→ 分类拒收
+T_OO_LATE = "ooooooooooooooooooooooo2"  # 超收编段（2026-12-15，task 070 扩窗后）→ 分类拒收
 T_OO_SMALL = "ooooooooooooooooooooooo3"  # 人数 40 < 64 → 分类拒收
 
 LIST_OO = [
@@ -650,7 +650,7 @@ LIST_OO = [
      "date": "2025-06-15T18:00:00.000Z", "format": "STANDARD",
      "id": T_OO, "players": 100, "organizerId": "org-oo"},
     {"game": "PTCG", "name": "Moujii's Dojo #99",
-     "date": "2025-10-15T18:00:00.000Z", "format": "STANDARD",
+     "date": "2026-12-15T18:00:00.000Z", "format": "STANDARD",
      "id": T_OO_LATE, "players": 100, "organizerId": "org-oo"},
     {"game": "PTCG", "name": "Moujii's Dojo #13",
      "date": "2025-06-16T18:00:00.000Z", "format": "STANDARD",

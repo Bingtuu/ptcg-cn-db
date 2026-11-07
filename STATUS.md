@@ -2,7 +2,7 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-07；PRD v1.41；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-07；PRD v1.42；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
@@ -11,7 +11,7 @@
 **当前数据（2026-11-04，task 062 后）**：
 
 - 卡牌实时库：**140 系列，13,653 active** + 8 deprecated = 13,661 行（11-07 轮询收编 白焰迸涌 CSV10.6C 174 / 黑雷奔流 CSV10.5C 174 / 宝石包 CBB7C 196，含 BWR 新罕贵度）。
-- 赛事实时库：935 tournaments / 62,085 decks / 91,606 appearances / 1,810,172 deck_cards / 142,028 pairings（GHIJ 1,063 行，MAX(date)=2026-10-16）；mik 轮询恢复后 3711-3753 填充 32 场、3710 维持 top64 口径 64 队（第 2 页超出口径，扩全场需拍板）；mapping_status full 59,045 / partial 1,181；misses 10,477。
+- 赛事实时库：1,156 tournaments / 77,782 decks / 111,151 appearances / 2,210,472 deck_cards / 208,191 pairings（GHIJ 67,226 行，MAX(date)=2026-11-07；task 070 收编 220 场非官方档 online_open，env 全 HIJ）；mik 轮询恢复后 3711-3753 填充 32 场、3710 维持 top64 口径 64 队（第 2 页超出口径，扩全场需拍板）；mapping_status full 59,045 / partial 1,181；misses 10,477。
 - 合法性：4 份快照，standard 当前 G/H/I/J。真实验收 A1/A4–A8 全 PASS，见 `dist/acceptance-20261104.md`。
 - dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
 - **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队，第 2 页 raw 待 mik 恢复后补，当前不称整场收齐。
@@ -27,6 +27,7 @@
 | 067 | DONE | 数据版本治理：manifest data_version 单调递增 + data_changes 差集（PRD v1.40） |
 | 068 | 部分落地 | A1 已交付（GHIJ pairings 1,063 行入 dist，data_version 2）；online_open 2026 放宽与 mik 侧待后续拍板 |
 | 069 | DONE | 对齐窗 pairings 常规轮询：GHIJ 收割窗挂 monitor（PRD v1.41）、404 确定性缺失语义、ingest 多窗守卫 |
+| 070 | DONE | GHIJ 窗非官方档 pairings 收编：online_open 扩窗至 2026-11-08（PRD v1.42），accepted=225，pairings +66,163 |
 | 063 | DONE | 采集与 raw 层韧性：429 退避、熔断冷却恢复、raw 原子写、swiss 同秒快照、清单页 24h TTL、ingest-tourneys CLI 底线守卫 |
 | 064 | TODO | 统计与 SDK 契约：统计边界、双后端一致性和查询接口 |
 | 065 | TODO | 剩余 P2、validate/monitor/accept 与文档收尾 |
