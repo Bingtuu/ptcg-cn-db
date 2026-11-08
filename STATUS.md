@@ -88,12 +88,13 @@ M0–M12 均已完成：
 - **CBB 卡面分母（外部证据阻塞）**：CBB1C/CBB2C 仍有实测包冲突，mik 是不同编号多列示而非同号重复；保持只显分子，需新卡面锚或权威逐包清单。isQual 疑点已由 task 061 关闭。
 - **deck_card_misses**：多数为 Mega 时代无简中印刷的预期缺口；简中卡池扩展后通过 remap-decks 刷新，不为提高 full 率猜映射。
 - **采集瞬断**：22.4 小时回补曾因连续 5 次失败熔断，探源为瞬时网络问题——task 063 已清偿：熔断冷却 60s 半开探测（成功闭合/失败重开），429 统一有限退避，raw 原子写。
-- **needs_manual 提案**：`data/proposals/20260919_manual-2026-09-19.yaml`（阵营对抗赛奖励规则）仍待人工核销，与卡池合法性无关。
+- **needs_manual 提案**：~~`data/proposals/20260919_manual-2026-09-19.yaml`（阵营对抗赛奖励规则）仍待人工核销~~ **task 074 已核销（2026-11-08）**：30thP 34 张全 J 标已被 standard-2026-09-16 按标记直接合法覆盖，白名单无需添加，提案 status 置 superseded 留痕。
 - **TCGdex 简中卡级供给**：外部观察项，卡级仍为 0%，不是本地阻塞。
 - 第二轮 review 的其余 P2 由 063–065 分批清偿，原始清单见 `reports/code-review-tracker-20261005.md`。
 
 ## 近期记录
 
+- **2026-11-08 task 074 完成**：needs_manual 提案（30th-P 白名单）核销——30thP 34 张全 J 标已被 standard-2026-09-16 直接合法覆盖，status 置 superseded 留痕。观察项：`apply_snapshot` 不校验提案 status（effective_from 守卫兜底，低危）。
 - **2026-11-08 goal 批次收官（071/072/073 + 监控核查）**：071 对齐窗九池 36 格 n 盘点 → 哨兵 WAIT（池内 1,492 局、n≥100 仅 4 格，根因 = 国际线上 meta 与 CN 九池错位，提功效需下游扩判定池）；072 六系列 cardsNum 缩水清偿（expected_count 对齐上游，L0 suspicious 清零）；073 条件判定跳过；只读监控核查正常（l0 dry-run 空报 / tourneys 计划面双轮齐）。总报告 `reports/goal-batch-20261108.md`，1304 测试全绿 + ruff 净。
 - **2026-11-08 task 071 完成**：对齐窗九池 36 格 n 盘点（只读）——池内 1,492 局、n≥20 仅 8 格、n≥100 仅 4 格 → 哨兵 WAIT；根因 = 国际线上 meta 与 CN 九池错位（窗内 59% 对局双侧不在池），提功效需下游扩判定池。073 判定跳过（瓶颈非卡级映射）。1304 测试全绿 + ruff 净。
 - **2026-11-07 晚 · 供给实证更正（重要）**：昨日「API pairings 按场次发布且会衰减、185 场无供给」结论**系探测主机错误**（limitlessapi.com 为非官方镜像）——真实 API play.limitlesstcg.com 实测：2025 年场次 >1 年仍全量（4,701 行）、GHIJ 窗内离线 ≥64 人赛事抽样 8/8 全部有 pairings（220–556 行/场）。**185 场的供给真实存在**，闸门是分类口径（v1.35 online_open date_range 止 2025-08-31 + 官方档名称正则）。放宽拍板待用户确认（task 070 预研），mik CN 对局与 JP pairings 供给仍无。
