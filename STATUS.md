@@ -18,7 +18,7 @@
 - 赛事实时库：1,156 tournaments / 77,782 decks / 111,151 appearances / 2,210,472 deck_cards / 208,191 pairings（GHIJ 67,226 行，MAX(date)=2026-11-07；task 070 收编 220 场非官方档 online_open，env 全 HIJ）；mik 轮询恢复后 3711-3753 填充 32 场、3710 维持 top64 口径 64 队（第 2 页超出口径，扩全场需拍板）；mapping_status full 59,045 / partial 1,181；misses 10,477。
 - 合法性：4 份快照，standard 当前 G/H/I/J。真实验收 A1/A4–A8 全 PASS，见 `dist/acceptance-20261104.md`。
 - dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
-- **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队，第 2 页 raw 待 mik 恢复后补，当前不称整场收齐。
+- **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队——**task 075 确证补抓不可行（2026-11-08）**：mik v3 已删除该赛事（rank page-2 实探 code=400「该赛事不存在」，秋季场预赛改号 3754/正赛 3734），第 2 页 44 队永久不可恢复，3710 以 top64 为最终状态；3754 随常规轮询自然收编。
 - **mik 源停摆**：2026-10-31 起 tcg.mik.moe 迁移 areazero.gg 且旧 API 404，mik 侧采集按政策停摆（areazero 要求逐请求人工确认，禁止批量）；mik 赛事数据停在停摆前快照 + 本地 raw 可重放。EN/JP 源不受影响。
 - 测试基线：task 065 完成后 **1304 passed**（含 -W error 弃用清零）、ruff 全净。
 
@@ -94,6 +94,7 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-11-08 task 075 完成（供给性阻塞确证）**：3710 第 2 页补抓不可行——mik v3 已删除该赛事（实探 1 请求 code=400；秋季场预赛改号 3754、正赛 3734），44 队永久不可恢复，3710 以 top64（64 队 351 行）为最终状态。零库改动。
 - **2026-11-08 task 074 完成**：needs_manual 提案（30th-P 白名单）核销——30thP 34 张全 J 标已被 standard-2026-09-16 直接合法覆盖，status 置 superseded 留痕。观察项：`apply_snapshot` 不校验提案 status（effective_from 守卫兜底，低危）。
 - **2026-11-08 goal 批次收官（071/072/073 + 监控核查）**：071 对齐窗九池 36 格 n 盘点 → 哨兵 WAIT（池内 1,492 局、n≥100 仅 4 格，根因 = 国际线上 meta 与 CN 九池错位，提功效需下游扩判定池）；072 六系列 cardsNum 缩水清偿（expected_count 对齐上游，L0 suspicious 清零）；073 条件判定跳过；只读监控核查正常（l0 dry-run 空报 / tourneys 计划面双轮齐）。总报告 `reports/goal-batch-20261108.md`，1304 测试全绿 + ruff 净。
 - **2026-11-08 task 071 完成**：对齐窗九池 36 格 n 盘点（只读）——池内 1,492 局、n≥20 仅 8 格、n≥100 仅 4 格 → 哨兵 WAIT；根因 = 国际线上 meta 与 CN 九池错位（窗内 59% 对局双侧不在池），提功效需下游扩判定池。073 判定跳过（瓶颈非卡级映射）。1304 测试全绿 + ruff 净。
