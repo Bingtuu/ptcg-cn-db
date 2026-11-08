@@ -99,6 +99,7 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-11-08 goal 批次二收官（074/075/076）**：074 核销 30th-P 白名单提案；075 确证 3710 第 2 页供给性阻塞（mik v3 删赛事，top64 为最终状态）；076 英文桥挂账探测（PRD v1.43）落地。总报告 `reports/goal-batch2-20261108.md`，1315 测试全绿 + ruff 净。
 - **2026-11-08 task 076 完成**：英文桥挂账探测（PRD v1.43）——bridge_pending.yml + bridge.py 挂 L0 非 dry-run 每轮，发布即 bridge 事件 + 通知；探测不自动清偿（runbook：scrape→ingest→validate→activate→remap）；1315 测试全绿 + ruff 净。同日 074 核销 30th-P 白名单提案、075 确证 3710 第 2 页供给性阻塞（mik v3 删赛事）。
 - **2026-11-08 task 075 完成（供给性阻塞确证）**：3710 第 2 页补抓不可行——mik v3 已删除该赛事（实探 1 请求 code=400；秋季场预赛改号 3754、正赛 3734），44 队永久不可恢复，3710 以 top64（64 队 351 行）为最终状态。零库改动。
 - **2026-11-08 task 074 完成**：needs_manual 提案（30th-P 白名单）核销——30thP 34 张全 J 标已被 standard-2026-09-16 直接合法覆盖，status 置 superseded 留痕。观察项：`apply_snapshot` 不校验提案 status（effective_from 守卫兜底，低危）。
