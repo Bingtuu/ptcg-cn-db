@@ -17,7 +17,8 @@ from typing import Any
 import httpx
 
 # 只对重要事件触发通知；unchanged/baseline/noop 不打扰
-NOTIFY_EVENTS = {"increment", "activated", "blocked", "postprocess", "proposal", "news"}
+NOTIFY_EVENTS = {"increment", "activated", "blocked", "postprocess", "proposal",
+                 "news", "bridge"}
 
 _PWSH_TOAST = r"""
 $$mgr = 'Windows.UI.Notifications.ToastNotificationManager'
@@ -131,6 +132,7 @@ _EVENT_TITLES = {
     "postprocess": "L0 后处理完成",
     "proposal": "L1 新提案待确认",
     "news": "官网新公告",
+    "bridge": "L0 英文桥已发布",
 }
 
 
@@ -149,6 +151,10 @@ def _event_message(event: str, payload: dict[str, Any]) -> str:
         return f"[{payload.get('status')}] {payload.get('path')}"
     if event == "news":
         return f"{payload.get('title')}（{payload.get('href')}）"
+    if event == "bridge":
+        return (f"系列 {payload.get('set_id')} nameEn 覆盖 "
+                f"{payload.get('db_name_en')} → {payload.get('raw_name_en')}；"
+                f"按 runbook 清偿：scrape cards --set → validate → activate → remap")
     return str(payload)
 
 

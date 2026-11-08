@@ -2,7 +2,7 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-08；PRD v1.42；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-08；PRD v1.43；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
@@ -11,6 +11,8 @@
 **task 072 DONE：六系列 cardsNum 缩水核查清偿。** 逐系列实测 delta == deprecated 计数全中（CS5.5C/CSV1C/CSV3C/CSV5C/CSV7C/CSVH5C = 1/2/1/1/2/1，合计 8 = 09-19 拍板 deprecated 的 8 条下架双重列示；active == upstream 全中，全库无其他 shrunk）→ 备份后修正 6 行 `sets.expected_count` 对齐上游去重值——**L0 suspicious 6 项清零**（此前每轮恒报），六系列 validate 十规则全过。dist sets.jsonl 的 expected_count 随下次导出入包（按边界本轮不重建）。
 
 **task 069 DONE：对齐窗 pairings 常规轮询（PRD v1.41）。** GHIJ 收割窗（2026-09-16 起滚动）挂进 `monitor tourneys` limitless 通道——新发布的官方档赛事 pairings 自动收编，不再受 API 按场次衰减丢失；HTTP 404 全通道改确定性缺失语义（不重试不计熔断）。同日 task 063 采集韧性收官（429 退避、熔断冷却、raw 原子写、swiss 同秒快照、ingest-tourneys 底线守卫）。062/067/068 此前已 DONE（赛事身份统一、数据版本治理、GHIJ pairings 1,063 行 A1 交付）；**065 DONE——第二轮 review 技术债 059–065 全部清偿收官**；pytest 弃用警告清零。队列清空，回到运维/轮询节奏。**
+
+**task 076 DONE：监控 nameEn 桥探测（PRD v1.43）。** mik 英文桥滞后发布且不改 cardsNum 致 L0 增量探测天然不可见——`config/bridge_pending.yml`（初始 CSV10.5C/10.6C）+ `ptcgdb/monitor/bridge.py` 落地：L0 非 dry-run 每轮强刷挂账系列详情比对上游 nameEn 覆盖 vs 库内 name_en，发布 → `bridge` 事件 + 通知 + CLI 回显；**探测不自动清偿**，runbook 手动（scrape→ingest→validate→activate→remap，英勇手镯等 misses 自动清偿）；单系列异常隔离、dry-run 零额外请求承诺不破。1315 全量绿 + ruff 净。
 
 **当前数据（2026-11-04，task 062 后）**：
 
@@ -34,6 +36,9 @@
 | 070 | DONE | GHIJ 窗非官方档 pairings 收编：online_open 扩窗至 2026-11-08（PRD v1.42），accepted=225，pairings +66,163 |
 | 071 | DONE | 对齐窗九池 36 格 n 盘点：池内 1,492 局、n≥100 仅 4 格 → 哨兵 WAIT；根因 = 国际 meta 与 CN 九池错位（下游口径项）；073 判定跳过 |
 | 072 | DONE | 六系列 cardsNum 缩水清偿：delta==deprecated 8 条全中，expected_count 对齐上游，L0 suspicious 清零 |
+| 074 | DONE | 核销 30th-P 白名单 needs_manual 提案：J 标快照已覆盖，status 置 superseded |
+| 075 | DONE（供给性阻塞确证） | 3710 第 2 页不可补：mik v3 已删除该赛事（预赛改号 3754），top64 为最终状态 |
+| 076 | DONE | 监控 nameEn 桥探测（PRD v1.43）：bridge_pending.yml + bridge.py 挂 L0，发布即事件，清偿 runbook 手动 |
 | 063 | DONE | 采集与 raw 层韧性：429 退避、熔断冷却恢复、raw 原子写、swiss 同秒快照、清单页 24h TTL、ingest-tourneys CLI 底线守卫 |
 | 064 | DONE | 统计/合法性/SDK 契约：九项 P2 清偿（参数校验、meta 契约、GBK、jsonldb 流式+索引、双后端 outerjoin、caliber、rollback、deprecated、勘误口径） |
 | 065 | DONE | 归一/映射/校验/运维收尾：P2 全部清偿收官，弃用警告清零（059–065 技术债批次完结） |
@@ -49,7 +54,7 @@
 
 | 内容 | 位置 |
 |---|---|
-| 权威设计 | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.41） |
+| 权威设计 | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.43） |
 | 工程约定 | `AGENTS.md` |
 | 任务队列与规范 | `tasks/`、`tasks/README.md`、`tasks/done/` |
 | 数据源 | `docs/data-sources.md` |
@@ -94,6 +99,7 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-11-08 task 076 完成**：英文桥挂账探测（PRD v1.43）——bridge_pending.yml + bridge.py 挂 L0 非 dry-run 每轮，发布即 bridge 事件 + 通知；探测不自动清偿（runbook：scrape→ingest→validate→activate→remap）；1315 测试全绿 + ruff 净。同日 074 核销 30th-P 白名单提案、075 确证 3710 第 2 页供给性阻塞（mik v3 删赛事）。
 - **2026-11-08 task 075 完成（供给性阻塞确证）**：3710 第 2 页补抓不可行——mik v3 已删除该赛事（实探 1 请求 code=400；秋季场预赛改号 3754、正赛 3734），44 队永久不可恢复，3710 以 top64（64 队 351 行）为最终状态。零库改动。
 - **2026-11-08 task 074 完成**：needs_manual 提案（30th-P 白名单）核销——30thP 34 张全 J 标已被 standard-2026-09-16 直接合法覆盖，status 置 superseded 留痕。观察项：`apply_snapshot` 不校验提案 status（effective_from 守卫兜底，低危）。
 - **2026-11-08 goal 批次收官（071/072/073 + 监控核查）**：071 对齐窗九池 36 格 n 盘点 → 哨兵 WAIT（池内 1,492 局、n≥100 仅 4 格，根因 = 国际线上 meta 与 CN 九池错位，提功效需下游扩判定池）；072 六系列 cardsNum 缩水清偿（expected_count 对齐上游，L0 suspicious 清零）；073 条件判定跳过；只读监控核查正常（l0 dry-run 空报 / tourneys 计划面双轮齐）。总报告 `reports/goal-batch-20261108.md`，1304 测试全绿 + ruff 净。

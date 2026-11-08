@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [v20261108.1] - 2026-11-08
+
+### Added
+
+- task 076 英文桥挂账探测（PRD v1.43 FR-5.1 增补，无 schema 迁移）：mik 英文桥（`nameEn`）滞后发布且不改 cardsNum，L0 增量探测天然不可见（英勇手镯 2,436 卡组等 misses 挂账只能等人工）——新增 `config/bridge_pending.yml` 配置化挂账系列（初始 CSV10.5C/CSV10.6C，含清偿 runbook 注释）+ `ptcgdb/monitor/bridge.py`（`load_pending` 缺文件→空/形态非法→ValueError fail-fast/lru_cache；`check_bridges` 强刷 product-detail 照常 force 落盘 raw、上游 nameEn 覆盖 vs 库内 `name_en` 计数、上游>库内=published、单系列异常隔离 warning）+ L0 挂接（非 dry-run 每轮跑、与增量无关；published → `bridge` 事件；整体失败隔离 hook_warnings；dry-run 维持零额外请求承诺）+ notify `bridge` 事件（标题 + runbook 提示消息）+ CLI `monitor l0` 桥探测回显。**探测不自动清偿**（探测只读+raw 落盘），清偿 runbook 手动：scrape cards --set X → ingest → validate → activate → remap-decks，桥清后从清单摘除。新增 tests/test_bridge_probe.py 11 项（配置四态/发布/持平/上游缩水/失败隔离/无增量照跑/事件仅发布时发/dry-run 跳过）；1315 全量绿 + ruff 净
+
 ## [v20261107.1] - 2026-11-07
 
 ### Changed

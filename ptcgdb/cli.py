@@ -1464,6 +1464,11 @@ def monitor_l0(
             f"可疑（cardsNum 缩水，未处理）set={inc.set_id} {inc.current} → {inc.expected}",
             err=True,
         )
+    for st in result.bridge:
+        mark = "已发布，待 runbook 清偿" if st.published else "未发布"
+        typer.echo(
+            f"桥探测 set={st.set_id} nameEn 库 {st.db_name_en} / 上游 {st.raw_name_en}：{mark}"
+        )
     if result.dry_run:
         typer.echo("dry-run：仅探测，未抓取未入库")
         return

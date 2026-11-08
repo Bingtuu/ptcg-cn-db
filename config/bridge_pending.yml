@@ -1,0 +1,11 @@
+# task 076（PRD v1.43 FR-5.1 增补）：英文桥挂账系列探测。
+# mik 对下列系列发布 nameEn 后由 L0 每轮强刷详情探测比对库内 name_en；
+# 发布 → "bridge" 事件 + 通知留痕。清偿 runbook（探测不自动做）：
+#   ptcgdb scrape cards --set <X>   # force 刷新卡详情 raw
+#   ptcgdb ingest --set <X>         # nameEn → name_en（幂等重建本系列）
+#   ptcgdb validate --set <X> → activate
+#   ptcgdb remap-decks              # 映射缺口自动清偿（英勇手镯等 misses）
+# 桥全部清偿后从本清单摘除该系列。
+pending_sets:
+  - CSV10.5C
+  - CSV10.6C

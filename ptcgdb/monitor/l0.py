@@ -26,6 +26,7 @@ from ptcgdb.legal.versions import (
     _latest_text_overrides,
 )
 from ptcgdb.mapping.effect_tags import TaggingResult, run_tagging
+from ptcgdb.monitor.bridge import BridgeStatus, check_bridges
 from ptcgdb.normalize.deck_misses import RemapResult, remap_decks
 from ptcgdb.normalize.ingest import ingest_set
 from ptcgdb.orm import Card, LegalitySnapshot, Set
@@ -60,6 +61,7 @@ class L0Result:
     remap: RemapResult | None = None  # 合入后映射缺口刷新（FR-9.8，task 031）
     tagging: TaggingResult | None = None  # 合入后效果标签打标（task 040）
     hook_warnings: list[str] = field(default_factory=list)  # 钩子失败留痕（不阻断主流程）
+    bridge: list[BridgeStatus] = field(default_factory=list)  # 英文桥挂账探测（task 076）
     dry_run: bool = False
 
 
@@ -171,7 +173,22 @@ def run_l0(
     for inc in report.increments:
         emit("increment", {"set_id": inc.set_id, "kind": inc.kind,
                            "expected": inc.expected, "current": inc.current})
-    if dry_run or not report.increments:
+    # 2.5 英文桥挂账探测（FR-5.1 v1.43 增补，task 076）：非 dry-run 每轮跑——
+    #    桥发布不改 cardsNum，增量探测天然看不见。dry_run 保持零额外请求承诺。
+    if dry_run:
+        return result
+    try:
+        result.bridge, bridge_warnings = check_bridges(scraper, db_path, raw_dir)
+    except Exception as exc:
+        result.hook_warnings.append(f"bridge 探测失败（隔离不阻断主流程）：{exc!r}")
+    else:
+        result.hook_warnings.extend(bridge_warnings)
+        for st in result.bridge:
+            if st.published:
+                emit("bridge", {"set_id": st.set_id,
+                                "raw_name_en": st.raw_name_en,
+                                "db_name_en": st.db_name_en})
+    if not report.increments:
         return result
 
     # 3. 逐系列：刷新 cards.json → 续抓新卡 → ingest → 校验 → activate
