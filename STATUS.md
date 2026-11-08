@@ -8,6 +8,8 @@
 
 **task 071 DONE：对齐窗九池 36 格 n 盘点（只读；`tools/census_alignment_cells.py` + `reports/alignment-cells-census-20261108.md`）。** 口径逐行对齐下游 `t105_aligned_recheck.py`：池内总对局 1,492、n≥20 仅 8/36 格、n≥100 仅 4/36 格 → **哨兵将落 WAIT**（RUN 门 18 格）；用户预期「10–15 格 n≥100」未达。漏斗定位根因：窗内 intl_aligned master 组 45,999 行中 **59% 双侧不在九池**（Basic Box / Dhelmise / Slowking / Mega Excadrill 等国际线上主流构筑）——真实侧 meta 与 CN WUR 九池错位，数据侧供给/映射/视图均已齐（task 070），提功效只能下游扩判定池（下游拍板项，不在本仓）。**task 073 触发条件判定：跳过**——瓶颈在判定池口径而非卡级映射（哨兵输入本就是 archetype_name）。
 
+**task 072 DONE：六系列 cardsNum 缩水核查清偿。** 逐系列实测 delta == deprecated 计数全中（CS5.5C/CSV1C/CSV3C/CSV5C/CSV7C/CSVH5C = 1/2/1/1/2/1，合计 8 = 09-19 拍板 deprecated 的 8 条下架双重列示；active == upstream 全中，全库无其他 shrunk）→ 备份后修正 6 行 `sets.expected_count` 对齐上游去重值——**L0 suspicious 6 项清零**（此前每轮恒报），六系列 validate 十规则全过。dist sets.jsonl 的 expected_count 随下次导出入包（按边界本轮不重建）。
+
 **task 069 DONE：对齐窗 pairings 常规轮询（PRD v1.41）。** GHIJ 收割窗（2026-09-16 起滚动）挂进 `monitor tourneys` limitless 通道——新发布的官方档赛事 pairings 自动收编，不再受 API 按场次衰减丢失；HTTP 404 全通道改确定性缺失语义（不重试不计熔断）。同日 task 063 采集韧性收官（429 退避、熔断冷却、raw 原子写、swiss 同秒快照、ingest-tourneys 底线守卫）。062/067/068 此前已 DONE（赛事身份统一、数据版本治理、GHIJ pairings 1,063 行 A1 交付）；**065 DONE——第二轮 review 技术债 059–065 全部清偿收官**；pytest 弃用警告清零。队列清空，回到运维/轮询节奏。**
 
 **当前数据（2026-11-04，task 062 后）**：
@@ -31,6 +33,7 @@
 | 069 | DONE | 对齐窗 pairings 常规轮询：GHIJ 收割窗挂 monitor（PRD v1.41）、404 确定性缺失语义、ingest 多窗守卫 |
 | 070 | DONE | GHIJ 窗非官方档 pairings 收编：online_open 扩窗至 2026-11-08（PRD v1.42），accepted=225，pairings +66,163 |
 | 071 | DONE | 对齐窗九池 36 格 n 盘点：池内 1,492 局、n≥100 仅 4 格 → 哨兵 WAIT；根因 = 国际 meta 与 CN 九池错位（下游口径项）；073 判定跳过 |
+| 072 | DONE | 六系列 cardsNum 缩水清偿：delta==deprecated 8 条全中，expected_count 对齐上游，L0 suspicious 清零 |
 | 063 | DONE | 采集与 raw 层韧性：429 退避、熔断冷却恢复、raw 原子写、swiss 同秒快照、清单页 24h TTL、ingest-tourneys CLI 底线守卫 |
 | 064 | DONE | 统计/合法性/SDK 契约：九项 P2 清偿（参数校验、meta 契约、GBK、jsonldb 流式+索引、双后端 outerjoin、caliber、rollback、deprecated、勘误口径） |
 | 065 | DONE | 归一/映射/校验/运维收尾：P2 全部清偿收官，弃用警告清零（059–065 技术债批次完结） |
