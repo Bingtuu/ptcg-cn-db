@@ -2,9 +2,11 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-07；PRD v1.42；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-08；PRD v1.42；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
+
+**task 071 DONE：对齐窗九池 36 格 n 盘点（只读；`tools/census_alignment_cells.py` + `reports/alignment-cells-census-20261108.md`）。** 口径逐行对齐下游 `t105_aligned_recheck.py`：池内总对局 1,492、n≥20 仅 8/36 格、n≥100 仅 4/36 格 → **哨兵将落 WAIT**（RUN 门 18 格）；用户预期「10–15 格 n≥100」未达。漏斗定位根因：窗内 intl_aligned master 组 45,999 行中 **59% 双侧不在九池**（Basic Box / Dhelmise / Slowking / Mega Excadrill 等国际线上主流构筑）——真实侧 meta 与 CN WUR 九池错位，数据侧供给/映射/视图均已齐（task 070），提功效只能下游扩判定池（下游拍板项，不在本仓）。**task 073 触发条件判定：跳过**——瓶颈在判定池口径而非卡级映射（哨兵输入本就是 archetype_name）。
 
 **task 069 DONE：对齐窗 pairings 常规轮询（PRD v1.41）。** GHIJ 收割窗（2026-09-16 起滚动）挂进 `monitor tourneys` limitless 通道——新发布的官方档赛事 pairings 自动收编，不再受 API 按场次衰减丢失；HTTP 404 全通道改确定性缺失语义（不重试不计熔断）。同日 task 063 采集韧性收官（429 退避、熔断冷却、raw 原子写、swiss 同秒快照、ingest-tourneys 底线守卫）。062/067/068 此前已 DONE（赛事身份统一、数据版本治理、GHIJ pairings 1,063 行 A1 交付）；**065 DONE——第二轮 review 技术债 059–065 全部清偿收官**；pytest 弃用警告清零。队列清空，回到运维/轮询节奏。**
 
@@ -28,6 +30,7 @@
 | 068 | 部分落地 | A1 已交付（GHIJ pairings 1,063 行入 dist，data_version 2）；online_open 2026 放宽与 mik 侧待后续拍板 |
 | 069 | DONE | 对齐窗 pairings 常规轮询：GHIJ 收割窗挂 monitor（PRD v1.41）、404 确定性缺失语义、ingest 多窗守卫 |
 | 070 | DONE | GHIJ 窗非官方档 pairings 收编：online_open 扩窗至 2026-11-08（PRD v1.42），accepted=225，pairings +66,163 |
+| 071 | DONE | 对齐窗九池 36 格 n 盘点：池内 1,492 局、n≥100 仅 4 格 → 哨兵 WAIT；根因 = 国际 meta 与 CN 九池错位（下游口径项）；073 判定跳过 |
 | 063 | DONE | 采集与 raw 层韧性：429 退避、熔断冷却恢复、raw 原子写、swiss 同秒快照、清单页 24h TTL、ingest-tourneys CLI 底线守卫 |
 | 064 | DONE | 统计/合法性/SDK 契约：九项 P2 清偿（参数校验、meta 契约、GBK、jsonldb 流式+索引、双后端 outerjoin、caliber、rollback、deprecated、勘误口径） |
 | 065 | DONE | 归一/映射/校验/运维收尾：P2 全部清偿收官，弃用警告清零（059–065 技术债批次完结） |
@@ -88,6 +91,7 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-11-08 task 071 完成**：对齐窗九池 36 格 n 盘点（只读）——池内 1,492 局、n≥20 仅 8 格、n≥100 仅 4 格 → 哨兵 WAIT；根因 = 国际线上 meta 与 CN 九池错位（窗内 59% 对局双侧不在池），提功效需下游扩判定池。073 判定跳过（瓶颈非卡级映射）。1304 测试全绿 + ruff 净。
 - **2026-11-07 晚 · 供给实证更正（重要）**：昨日「API pairings 按场次发布且会衰减、185 场无供给」结论**系探测主机错误**（limitlessapi.com 为非官方镜像）——真实 API play.limitlesstcg.com 实测：2025 年场次 >1 年仍全量（4,701 行）、GHIJ 窗内离线 ≥64 人赛事抽样 8/8 全部有 pairings（220–556 行/场）。**185 场的供给真实存在**，闸门是分类口径（v1.35 online_open date_range 止 2025-08-31 + 官方档名称正则）。放宽拍板待用户确认（task 070 预研），mik CN 对局与 JP pairings 供给仍无。
 - **2026-11-07 task 069 完成**：GHIJ 收割窗挂 monitor（PRD v1.41）+ 404 确定性缺失语义全通道落地 + ingest 多窗守卫；1276 测试全绿。详见任务档与 CHANGELOG。
 - **2026-11-07 task 063 完成**：429 有限退避、熔断冷却半开探测、raw 原子写、swiss 同秒快照、Limitless 清单页 24h TTL、ingest-tourneys CLI 底线守卫（062 运维教训结构性清偿）。
