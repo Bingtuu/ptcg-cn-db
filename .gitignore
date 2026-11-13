@@ -23,15 +23,8 @@ Thumbs.db
 # 隔离开发工作区
 .worktrees/
 
-# 逆向工程中间产物（含 cookie，不进仓库；保留 ja-sample 核对证据）
-.scratch/pcc-*
-.scratch/fetch_ja_data.py
-
-# API 探测中间产物（真实端点探索脚本与输出，不进仓库）
-.scratch/probe_*
-.scratch/make_fixtures.py
-.scratch/task053/
-
-# Code Review 产物（本地工作文档，不进仓库）
-.scratch/code-review-*.md
-.scratch/task056/
+# 逆向工程中间产物 / API 探测 / Code Review 产物——统一口径（task 079）：
+# .scratch/ 整体为「本地暂存、永不入库」（含 cookie 类敏感残留红线），
+# 零散 pattern 全部收口为本行；既往 exceptions（ja-sample 核对证据等）
+# 如需保留证据应迁入 tests/fixtures/ 或 reports/，不留在 .scratch
+.scratch/

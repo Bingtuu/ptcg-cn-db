@@ -30,6 +30,7 @@
 
 | 任务 | 状态 | 范围 |
 |---|---|---|
+| 079 | DONE | .scratch 治理：删 31 个历史整库备份（4.2GB）+ 站方 cookie 残留，.gitignore 收口整体忽略；目录结构遵循 PRD §8 无需重组 |
 | 078 | DONE | 运维残渣清理：accept-work 5.1GB 验收副本清空、versions 清退 supersede 临时备份 431MB（保留 before-task070 为最新 DR 点）、STATUS 3710 表述对齐 075 |
 | 077 | DONE | 修复 rollback 备份选择优先级反转（064 回归）：版本化备份优先于临时备份，补混合目录回归测试；生产 legal rollback 毁库隐患消除 |
 | 061 | DONE | JP 自愈与 Brave Bangle/CBB/isQual 外部事实核销 |
@@ -103,6 +104,7 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-11-13 task 079 完成**：目录整理评估结论——结构遵循 PRD §8 无需重组；.scratch 治理：删 31 个历史整库备份副本（4.2GB，与 data/versions 职能重复，DR 点不受影响）+ 站方 cookie 残留 pcl-cookies.txt，.gitignore 零散 pattern 收口为 .scratch/ 整体忽略（本地暂存永不入库）。scratch 4.2GB→9.3MB，git status 噪音清零；依赖检查先行（tests/ptcgdb 仅注释出处引用）。
 - **2026-11-13 task 078 完成**：运维残渣清理——accept-work 5.1GB 验收副本清空；data/versions 清退被 supersede 的 pre-task019/pre014 临时备份 431MB（**保留 before-task070**：查清单时发现它是 versions 里最新整库 DR 点，版本化链止于 9 月）；STATUS 3710「扩全场需拍板」对齐 075 最终态。烟测 integrity ok + 计数一致。同日复盘技术债：10-05 台账遗留项全部确认清偿，代码债清零，剩余均为外部等待/拍板类。
 - **2026-11-13 task 077 完成**：修复 rollback 备份选择优先级反转（task 064 回归）——`_key` 版本化/临时优先级对调，补混合目录 + 纯临时目录回归测试 2 项；1317 全量绿 + ruff 净，复跑 accept A1/A4–A8 全 PASS。根因详见任务档；生产 `data/versions/` 混档下 `legal rollback` 误选 8 月旧库的风险随之消除。
 - **2026-11-13 轮询**：l0 收 SVP 560→578 激活（data_version v20261113.1），英文桥 CSV10.5C/10.6C 上游仍未发布；赛事三通道净增 +4 tournaments（limitless）/ +1,026 decks / +1,188 appearances / +27,554 deck_cards / +2,289 pairings，blocked 全 0；mik 新卡组为已收编赛事的迟到卡组表，site 通道无新事项。
