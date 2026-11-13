@@ -194,14 +194,17 @@ def rollback(db_path: Path, *, versions_dir: Path | None = None) -> str:
     if not backups:
         raise LookupError(f"无可用备份: {versions_dir}")
     # task 064：同日 .10 > .9 须按数值后缀排序（字典序 .10 < .9 会选错）；
-    # 版本化备份（v{日期}.{n}）优先于临时 before-* 备份
+    # 版本化备份（v{日期}.{n}）优先于临时 before-*/pre-*/base 备份——
+    # task 077：064 曾把版本化标 0 / 临时标 1，max() 下临时恒胜（优先级
+    # 反转，混合目录回滚选中远古备份）；现版本化=1 高优先级，无版本化时
+    # 临时备份按名字兜底（保持 064 前行为）
     import re as _re
 
     def _key(path: Path) -> tuple:
         m = _re.fullmatch(r"ptcg-cn-v(\d{8})\.(\d+)\.db", path.name)
         if m:
-            return (0, m.group(1), int(m.group(2)))
-        return (1, path.name, 0)
+            return (1, m.group(1), int(m.group(2)))
+        return (0, path.name, 0)
 
     latest = max(backups, key=_key)
     shutil.copy2(latest, db_path)

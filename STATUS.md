@@ -2,9 +2,11 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-08；PRD v1.43；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-13；PRD v1.43；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
+
+**task 077 DONE：修复 rollback 备份选择优先级反转（task 064 回归，生产级隐患）。** 11-13 轮询后验收首现 A6 FAIL：根因为 task 064（11-07 23:53 合入，当晚 23:17 验收的 36 分钟后）修同日 .10>.9 时把版本化备份标 0 / 临时备份（before-*/pre-*/base）标 1，`max()` 下任何临时备份恒胜，与注释声明的「版本化优先」相反；064 单测只覆盖纯版本化排序故漏网。生产 `data/versions/` 混档，彼时 `legal rollback` 会选中 8 月 2 日 pre-task019 旧库（15MB）——**回滚即毁库风险随本修复消除**。修复 = `_key` 优先级对调（版本化 1 / 临时 0 按名兜底），补混合目录 + 纯临时目录回归测试 2 项；1317 全量绿 + ruff 净，复跑 accept A1/A4–A8 全 PASS（A6 正确选中 v20261113.1 复原）。
 
 **task 071 DONE：对齐窗九池 36 格 n 盘点（只读；`tools/census_alignment_cells.py` + `reports/alignment-cells-census-20261108.md`）。** 口径逐行对齐下游 `t105_aligned_recheck.py`：池内总对局 1,492、n≥20 仅 8/36 格、n≥100 仅 4/36 格 → **哨兵将落 WAIT**（RUN 门 18 格）；用户预期「10–15 格 n≥100」未达。漏斗定位根因：窗内 intl_aligned master 组 45,999 行中 **59% 双侧不在九池**（Basic Box / Dhelmise / Slowking / Mega Excadrill 等国际线上主流构筑）——真实侧 meta 与 CN WUR 九池错位，数据侧供给/映射/视图均已齐（task 070），提功效只能下游扩判定池（下游拍板项，不在本仓）。**task 073 触发条件判定：跳过**——瓶颈在判定池口径而非卡级映射（哨兵输入本就是 archetype_name）。
 
@@ -28,6 +30,7 @@
 
 | 任务 | 状态 | 范围 |
 |---|---|---|
+| 077 | DONE | 修复 rollback 备份选择优先级反转（064 回归）：版本化备份优先于临时备份，补混合目录回归测试；生产 legal rollback 毁库隐患消除 |
 | 061 | DONE | JP 自愈与 Brave Bangle/CBB/isQual 外部事实核销 |
 | 062 | DONE | 赛事身份统一：appearance 身份、EN 旧实体合并、3710 修复、dist 3.0.0 |
 | 067 | DONE | 数据版本治理：manifest data_version 单调递增 + data_changes 差集（PRD v1.40） |
@@ -99,6 +102,8 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-11-13 task 077 完成**：修复 rollback 备份选择优先级反转（task 064 回归）——`_key` 版本化/临时优先级对调，补混合目录 + 纯临时目录回归测试 2 项；1317 全量绿 + ruff 净，复跑 accept A1/A4–A8 全 PASS。根因详见任务档；生产 `data/versions/` 混档下 `legal rollback` 误选 8 月旧库的风险随之消除。
+- **2026-11-13 轮询**：l0 收 SVP 560→578 激活（data_version v20261113.1），英文桥 CSV10.5C/10.6C 上游仍未发布；赛事三通道净增 +4 tournaments（limitless）/ +1,026 decks / +1,188 appearances / +27,554 deck_cards / +2,289 pairings，blocked 全 0；mik 新卡组为已收编赛事的迟到卡组表，site 通道无新事项。
 - **2026-11-08 goal 批次二收官（074/075/076）**：074 核销 30th-P 白名单提案；075 确证 3710 第 2 页供给性阻塞（mik v3 删赛事，top64 为最终状态）；076 英文桥挂账探测（PRD v1.43）落地。总报告 `reports/goal-batch2-20261108.md`，1315 测试全绿 + ruff 净。
 - **2026-11-08 task 076 完成**：英文桥挂账探测（PRD v1.43）——bridge_pending.yml + bridge.py 挂 L0 非 dry-run 每轮，发布即 bridge 事件 + 通知；探测不自动清偿（runbook：scrape→ingest→validate→activate→remap）；1315 测试全绿 + ruff 净。同日 074 核销 30th-P 白名单提案、075 确证 3710 第 2 页供给性阻塞（mik v3 删赛事）。
 - **2026-11-08 task 075 完成（供给性阻塞确证）**：3710 第 2 页补抓不可行——mik v3 已删除该赛事（实探 1 请求 code=400；秋季场预赛改号 3754、正赛 3734），44 队永久不可恢复，3710 以 top64（64 队 351 行）为最终状态。零库改动。

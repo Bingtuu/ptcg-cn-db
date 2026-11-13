@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## [Unreleased] - 2026-11-13
+
+### Changed
+
+- task 077 修复 rollback 备份选择优先级反转（task 064 回归）：`rollback()` 的 `_key` 曾把版本化备份标 0 / 临时备份（before-*/pre-*/base）标 1，`max()` 下任何临时备份恒胜——混合目录回滚会选中远古备份（2026-11-13 验收 A6 FAIL 根因；生产 `data/versions/` 混档，`legal rollback` 有选中 8 月旧库风险）。现版本化=1 高优先级、无版本化时临时备份按名兜底（保持 064 前行为）；补混合目录 + 纯临时目录回归测试 2 项
+
+## [v20261113.1] - 2026-11-13
+
+### Changed
+
+- L0 增量合入：系列 SVP
+- 刷新当前快照 latest_text_overrides（standard-2026-09-16, open-2026-09-16）
+- 效果标签打标（L0 tag-effects 钩子，task 040）：changed=578 零命中归类=137 unknown=0
 ## [v20261108.1] - 2026-11-08
 
 ### Added
@@ -220,4 +233,5 @@
 ---
 
 数据版本说明：当前库 meta 尚无 data_version（L0 零增量、从未实际合入），export manifest 显示 fallback `v20260801.0`；自 L0 首次实际合入增量起按日历版本递增。
+
 

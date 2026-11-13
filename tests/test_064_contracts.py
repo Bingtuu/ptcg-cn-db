@@ -177,6 +177,45 @@ def test_rollback_same_day_numeric_suffix(tmp_path: Path):
     assert db.read_bytes() == b"ten"
 
 
+# ---- rollback 版本化备份优先于临时备份（task 077 回归） ----
+# task 064 修同日数值后缀时把版本化/非版本化优先级标反（versioned=0 <
+# legacy=1，max() 取 legacy），混合目录下会选中远古 base/pre-* 备份——
+# 2026-11-13 验收 A6 因此 FAIL；生产 data/versions/ 同样混档，rollback
+# 有选中 8 月旧库的风险。
+
+
+def test_rollback_prefers_versioned_over_legacy_backups(tmp_path: Path):
+    from ptcgdb.legal.versions import rollback
+
+    versions = tmp_path / "versions"
+    versions.mkdir()
+    db = tmp_path / "t.db"
+    db.write_bytes(b"current")
+    (versions / "ptcg-cn-base.db").write_bytes(b"august-legacy")
+    (versions / "ptcg-cn-before-task070-20261107230657.db").write_bytes(b"temp")
+    (versions / "ptcg-cn-v20261107.10.db").write_bytes(b"ten")
+    (versions / "ptcg-cn-v20261113.1.db").write_bytes(b"latest")
+    name = rollback(db, versions_dir=versions)
+    assert name == "ptcg-cn-v20261113.1.db"
+    assert db.read_bytes() == b"latest"
+
+
+def test_rollback_legacy_only_fallback(tmp_path: Path):
+    """纯非版本化目录（data_version 出现前的旧形态）兜底仍可用。"""
+
+    from ptcgdb.legal.versions import rollback
+
+    versions = tmp_path / "versions"
+    versions.mkdir()
+    db = tmp_path / "t.db"
+    db.write_bytes(b"current")
+    (versions / "ptcg-cn-before-task070-20261107230657.db").write_bytes(b"temp")
+    (versions / "ptcg-cn-pre-task019-20260802T004139.db").write_bytes(b"pre")
+    name = rollback(db, versions_dir=versions)
+    assert name == "ptcg-cn-pre-task019-20260802T004139.db"
+    assert db.read_bytes() == b"pre"
+
+
 # ---- deprecated 不参与同名组推导 ----
 
 
