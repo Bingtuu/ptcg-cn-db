@@ -9,7 +9,7 @@
 
 ## 当前摘要
 
-卡牌实时库为 140 系列 / 13,653 active（2026-11-07 轮询收编三新系列），schema_version=3.0.0 / user_version=14；测试基线 **1276 passed**（task 069 后）。task 062 赛事身份统一、063 采集韧性、067 数据版本治理、068 GHIJ pairings A1 交付、069 GHIJ 收割轮全部 DONE；队列剩 064（统计与 SDK 契约）/ 065（剩余 P2 收尾）。真实库与 dist 的数字必须按各自版本表述，不混为同一快照。
+卡牌实时库为 140 系列 / 13,671 active（2026-11-13 轮询 SVP 560→578），schema_version=3.0.0 / user_version=14；测试基线 **1317 passed**（task 077 后）。task 061–077 全部 DONE（含 069 GHIJ 收割轮、076 英文桥探测、077 rollback 备份选择优先级修复），队列清空，处于运维/轮询节奏。真实库与 dist 的数字必须按各自版本表述，不混为同一快照。
 
 代码结构按 PRD 第 8 章：`ptcgdb/` 下 `orm/schemas/migrations/scrapers/normalize/validate/legal/monitor/export/sdk/accept/mapping/stats`，不要自行发明布局。
 

@@ -6,9 +6,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![Status](https://img.shields.io/badge/Status-140系列/13,653张-brightgreen.svg?style=flat-square)](STATUS.md)
-[![PRD](https://img.shields.io/badge/PRD-v1.41-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
-[![Tests](https://img.shields.io/badge/Tests-1198%20passed-success.svg?style=flat-square)](STATUS.md)
+[![Status](https://img.shields.io/badge/Status-140系列/13,671张-brightgreen.svg?style=flat-square)](STATUS.md)
+[![PRD](https://img.shields.io/badge/PRD-v1.43-blue.svg?style=flat-square)](docs/简中PTCG卡牌数据库_PRD与技术方案.md)
+[![Tests](https://img.shields.io/badge/Tests-1317%20passed-success.svg?style=flat-square)](STATUS.md)
 
 [产品需求文档](docs/简中PTCG卡牌数据库_PRD与技术方案.md) · [开发进展](STATUS.md) · [工程约定](AGENTS.md)
 
@@ -51,13 +51,13 @@ ptcgdb init-db           # 建库 + 全部迁移（默认 data/ptcg-cn.db）
 开发自检：
 
 ```bash
-python -m pytest -q      # 1198 测试（全量约 3 分钟）
+python -m pytest -q      # 1317 测试（全量约 4 分钟）
 ruff check .
 ```
 
 ## 🚀 快速预览
 
-> 卡牌实时库（2026-11-07）：**140 系列 / 13,653 张 active 卡**（三语卡名 EN 12,337+ / JA 11,046+）；合法卡池 **standard 5,850 / open 13,028**（赛制 2026-09-16 版）。dist `v20261107.3` / schema 3.0.0 的赛事快照：**935 场（CN mik + EN 双通道 + JP 对齐样本）/ 62,085 套卡组 / 91,606 条出战 / pairings 142,028 桌**（含 GHIJ 时代 4 场 SEASAC 联赛杯 1,063 桌，MAX(date)=2026-10-16）；后续轮询计数会变化，以 `dist/manifest.json` 和 STATUS 为准。
+> 卡牌实时库（2026-11-13）：**140 系列 / 13,671 张 active 卡**（三语卡名 EN 12,337+ / JA 11,046+）；合法卡池 **standard 6,464 / open 13,642**（legal_at 2026-11-13，赛制 2026-09-16 版）。dist `v20261107.3` / schema 3.0.0 的赛事快照：**935 场（CN mik + EN 双通道 + JP 对齐样本）/ 62,085 套卡组 / 91,606 条出战 / pairings 142,028 桌**（含 GHIJ 时代 4 场 SEASAC 联赛杯 1,063 桌，MAX(date)=2026-10-16）；后续轮询计数会变化，以 `dist/manifest.json` 和 STATUS 为准。
 
 ### CLI 速查
 
