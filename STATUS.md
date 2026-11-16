@@ -2,7 +2,7 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-13；PRD v1.43；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-15；PRD v1.43；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
@@ -19,7 +19,7 @@
 **当前数据（2026-11-04，task 062 后）**：
 
 - 卡牌实时库：**140 系列，13,653 active** + 8 deprecated = 13,661 行（11-07 轮询收编 白焰迸涌 CSV10.6C 174 / 黑雷奔流 CSV10.5C 174 / 宝石包 CBB7C 196，含 BWR 新罕贵度）。
-- 赛事实时库：1,156 tournaments / 77,782 decks / 111,151 appearances / 2,210,472 deck_cards / 208,191 pairings（GHIJ 67,226 行，MAX(date)=2026-11-07；task 070 收编 220 场非官方档 online_open，env 全 HIJ）；mik 轮询恢复后 3711-3753 填充 32 场、3710 维持 top64 口径 64 队（**075 确证为最终状态**：mik v3 已删该赛事，第 2 页 44 队不可恢复）；mapping_status full 59,045 / partial 1,181；misses 10,477。
+- 赛事实时库（2026-11-15 轮询后）：1,190 tournaments / 80,292 decks / 114,139 appearances / 2,281,835 deck_cards / 210,480 pairings（GHIJ 67,226 行，MAX(date)=2026-11-07；task 070 收编 220 场非官方档 online_open，env 全 HIJ）；mik 轮询恢复后 3711-3753 填充 32 场、3710 维持 top64 口径 64 队（**075 确证为最终状态**：mik v3 已删该赛事，第 2 页 44 队不可恢复）；mapping_status full 59,045 / partial 1,181；misses 10,477。
 - 合法性：4 份快照，standard 当前 G/H/I/J。真实验收 A1/A4–A8 全 PASS，见 `dist/acceptance-20261104.md`。
 - dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
 - **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队——**task 075 确证补抓不可行（2026-11-08）**：mik v3 已删除该赛事（rank page-2 实探 code=400「该赛事不存在」，秋季场预赛改号 3754/正赛 3734），第 2 页 44 队永久不可恢复，3710 以 top64 为最终状态；3754 随常规轮询自然收编。
@@ -107,6 +107,7 @@ M0–M12 均已完成：
 - **2026-11-13 task 079 完成**：目录整理评估结论——结构遵循 PRD §8 无需重组；.scratch 治理：删 31 个历史整库备份副本（4.2GB，与 data/versions 职能重复，DR 点不受影响）+ 站方 cookie 残留 pcl-cookies.txt，.gitignore 零散 pattern 收口为 .scratch/ 整体忽略（本地暂存永不入库）。scratch 4.2GB→9.3MB，git status 噪音清零；依赖检查先行（tests/ptcgdb 仅注释出处引用）。
 - **2026-11-13 task 078 完成**：运维残渣清理——accept-work 5.1GB 验收副本清空；data/versions 清退被 supersede 的 pre-task019/pre014 临时备份 431MB（**保留 before-task070**：查清单时发现它是 versions 里最新整库 DR 点，版本化链止于 9 月）；STATUS 3710「扩全场需拍板」对齐 075 最终态。烟测 integrity ok + 计数一致。同日复盘技术债：10-05 台账遗留项全部确认清偿，代码债清零，剩余均为外部等待/拍板类。
 - **2026-11-13 task 077 完成**：修复 rollback 备份选择优先级反转（task 064 回归）——`_key` 版本化/临时优先级对调，补混合目录 + 纯临时目录回归测试 2 项；1317 全量绿 + ruff 净，复跑 accept A1/A4–A8 全 PASS。根因详见任务档；生产 `data/versions/` 混档下 `legal rollback` 误选 8 月旧库的风险随之消除。
+- **2026-11-15 轮询（重点补国内卡表）**：mik 通道净增 +30 tournaments / +1,484 decks / +1,800 appearances / +43,809 deck_cards（blocked=0），近期 33 场国内赛入库——11-08×3 / 11-14×13 / **11-15 城市赛第五赛季当日 17 场**（3769–3792 各店铺场次，2,248 套卡表）；limitless api 与 site 通道均无新事项；L0 无卡变动、英文桥 CSV10.5C/10.6C 仍未发布。注：首轮 mik 监控撞 300s 超时被杀（抓取中段，raw 原子写无损），不限时续跑完成（新抓 1,197 raw）。
 - **2026-11-13 轮询**：l0 收 SVP 560→578 激活（data_version v20261113.1），英文桥 CSV10.5C/10.6C 上游仍未发布；赛事三通道净增 +4 tournaments（limitless）/ +1,026 decks / +1,188 appearances / +27,554 deck_cards / +2,289 pairings，blocked 全 0；mik 新卡组为已收编赛事的迟到卡组表，site 通道无新事项。
 - **2026-11-08 goal 批次二收官（074/075/076）**：074 核销 30th-P 白名单提案；075 确证 3710 第 2 页供给性阻塞（mik v3 删赛事，top64 为最终状态）；076 英文桥挂账探测（PRD v1.43）落地。总报告 `reports/goal-batch2-20261108.md`，1315 测试全绿 + ruff 净。
 - **2026-11-08 task 076 完成**：英文桥挂账探测（PRD v1.43）——bridge_pending.yml + bridge.py 挂 L0 非 dry-run 每轮，发布即 bridge 事件 + 通知；探测不自动清偿（runbook：scrape→ingest→validate→activate→remap）；1315 测试全绿 + ruff 净。同日 074 核销 30th-P 白名单提案、075 确证 3710 第 2 页供给性阻塞（mik v3 删赛事）。
