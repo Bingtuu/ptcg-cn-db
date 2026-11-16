@@ -586,6 +586,75 @@ class TestTask067DataVersion:
         assert manifest["data_changes"]["cards"] == {"from": 2, "to": 1}
 
 
+# ---- task 080：data_revisions 记录级修订日志 ----
+
+
+class TestTask080DataRevisions:
+    """manifest 增 data_revisions：记录级内容 diff（主键 → 行哈希）。
+
+    动机：data_changes 行数差集对就地内容修订（行数不变）不可见；
+    data_revisions 按文件给 added/removed/changed 计数 + changed_ids 清单。
+    """
+
+    def test_fresh_export_revisions_empty(self, db_path, tmp_path):
+        manifest = export_all(db_path, tmp_path / "dist")
+        assert manifest["data_revisions"] == {}
+
+    def test_unchanged_content_revisions_empty(self, db_path, tmp_path):
+        out = tmp_path / "dist"
+        export_all(db_path, out)
+        second = export_all(db_path, out)
+        assert second["data_revisions"] == {}
+
+    def test_inplace_text_revision_lists_changed_id(self, db_path, tmp_path):
+        """就地修订（行数不变）：data_changes 不可见，data_revisions 命中主键。"""
+        from sqlalchemy import text
+
+        out = tmp_path / "dist"
+        first = export_all(db_path, out)
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE cards SET text_raw='订正后原文' WHERE card_id='T1-001'"))
+        engine.dispose()
+        second = export_all(db_path, out)
+        assert second["data_version"] == first["data_version"] + 1
+        # 行数不变：cards 计数差集不出现（或 from==to 不出现）
+        assert "cards" not in second["data_changes"]
+        rev = second["data_revisions"]["cards.jsonl"]
+        assert rev["added"] == 0 and rev["removed"] == 0 and rev["changed"] == 1
+        assert rev["changed_ids"] == ["T1-001"]
+
+    def test_delete_detected_as_removed(self, db_path, tmp_path):
+        from sqlalchemy import text
+
+        out = tmp_path / "dist"
+        export_all(db_path, out)
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM cards WHERE card_id='T1-002'"))
+        engine.dispose()
+        rev = export_all(db_path, out)["data_revisions"]["cards.jsonl"]
+        assert rev["removed"] == 1 and rev["added"] == 0 and rev["changed"] == 0
+
+    def test_truncation_boundary(self, db_path, tmp_path, monkeypatch):
+        """上限 < 变更数：清单截断到上限且 truncated=True。"""
+        from sqlalchemy import text
+
+        import ptcgdb.export.exporter as exporter
+
+        monkeypatch.setattr(exporter, "_REV_ID_CAP", 1)
+        out = tmp_path / "dist"
+        export_all(db_path, out)
+        engine = create_engine(f"sqlite:///{db_path}")
+        with engine.begin() as conn:
+            conn.execute(text("UPDATE cards SET text_raw='订正'"))
+        engine.dispose()
+        rev = export_all(db_path, out)["data_revisions"]["cards.jsonl"]
+        assert rev["changed"] == 2
+        assert len(rev["changed_ids"]) == 1
+        assert rev["truncated"] is True
+
+
 def test_checksums_file_lf_only(dist):
     """task 068 复核实测：CRLF 会让下游 sha256sum -c 解析失败，必须 LF。"""
     assert b"\r" not in (dist / "checksums.sha256").read_bytes()

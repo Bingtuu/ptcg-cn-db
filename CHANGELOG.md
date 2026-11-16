@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [Unreleased] - 2026-11-15
+
+### Added
+
+- task 080 manifest 记录级修订日志（PRD v1.44 FR-6.1 增补，无 schema 迁移，纯增量字段）：`data_changes` 计数差集对**就地内容修订**（行数不变，如卡文本订正、archetype_name 漂移）不可见，下游校准包无法判断存量是否需要重算——导出边界在文件指纹之外对契约 JSONL 八件做**记录级内容 diff**（每文件主键 → blake2b-64 行哈希：cards.card_id / sets.set_id / tournaments.tournament_id / decks.deck_id / deck_appearances.appearance_id / relations 复合键 / deck_cards.(deck_id,card_id,group_key) 同键冲突加出现序后缀 / pairings.(tournament_id,phase,round,table_no)），manifest 增 `data_revisions`（变更文件 → {added, removed, changed, changed_ids, truncated}，changed_ids 截断上限 500 超出带 truncated 标记；指纹未变/首次发布 {}）。data_version 语义不变（指纹驱动），下游凭 changed_ids 精确重算存量包
+
 ## [Unreleased] - 2026-11-13
 
 ### Changed

@@ -6,6 +6,8 @@
 
 ## 当前状态
 
+**task 080 DONE：manifest 记录级修订日志（PRD v1.44）。** 下游诉求：data_changes 行数差集对**就地内容修订**（卡文本订正、archetype 漂移，行数不变）不可见，校准包无法判断存量是否重算。导出边界在文件指纹之外对契约 JSONL 八件做记录级内容 diff（每文件主键 → blake2b-64 行哈希；deck_cards 同键冲突出现序后缀），manifest 增 `data_revisions`（变更文件 → {added, removed, changed, changed_ids, truncated}，changed_ids 截断 500；指纹未变/首发布 {}）——纯增量字段不升 schema major，data_version 指纹驱动语义不变。TDD 5 项新测试，全量 **1322 passed** + ruff 净；首次随下次 export 入包。
+
 **task 077 DONE：修复 rollback 备份选择优先级反转（task 064 回归，生产级隐患）。** 11-13 轮询后验收首现 A6 FAIL：根因为 task 064（11-07 23:53 合入，当晚 23:17 验收的 36 分钟后）修同日 .10>.9 时把版本化备份标 0 / 临时备份（before-*/pre-*/base）标 1，`max()` 下任何临时备份恒胜，与注释声明的「版本化优先」相反；064 单测只覆盖纯版本化排序故漏网。生产 `data/versions/` 混档，彼时 `legal rollback` 会选中 8 月 2 日 pre-task019 旧库（15MB）——**回滚即毁库风险随本修复消除**。修复 = `_key` 优先级对调（版本化 1 / 临时 0 按名兜底），补混合目录 + 纯临时目录回归测试 2 项；1317 全量绿 + ruff 净，复跑 accept A1/A4–A8 全 PASS（A6 正确选中 v20261113.1 复原）。
 
 **task 071 DONE：对齐窗九池 36 格 n 盘点（只读；`tools/census_alignment_cells.py` + `reports/alignment-cells-census-20261108.md`）。** 口径逐行对齐下游 `t105_aligned_recheck.py`：池内总对局 1,492、n≥20 仅 8/36 格、n≥100 仅 4/36 格 → **哨兵将落 WAIT**（RUN 门 18 格）；用户预期「10–15 格 n≥100」未达。漏斗定位根因：窗内 intl_aligned master 组 45,999 行中 **59% 双侧不在九池**（Basic Box / Dhelmise / Slowking / Mega Excadrill 等国际线上主流构筑）——真实侧 meta 与 CN WUR 九池错位，数据侧供给/映射/视图均已齐（task 070），提功效只能下游扩判定池（下游拍板项，不在本仓）。**task 073 触发条件判定：跳过**——瓶颈在判定池口径而非卡级映射（哨兵输入本就是 archetype_name）。
@@ -30,6 +32,7 @@
 
 | 任务 | 状态 | 范围 |
 |---|---|---|
+| 080 | DONE | manifest 记录级修订日志（PRD v1.44）：data_revisions 记录级 diff 补 data_changes 行数差集的就地修订盲区，TDD 5 项，1322 全绿 |
 | 079 | DONE | .scratch 治理：删 31 个历史整库备份（4.2GB）+ 站方 cookie 残留，.gitignore 收口整体忽略；目录结构遵循 PRD §8 无需重组 |
 | 078 | DONE | 运维残渣清理：accept-work 5.1GB 验收副本清空、versions 清退 supersede 临时备份 431MB（保留 before-task070 为最新 DR 点）、STATUS 3710 表述对齐 075 |
 | 077 | DONE | 修复 rollback 备份选择优先级反转（064 回归）：版本化备份优先于临时备份，补混合目录回归测试；生产 legal rollback 毁库隐患消除 |
@@ -107,6 +110,7 @@ M0–M12 均已完成：
 - **2026-11-13 task 079 完成**：目录整理评估结论——结构遵循 PRD §8 无需重组；.scratch 治理：删 31 个历史整库备份副本（4.2GB，与 data/versions 职能重复，DR 点不受影响）+ 站方 cookie 残留 pcl-cookies.txt，.gitignore 零散 pattern 收口为 .scratch/ 整体忽略（本地暂存永不入库）。scratch 4.2GB→9.3MB，git status 噪音清零；依赖检查先行（tests/ptcgdb 仅注释出处引用）。
 - **2026-11-13 task 078 完成**：运维残渣清理——accept-work 5.1GB 验收副本清空；data/versions 清退被 supersede 的 pre-task019/pre014 临时备份 431MB（**保留 before-task070**：查清单时发现它是 versions 里最新整库 DR 点，版本化链止于 9 月）；STATUS 3710「扩全场需拍板」对齐 075 最终态。烟测 integrity ok + 计数一致。同日复盘技术债：10-05 台账遗留项全部确认清偿，代码债清零，剩余均为外部等待/拍板类。
 - **2026-11-13 task 077 完成**：修复 rollback 备份选择优先级反转（task 064 回归）——`_key` 版本化/临时优先级对调，补混合目录 + 纯临时目录回归测试 2 项；1317 全量绿 + ruff 净，复跑 accept A1/A4–A8 全 PASS。根因详见任务档；生产 `data/versions/` 混档下 `legal rollback` 误选 8 月旧库的风险随之消除。
+- **2026-11-15 task 080 完成**：manifest 记录级修订日志（PRD v1.44）——`data_revisions` 记录级 diff（八件契约 JSONL 主键 → 行哈希）补 `data_changes` 行数差集对就地修订（卡文本订正/archetype 漂移）不可见的缺口，下游凭 changed_ids 判断存量包重算；TDD 5 项，1322 全量绿 + ruff 净。同日轮询：mik 国内 +30 赛事/+1,484 卡组（城市赛第五赛季当日 17 场 2,248 卡表），limitless 双通道无新事项；下游三项评估关闭两项（CSM1DC-176 本仓 raw 谱系自始正确、GHIJ pairings 供给系本仓 task 069/070 修复）。
 - **2026-11-15 轮询（重点补国内卡表）**：mik 通道净增 +30 tournaments / +1,484 decks / +1,800 appearances / +43,809 deck_cards（blocked=0），近期 33 场国内赛入库——11-08×3 / 11-14×13 / **11-15 城市赛第五赛季当日 17 场**（3769–3792 各店铺场次，2,248 套卡表）；limitless api 与 site 通道均无新事项；L0 无卡变动、英文桥 CSV10.5C/10.6C 仍未发布。注：首轮 mik 监控撞 300s 超时被杀（抓取中段，raw 原子写无损），不限时续跑完成（新抓 1,197 raw）。
 - **2026-11-13 轮询**：l0 收 SVP 560→578 激活（data_version v20261113.1），英文桥 CSV10.5C/10.6C 上游仍未发布；赛事三通道净增 +4 tournaments（limitless）/ +1,026 decks / +1,188 appearances / +27,554 deck_cards / +2,289 pairings，blocked 全 0；mik 新卡组为已收编赛事的迟到卡组表，site 通道无新事项。
 - **2026-11-08 goal 批次二收官（074/075/076）**：074 核销 30th-P 白名单提案；075 确证 3710 第 2 页供给性阻塞（mik v3 删赛事，top64 为最终状态）；076 英文桥挂账探测（PRD v1.43）落地。总报告 `reports/goal-batch2-20261108.md`，1315 测试全绿 + ruff 净。

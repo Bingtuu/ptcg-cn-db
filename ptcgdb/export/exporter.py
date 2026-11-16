@@ -379,11 +379,12 @@ def _fingerprint(out_dir: Path) -> tuple[dict[str, str], Any]:
 
 def _resolve_data_release(
     staging: Path, out_dir: Path, manifest: dict,
-) -> tuple[int, dict, str]:
+) -> tuple[int, dict, dict, str]:
     """task 067：与上一 dist 比内容指纹——不变沿用 data_version，变化 +1 并产计数差集。
 
     version（日历轨）每构建重取 v{date}.{data_version}（FR-6.1「每次合入递增」
     的落实）：下游盯 version 看发布新鲜度，盯 data_version 看内容稳定性。
+    task 080：变化时另产 data_revisions 记录级 diff（行数不变的就地修订命中）。
     """
     prev_manifest, prev_sums, prev_legality = (
         _load_release(out_dir) if out_dir.exists() else (None, {}, None)
@@ -395,12 +396,12 @@ def _resolve_data_release(
     )
     if prev_manifest is None:
         # 首次发布：版本从 1 起，无数值可比，changes 留空（基线即第一版）。
-        data_version, changes = 1, {}
+        data_version, changes, revisions = 1, {}, {}
     else:
         changed = prev_fp != new_sums or prev_legality != new_legality
         prev_version = int(prev_manifest.get("data_version", 0))
         if not changed:
-            data_version, changes = max(prev_version, 1), {}
+            data_version, changes, revisions = max(prev_version, 1), {}, {}
         else:
             data_version = prev_version + 1
             prev_counts = prev_manifest.get("counts", {})
@@ -410,8 +411,67 @@ def _resolve_data_release(
                 for key in sorted(set(prev_counts) | set(new_counts))
                 if prev_counts.get(key) != new_counts.get(key)
             }
+            revisions = _record_revisions(out_dir, staging)
     version = f"v{date.today():%Y%m%d}.{data_version}"
-    return data_version, changes, version
+    return data_version, changes, revisions, version
+
+
+# task 080：记录级修订日志（PRD v1.44）。每文件主键 → 行内容哈希，与上一 dist
+# 逐记录 diff；行数不变的就地修订（卡文本订正、archetype 漂移）在此命中，
+# 弥补 data_changes 计数差集只看得见增删看不见改的缺口。
+_REV_ID_CAP = 500
+_REV_KEYS = {
+    "cards.jsonl": ("card_id",),
+    "sets.jsonl": ("set_id",),
+    "relations.jsonl": ("card_id", "relation_type", "related_card_id", "kind"),
+    "tournaments.jsonl": ("tournament_id",),
+    "decks.jsonl": ("deck_id",),
+    "deck_appearances.jsonl": ("appearance_id",),
+    "deck_cards.jsonl": ("deck_id", "card_id", "group_key"),
+    "pairings.jsonl": ("tournament_id", "phase", "round", "table_no"),
+}
+
+
+def _record_map(path: Path, key_fields: tuple[str, ...]) -> dict[str, str]:
+    """jsonl → {主键: 行内容哈希}；同键冲突加出现序后缀（不猜，保唯一）。"""
+    records: dict[str, str] = {}
+    with path.open("rb") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            base = "|".join(str(row.get(k)) for k in key_fields)
+            key, n = base, 2
+            while key in records:
+                key = f"{base}#{n}"
+                n += 1
+            records[key] = hashlib.blake2b(line, digest_size=8).hexdigest()
+    return records
+
+
+def _record_revisions(prev_dir: Path, staging: Path) -> dict:
+    """逐记录 diff 上一 dist 与本次构建，返回 manifest data_revisions 段。"""
+    revisions = {}
+    for name, key_fields in _REV_KEYS.items():
+        prev_path, new_path = prev_dir / name, staging / name
+        if not (prev_path.is_file() and new_path.is_file()):
+            continue  # 契约面变化（新增/移除文件）由 data_changes 计数差集覆盖
+        prev_map = _record_map(prev_path, key_fields)
+        new_map = _record_map(new_path, key_fields)
+        added = sorted(k for k in new_map if k not in prev_map)
+        removed = sorted(k for k in prev_map if k not in new_map)
+        changed = sorted(
+            k for k in new_map if k in prev_map and prev_map[k] != new_map[k]
+        )
+        if not (added or removed or changed):
+            continue
+        entry = {"added": len(added), "removed": len(removed), "changed": len(changed)}
+        entry["changed_ids"] = changed[:_REV_ID_CAP]
+        if len(changed) > _REV_ID_CAP:
+            entry["truncated"] = True
+        revisions[name] = entry
+    return revisions
 
 
 def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
@@ -430,11 +490,13 @@ def export_all(db_path: Path, out_dir: Path, *, parquet: bool = True) -> dict:
     try:
         manifest = _export_all_to_dir(db_path, staging, parquet=parquet)
         # task 067：发布前与旧 dist 比对内容指纹，定 data_version/version 与变更摘要。
-        data_version, data_changes, version = _resolve_data_release(
+        # task 080：变化时附 data_revisions 记录级修订日志。
+        data_version, data_changes, data_revisions, version = _resolve_data_release(
             staging, out_dir, manifest
         )
         manifest["data_version"] = data_version
         manifest["data_changes"] = data_changes
+        manifest["data_revisions"] = data_revisions
         manifest["version"] = version
         (staging / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
