@@ -2,7 +2,7 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-21；PRD v1.43；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-21；PRD v1.44；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
@@ -62,7 +62,7 @@
 
 | 内容 | 位置 |
 |---|---|
-| 权威设计 | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.43） |
+| 权威设计 | `docs/简中PTCG卡牌数据库_PRD与技术方案.md`（v1.44） |
 | 工程约定 | `AGENTS.md` |
 | 任务队列与规范 | `tasks/`、`tasks/README.md`、`tasks/done/` |
 | 数据源 | `docs/data-sources.md` |
