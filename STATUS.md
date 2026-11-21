@@ -2,7 +2,7 @@
 
 > 开始工作前先读本文件。只记录当前状态、有效决策和未关闭事项；完整历史见 [2026-10-25 归档](docs/archive/STATUS-2026-10-25.md)，任务细节见 `tasks/done/` 与 `reports/`。
 >
-> 最近更新：2026-11-15；PRD v1.43；实时库 user_version=14 / schema_version=3.0.0。
+> 最近更新：2026-11-21；PRD v1.43；实时库 user_version=14 / schema_version=3.0.0。
 
 ## 当前状态
 
@@ -18,12 +18,12 @@
 
 **task 076 DONE：监控 nameEn 桥探测（PRD v1.43）。** mik 英文桥滞后发布且不改 cardsNum 致 L0 增量探测天然不可见——`config/bridge_pending.yml`（初始 CSV10.5C/10.6C）+ `ptcgdb/monitor/bridge.py` 落地：L0 非 dry-run 每轮强刷挂账系列详情比对上游 nameEn 覆盖 vs 库内 name_en，发布 → `bridge` 事件 + 通知 + CLI 回显；**探测不自动清偿**，runbook 手动（scrape→ingest→validate→activate→remap，英勇手镯等 misses 自动清偿）；单系列异常隔离、dry-run 零额外请求承诺不破。1315 全量绿 + ruff 净。
 
-**当前数据（2026-11-04，task 062 后）**：
+**当前数据（2026-11-21，本轮轮询后）**：
 
-- 卡牌实时库：**140 系列，13,653 active** + 8 deprecated = 13,661 行（11-07 轮询收编 白焰迸涌 CSV10.6C 174 / 黑雷奔流 CSV10.5C 174 / 宝石包 CBB7C 196，含 BWR 新罕贵度）。
-- 赛事实时库（2026-11-15 轮询后）：1,190 tournaments / 80,292 decks / 114,139 appearances / 2,281,835 deck_cards / 210,480 pairings（GHIJ 67,226 行，MAX(date)=2026-11-07；task 070 收编 220 场非官方档 online_open，env 全 HIJ）；mik 轮询恢复后 3711-3753 填充 32 场、3710 维持 top64 口径 64 队（**075 确证为最终状态**：mik v3 已删该赛事，第 2 页 44 队不可恢复）；mapping_status full 59,045 / partial 1,181；misses 10,477。
-- 合法性：4 份快照，standard 当前 G/H/I/J。真实验收 A1/A4–A8 全 PASS，见 `dist/acceptance-20261104.md`。
-- dist schema 3.0.0：十四件套计数与实时 SQL 全对平；`deck_appearances.jsonl` 增 `appearance_id`，`decks.jsonl` 增 `legacy_ids`。
+- 卡牌实时库：**140 系列，13,679 行**（13,671 active + 8 deprecated；11-13 SVP 560→578 已激活，11-21 英文桥两系列 name_en 补齐后 active name_en 零空缺）。
+- 赛事实时库（2026-11-21 轮询后）：1,210 tournaments / 81,067 decks / 115,109 appearances / 2,304,802 deck_cards / 210,480 pairings；mik 收 68 场新赛事（3799–3866，近期城市赛后续场次，未完赛场次 rank 400 确定性缺失）；limitless_site +10 场。mapping_status full 66,841 / partial 14,226（全部卡组已评级）；未清偿 misses 65,334（≈ deck_cards NULL 65,236，96%+ 为 limitless 源 Mega 时代无简中印刷预期缺口；11-15 口径的 10,477 系约 2 万从未 remap 卡组未登记的低报，本轮全量 remap 后归实）。
+- 合法性：4 份快照，standard 当前 G/H/I/J。真实验收 A1/A4–A8 全 PASS，见 `reports/acceptance-20261121.md`。
+- dist schema 3.0.0：**v20261121.5 / data_version=5**，十四件套计数与实时 SQL 全对平；`data_revisions` 首实战——cards.jsonl changed=348（两桥系列 174×2 就地修订精确命中），added=18（11-13 SVP 激活随本轮补入包）。
 - **3710 口径**：第 1 页 64 队忠实入库 351 行出战（raw rank 全 -1 保真；共用卡组 `mik_moe:688431` 两队各一条独立 rank=-1 出战）；整场 108 队——**task 075 确证补抓不可行（2026-11-08）**：mik v3 已删除该赛事（rank page-2 实探 code=400「该赛事不存在」，秋季场预赛改号 3754/正赛 3734），第 2 页 44 队永久不可恢复，3710 以 top64 为最终状态；3754 随常规轮询自然收编。
 - **mik 源停摆**：2026-10-31 起 tcg.mik.moe 迁移 areazero.gg 且旧 API 404，mik 侧采集按政策停摆（areazero 要求逐请求人工确认，禁止批量）；mik 赛事数据停在停摆前快照 + 本地 raw 可重放。EN/JP 源不受影响。
 - 测试基线：task 065 完成后 **1304 passed**（含 -W error 弃用清零）、ruff 全净。
@@ -97,7 +97,7 @@ M0–M12 均已完成：
 ## 当前运维与技术债
 
 - **mik v3 API 恢复（2026-11-07 轮询发现）**：10-31 停摆的只是路由/旧 v1 路径（areazero 与 v1 仍 404），**v3 卡牌/赛事 API 已全部恢复可用**（card product-list POST 200 实测；tournament series-list 参数校验 400 = 端点存活）。卡牌侧已正常 L0 全链；赛事侧 `monitor tourneys --source mik` 断点续传正常（1591 新 raw）。此前的政策评估结论仅对 areazero 新域有效，mik 原域按原管线继续。
-- **Brave Bangle / 英勇手镯**：白焰迸涌（CSV10.6C）11-05 已发售入库，英勇手镯=CSV10.6C-082 active；但 mik 对新主系列**未发布英文桥**（nameEn/setCodeEn 空白，082.json 实测空串），WHT-80→手镯链路断在源头，1,052 行未解挂账——mik 补桥后 L0 remap 自动清偿，不猜不造卡。另：CSV10.5C/10.6C 的 174 编号外 BWR 罕贵度已入词表（莱希拉姆ex ×2）。
+- **~~Brave Bangle / 英勇手镯~~（2026-11-21 已清偿）**：mik 于本轮补发 CSV10.5C/10.6C 英文桥（nameEn），L0 桥探测（task 076）如期捕获 → runbook 手动清偿：force 重抓两系列 → ingest → validate（十规则全过）→ activate → remap-decks。WHT-80→英勇手镯链路贯通（Brave Bangle→CSV10.6C-082 [ptcd+unique]），两系列 active name_en 174/174 零空缺；Hilda→CSV10.6C-085、Prism Energy→CSV10.5C-086 等新卡同步解挂。remap 全量 attempted=83,300 / resolved=17,966 / decks_affected=15,044。`bridge_pending.yml` 两系列可摘除（下轮 L0 确认零挂账后清理）。另：CSV10.5C/10.6C 的 174 编号外 BWR 罕贵度已入词表（莱希拉姆ex ×2）。
 - **CBB 卡面分母（外部证据阻塞）**：CBB1C/CBB2C 仍有实测包冲突，mik 是不同编号多列示而非同号重复；保持只显分子，需新卡面锚或权威逐包清单。isQual 疑点已由 task 061 关闭。
 - **deck_card_misses**：多数为 Mega 时代无简中印刷的预期缺口；简中卡池扩展后通过 remap-decks 刷新，不为提高 full 率猜映射。
 - **采集瞬断**：22.4 小时回补曾因连续 5 次失败熔断，探源为瞬时网络问题——task 063 已清偿：熔断冷却 60s 半开探测（成功闭合/失败重开），429 统一有限退避，raw 原子写。
@@ -107,6 +107,7 @@ M0–M12 均已完成：
 
 ## 近期记录
 
+- **2026-11-21 轮询 + 英文桥清偿（task 076 探测首实战）**：L0 捕获 CSV10.5C/10.6C 英文桥发布事件 → runbook 清偿全链绿（scrape 174+174 force → ingest → validate 十规则 0 failure → activate → remap），WHT-80→英勇手镯贯通，两系列 name_en 零空缺；赛事三通道 mik +68 场（其中未完赛场次 rank 400 确定性缺失，下轮自动补）/ limitless 双通道 / site +10 场，blocked 全 0。dist 重导 v20261121.5（data_version=5），data_revisions 首实战精确命中 348 行就地修订；1322 测试全绿 + accept A1/A4–A8 全 PASS（`reports/acceptance-20261121.md`）。**运维教训：monitor 各通道严禁并行**——本轮并行跑 `monitor tourneys`（all）与 `--source mik` 导致 mik 双进程互踩（Windows 文件锁 PermissionError）+ SQLite 写锁 + 服务端连接拒止连撞两次熔断；串行重跑全部一次通过。
 - **2026-11-13 task 079 完成**：目录整理评估结论——结构遵循 PRD §8 无需重组；.scratch 治理：删 31 个历史整库备份副本（4.2GB，与 data/versions 职能重复，DR 点不受影响）+ 站方 cookie 残留 pcl-cookies.txt，.gitignore 零散 pattern 收口为 .scratch/ 整体忽略（本地暂存永不入库）。scratch 4.2GB→9.3MB，git status 噪音清零；依赖检查先行（tests/ptcgdb 仅注释出处引用）。
 - **2026-11-13 task 078 完成**：运维残渣清理——accept-work 5.1GB 验收副本清空；data/versions 清退被 supersede 的 pre-task019/pre014 临时备份 431MB（**保留 before-task070**：查清单时发现它是 versions 里最新整库 DR 点，版本化链止于 9 月）；STATUS 3710「扩全场需拍板」对齐 075 最终态。烟测 integrity ok + 计数一致。同日复盘技术债：10-05 台账遗留项全部确认清偿，代码债清零，剩余均为外部等待/拍板类。
 - **2026-11-13 task 077 完成**：修复 rollback 备份选择优先级反转（task 064 回归）——`_key` 版本化/临时优先级对调，补混合目录 + 纯临时目录回归测试 2 项；1317 全量绿 + ruff 净，复跑 accept A1/A4–A8 全 PASS。根因详见任务档；生产 `data/versions/` 混档下 `legal rollback` 误选 8 月旧库的风险随之消除。

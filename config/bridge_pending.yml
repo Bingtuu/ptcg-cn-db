@@ -6,6 +6,4 @@
 #   ptcgdb validate --set <X> → activate
 #   ptcgdb remap-decks              # 映射缺口自动清偿（英勇手镯等 misses）
 # 桥全部清偿后从本清单摘除该系列。
-pending_sets:
-  - CSV10.5C
-  - CSV10.6C
+pending_sets: []  # 2026-11-21：CSV10.5C/CSV10.6C 桥已发布并 runbook 清偿（name_en 174/174），摘除
